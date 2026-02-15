@@ -77,3 +77,9 @@ export const getInputFormConfigStore = () => {
 };
 
 export const ebmStore = writable({});
+
+export const checkModalConfigStore = writable({
+  show: false,
+  ebm: null,
+  modelData: null
+});

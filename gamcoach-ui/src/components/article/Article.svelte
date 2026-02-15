@@ -6,6 +6,7 @@
   import ConfirmModal from '../confirm-modal/ConfirmModal.svelte';
   import InputForm from '../input-form/InputForm.svelte';
   import BookmarkPanel from '../bookmark-panel/BookmarkPanel.svelte';
+  import CheckModal from '../check-modal/CheckModal.svelte';
   import Tooltip from '../Tooltip.svelte';
   import Youtube from './Youtube.svelte';
 
@@ -397,6 +398,7 @@
 
     <DiffPicker {logger} />
     <ConfirmModal />
+    <CheckModal />
 
     {#key modelName}
       <InputForm />

@@ -1,0 +1,1 @@
+This folder contains an application for GAMcoach which provides an interface that helps users to change loan approval decisions. I want to understand the AI model's decision

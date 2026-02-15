@@ -144,6 +144,8 @@
     {windowLoaded}
     bind:plans
     {logger}
+    {ebm}
+    modelData={curModelData}
     on:regenerateClicked={() =>
       regeneratePlans(
         constraints,

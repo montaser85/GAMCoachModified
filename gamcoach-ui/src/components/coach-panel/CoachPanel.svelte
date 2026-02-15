@@ -8,7 +8,8 @@
     tooltipConfigStore,
     confirmModalConfigStore,
     bookmarkConfigStore,
-    inputFormConfigStore
+    inputFormConfigStore,
+    checkModalConfigStore
   } from '../../store';
 
   import ScorePanel from '../score-panel/ScorePanel.svelte';
@@ -19,6 +20,7 @@
   import refreshIcon from '../../img/icon-refresh2.svg';
   import starIconSolid from '../../img/icon-star-solid.svg';
   import starIconOutline from '../../img/icon-star-outline.svg';
+  import checkIcon from '../../img/icon-check-box.svg';
 
   export let windowLoaded = false;
   /** @type {Logger} */
@@ -26,6 +28,11 @@
 
   /** @type {Plans} */
   export let plans = null;
+
+  /** @type {import('../../ebm/ebm').EBM} */
+  export let ebm = null;
+
+  export let modelData = null;
 
   // Component variables
   let component = null;
@@ -415,11 +422,30 @@
     }
   };
 
+  /**
+   * Open the check modal for manual prediction testing
+   */
+  const checkClicked = () => {
+    checkModalConfigStore.update(value => {
+      value.show = true;
+      value.ebm = ebm;
+      value.modelData = modelData;
+      return value;
+    });
+
+    // Log the interaction
+    logger?.addLog({
+      eventName: 'check modal opened',
+      elementName: 'check'
+    });
+  };
+
   onMount(() => {
     const iconList = [
       { class: 'icon-refresh', svg: refreshIcon },
       { class: 'icon-star-solid', svg: starIconSolid },
-      { class: 'icon-star-outline', svg: starIconOutline }
+      { class: 'icon-star-outline', svg: starIconOutline },
+      { class: 'icon-check-box', svg: checkIcon }
     ];
     bindInlineSVG(component, iconList);
   });
@@ -446,6 +472,11 @@
       <div class="icon-wrapper" on:click={bookmarkClicked} title="Saved plans">
         <div class="svg-icon icon-star-outline" />
         <span class="icon-label">Bookmarks</span>
+      </div>
+
+      <div class="icon-wrapper" on:click={checkClicked} title="Manual prediction check">
+        <div class="svg-icon icon-check-box" />
+        <span class="icon-label">Check</span>
       </div>
 
       <div
