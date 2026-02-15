@@ -127,6 +127,7 @@
 
     // Build sample array in the correct order
     // For categorical features, we need to convert numeric IDs to label strings
+    // For continuous features with transforms, apply the transformation
     const sample = ebm.featureNames.map((name, index) => {
       const value = featureValues[name];
 
@@ -138,9 +139,18 @@
           return labelDecoder[value];
         }
         return value;
-      }
+      } else {
+        // Check if this continuous feature uses a transformation
+        const feature = modelData.features.find(f => f.name === name);
+        const transform = feature?.config?.usesTransform;
 
-      return value;
+        if (transform === 'log10') {
+          // Apply log10 transformation
+          return value > 0 ? Math.log10(value) : 0;
+        }
+
+        return value;
+      }
     });
 
     // Debug: Log the input values
@@ -158,7 +168,12 @@
         const encodedValue = sample[i]; // The actual value being sent to EBM
         console.log(`  ${displayName}: ${displayValue} (ID: ${value}, Encoded: "${encodedValue}")`);
       } else {
-        console.log(`  ${displayName}: ${value}`);
+        const transform = feature?.config?.usesTransform;
+        if (transform === 'log10') {
+          console.log(`  ${displayName}: ${value} (log10: ${sample[i].toFixed(4)})`);
+        } else {
+          console.log(`  ${displayName}: ${value}`);
+        }
       }
     });
     console.log('\nSample array sent to EBM:', sample);
