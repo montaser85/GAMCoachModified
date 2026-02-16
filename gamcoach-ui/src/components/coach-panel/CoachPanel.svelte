@@ -474,7 +474,7 @@
         <span class="icon-label">Bookmarks</span>
       </div>
 
-      <div class="icon-wrapper" on:click={checkClicked} title="Manual prediction check">
+      <div class="icon-wrapper" on:click={checkClicked} title="Manual Prediction Check">
         <div class="svg-icon icon-check-box" />
         <span class="icon-label">Check</span>
       </div>
