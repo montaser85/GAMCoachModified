@@ -92,7 +92,6 @@
           display: flex;
           align-items: center;
           gap: 6px;
-          cursor: help;
 
           .info-icon {
             font-size: 0.75rem;
@@ -237,6 +236,21 @@
         &:hover {
           background-color: $gray-50;
           border-color: $gray-400;
+        }
+      }
+
+      &.btn-reset {
+        background-color: white;
+        color: $orange-600;
+        border: 1.5px solid $orange-400;
+
+        &:hover {
+          background-color: hsla(25, 95%, 53%, 0.08);
+          border-color: $orange-600;
+        }
+
+        &:active {
+          transform: translateY(1px);
         }
       }
 

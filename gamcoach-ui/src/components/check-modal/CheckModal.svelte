@@ -199,6 +199,15 @@
   };
 
   /**
+   * Reset form values to defaults
+   */
+  const handleReset = () => {
+    initializeFeatureValues();
+    showResult = false;
+    predictionResult = null;
+  };
+
+  /**
    * Close the modal
    */
   const closeModal = () => {
@@ -316,6 +325,7 @@
       <!-- Footer -->
       <div class="modal-footer">
         <button class="btn-cancel" on:click={closeModal}>Close</button>
+        <button class="btn-reset" on:click={handleReset}>Reset</button>
         <button class="btn-check" on:click={handleCheck}>Check</button>
       </div>
     </div>
