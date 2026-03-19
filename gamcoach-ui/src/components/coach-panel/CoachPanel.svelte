@@ -467,14 +467,13 @@
         Personal coach to help you obtain desired AI decisions
       </span>
     </div>
-
     <div class="coach-controls">
       <div class="icon-wrapper" on:click={bookmarkClicked} title="Saved plans">
         <div class="svg-icon icon-star-outline" />
         <span class="icon-label">Bookmarks</span>
       </div>
-
-      <div class="icon-wrapper" on:click={checkClicked} title="Manual Prediction Check">
+<!-- To bring it back, just remove the style="display: none;" attribute -->
+      <div class="icon-wrapper" on:click={checkClicked} title="Manual Prediction Check" style="display: none;">
         <div class="svg-icon icon-check-box" />
         <span class="icon-label">Check</span>
       </div>

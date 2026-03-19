@@ -464,7 +464,7 @@
   $: feature && mounted && !initialized && initFeatureCard();
 </script>
 
-<div class="feature-card" bind:this={component} class:collapsed={isCollapsed}>
+<div class="feature-card" bind:this={component} class:collapsed={isCollapsed} data-feature-name={feature?.data?.name}>
   <div
     class="feature-header"
     class:collapsed={isCollapsed}

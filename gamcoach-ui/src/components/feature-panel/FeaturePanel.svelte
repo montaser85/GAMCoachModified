@@ -12,6 +12,7 @@
   import { Plan, Constraints } from '../coach/Coach';
 
   import { onMount, onDestroy, tick } from 'svelte';
+  import { fade } from 'svelte/transition';
   import { tooltipConfigStore } from '../../store';
 
   export let windowLoaded = false;
@@ -54,6 +55,21 @@
   let featureGrid = new FeatureGrid();
 
   let maxFeatureNum = 'null';
+
+  // Propagation state — when Loan Amount changes, 3 other features are affected
+  const PROPAGATION_MAP = {
+    'loan_amnt': {
+      targets: ['dti', 'fico_score', 'revol_util'],
+      message: '3 other features have changed with Loan Amount'
+    }
+  };
+  let showPropagationMessage = false;
+  let propagationMessage = '';
+  let showArrows = false;
+  let arrowPaths = [];
+  let panelClipRect = null;
+  let propagationTimer = null;
+  let propagationDebounceTimer = null;
 
   // Set up the GAM Coach feature cards
   const initFeatureCards = () => {
@@ -103,6 +119,81 @@
 
     // Update the store
     planStore.set(plan);
+
+    // Debounce propagation effects — only fire after the user finishes dragging
+    // (i.e., when no new value events arrive for 350ms, meaning mouse was released)
+    if (propagationDebounceTimer) clearTimeout(propagationDebounceTimer);
+    const capturedName = feature.data.name;
+    propagationDebounceTimer = setTimeout(() => {
+      propagationDebounceTimer = null;
+      triggerPropagation(capturedName);
+    }, 350);
+  };
+
+  /**
+   * Show propagation message, blue outlines, and animated arrows
+   * when a feature change cascades to other features.
+   */
+  const triggerPropagation = async (featureName) => {
+    const propagation = PROPAGATION_MAP[featureName];
+    if (!propagation) return;
+
+    // Clear any running arrow timer (highlights and message are permanent)
+    if (propagationTimer) {
+      clearTimeout(propagationTimer);
+    }
+
+    // Show the message (permanent — never cleared)
+    propagationMessage = propagation.message;
+    showPropagationMessage = true;
+    showArrows = false;
+    arrowPaths = [];
+
+    // Wait for DOM to settle
+    await tick();
+
+    // Apply permanent blue outline to source + target cards
+    const allNames = [featureName, ...propagation.targets];
+    allNames.forEach(name => {
+      const el = document.querySelector(`[data-feature-name="${name}"]`);
+      if (el) el.classList.add('highlighted');
+    });
+
+    // Capture panel bounding rect for arrow clipping
+    if (component) {
+      const rect = component.getBoundingClientRect();
+      panelClipRect = { x: rect.left, y: rect.top, width: rect.width, height: rect.height };
+    }
+
+    // Calculate SVG arrow paths from source card to each target card
+    const sourceEl = document.querySelector(`[data-feature-name="${featureName}"]`);
+    if (sourceEl) {
+      const sourceRect = sourceEl.getBoundingClientRect();
+      const sx = sourceRect.left + sourceRect.width / 2;
+      const sy = sourceRect.top + sourceRect.height / 2;
+
+      arrowPaths = propagation.targets
+        .map(name => document.querySelector(`[data-feature-name="${name}"]`))
+        .filter(el => el !== null)
+        .map(targetEl => {
+          const targetRect = targetEl.getBoundingClientRect();
+          const tx = targetRect.left + targetRect.width / 2;
+          const ty = targetRect.top + targetRect.height / 2;
+          // Control point arches above the midpoint for a clean curve
+          const cx = (sx + tx) / 2;
+          const cy = (sy + ty) / 2 - 80;
+          return `M${sx},${sy} Q${cx},${cy} ${tx},${ty}`;
+        });
+
+      showArrows = true;
+    }
+
+    // Arrows disappear after 2 seconds; message and highlights stay permanently
+    propagationTimer = setTimeout(() => {
+      showArrows = false;
+      arrowPaths = [];
+      propagationTimer = null;
+    }, 2000);
   };
 
   const maxFeatureNumChanged = () => {
@@ -234,6 +325,8 @@
 
   onDestroy(() => {
     unsubscribes.forEach(unsub => unsub());
+    if (propagationTimer) clearTimeout(propagationTimer);
+    if (propagationDebounceTimer) clearTimeout(propagationDebounceTimer);
   });
 
   $: windowLoaded && planStore && !initialized && initFeatureCards();
@@ -250,6 +343,11 @@
   <div class='card-block'>
     <div class='row-header'>
       <span class='label'>Suggested Changes</span>
+      {#if showPropagationMessage}
+        <span class='propagation-message' transition:fade={{ duration: 300 }}>
+          {propagationMessage}
+        </span>
+      {/if}
       <span class='label'>New plans can change
         <div class='select' id='hidden-select'>
           <select>
@@ -510,5 +608,48 @@
     </div>
   </div>
 
+  <!-- SVG overlay for propagation arrows — fixed to viewport, pointer-events off -->
+  {#if showArrows}
+    <svg
+      class='propagation-arrows-overlay'
+      xmlns='http://www.w3.org/2000/svg'
+      transition:fade={{ duration: 300 }}
+    >
+      <defs>
+        <marker
+          id='prop-arrowhead'
+          markerWidth='8'
+          markerHeight='6'
+          refX='7'
+          refY='3'
+          orient='auto'
+        >
+          <polygon points='0 0, 8 3, 0 6' fill='#1565C0' />
+        </marker>
+        {#if panelClipRect}
+          <clipPath id='panel-clip'>
+            <rect
+              x={panelClipRect.x}
+              y={panelClipRect.y}
+              width={panelClipRect.width}
+              height={panelClipRect.height}
+            />
+          </clipPath>
+        {/if}
+      </defs>
+      <g clip-path={panelClipRect ? 'url(#panel-clip)' : ''}>
+        {#each arrowPaths as d}
+          <path
+            {d}
+            stroke='#1976D2'
+            stroke-width='2.5'
+            fill='none'
+            marker-end='url(#prop-arrowhead)'
+            stroke-dasharray='6 3'
+          />
+        {/each}
+      </g>
+    </svg>
+  {/if}
 
 </div>
