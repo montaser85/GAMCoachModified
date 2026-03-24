@@ -152,6 +152,10 @@
   let propagationDebounceTimer = null;
   // Track last known values to avoid triggering on card expansion (not real user changes)
   let lastKnownValues = {};
+  // Snapshot of every feature's value at page-load time (coach suggestions).
+  // Never modified after initialization — used as the baseline for all propagation
+  // calculations so that repeated changes don't stack on top of each other.
+  let originalValues = {};
 
   // Set up the GAM Coach feature cards
   const initFeatureCards = () => {
@@ -227,19 +231,25 @@
   // ────────────────────────────────────────────────────────────────────────────
 
   /**
-   * Seed lastKnownValues with each feature's current coach/suggested value.
-   * Called once when the plan is first loaded so helpers always have data.
+   * Seed lastKnownValues AND originalValues with each feature's coach/suggested
+   * value at page-load time.  originalValues is never modified after this point
+   * so it always represents the starting baseline for propagation calculations.
    */
   const initLastKnownValues = () => {
     if (!plan) return;
     plan.features.forEach(f => {
       const name = f.data.name;
+      let val;
       if (f.isCont) {
         // Continuous: store in internal (possibly log) space — same as curValue
-        lastKnownValues[name] = f.coachValue;
+        val = f.coachValue;
       } else if (f.labelEncoder && f.coachValue !== null && f.coachValue !== undefined) {
         // Categorical: store as label string (e.g. 'debt_consolidation')
-        lastKnownValues[name] = f.labelEncoder[f.coachValue];
+        val = f.labelEncoder[f.coachValue];
+      }
+      if (val !== undefined) {
+        lastKnownValues[name] = val;
+        originalValues[name]  = val; // frozen baseline — never overwritten
       }
     });
   };
@@ -263,6 +273,20 @@
    */
   const getDisplayValue = (featureName) => {
     const internal = getCurrentValue(featureName);
+    if (internal === null || internal === undefined) return null;
+    const f = plan?.features.find(f => f.data.name === featureName);
+    if (!f || !f.isCont) return internal;
+    return f.transform === 'log10' ? Math.pow(10, internal) : internal;
+  };
+
+  /**
+   * Return the display value for a feature as it was at page-load time
+   * (the coach's suggestion), regardless of any subsequent changes.
+   * Used as the fixed baseline in propagation calculations so that
+   * repeated changes don't stack on top of previously computed values.
+   */
+  const getOriginalDisplayValue = (featureName) => {
+    const internal = originalValues[featureName];
     if (internal === null || internal === undefined) return null;
     const f = plan?.features.find(f => f.data.name === featureName);
     if (!f || !f.isCont) return internal;
@@ -308,19 +332,23 @@
   const applyLoanAmountPropagation = (loanAmount) => {
     const updates = {};
 
-    // ── Read current display values for dependent features ───────────────────
-    const annualIncDisplay  = getDisplayValue('annual_inc') || 1;
+    // ── Read ORIGINAL baseline values for dependent features ────────────────
+    // Always use originalValues (coach suggestions at load time) so that
+    // repeated changes to Loan Amount don't stack — each calculation is
+    // computed fresh relative to the same starting point.
+    const annualIncDisplay  = getOriginalDisplayValue('annual_inc') || 1;
     const monthlyIncome     = annualIncDisplay / 12;
-    const dtiDisplay        = getDisplayValue('dti')        || 0;
-    const revolBalDisplay   = getDisplayValue('revol_bal')  || 0;
-    const revolUtilDisplay  = getDisplayValue('revol_util') || 0;
-    const purposeLabel      = getCurrentValue('purpose')    || '';
-    const termLabel         = getCurrentValue('term')       || '36 months';
+    const dtiDisplay        = getOriginalDisplayValue('dti')        || 0;
+    const revolBalDisplay   = getOriginalDisplayValue('revol_bal')  || 0;
+    const revolUtilDisplay  = getOriginalDisplayValue('revol_util') || 0;
+    // Purpose and term use current values — the user may have changed them intentionally
+    const purposeLabel      = getCurrentValue('purpose')            || '';
+    const termLabel         = getCurrentValue('term')               || '36 months';
     const termMonths        = parseTermMonths(termLabel);
 
     // ── 1. FICO Score — drop by 4 only on the first loan_amnt change ─────────
     if (!ficoDropApplied) {
-      const currentFico  = getDisplayValue('fico_score') || 0;
+      const currentFico  = getOriginalDisplayValue('fico_score') || 0;
       const newFico      = currentFico - 4;
       const newFicoInt   = toInternalValue(newFico, 'fico_score');
       updates['fico_score']   = newFicoInt;
