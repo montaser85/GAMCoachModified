@@ -83,3 +83,7 @@ export const checkModalConfigStore = writable({
   ebm: null,
   modelData: null
 });
+
+// Maps feature name → internal value for programmatic slider overrides.
+// FeatureCard subscribes and moves its slider when its name appears here.
+export const featureValueOverrideStore = writable({});

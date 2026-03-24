@@ -13,7 +13,7 @@
 
   import { onMount, onDestroy, tick } from 'svelte';
   import { fade } from 'svelte/transition';
-  import { tooltipConfigStore } from '../../store';
+  import { tooltipConfigStore, featureValueOverrideStore } from '../../store';
 
   export let windowLoaded = false;
   export let planStore = null;
@@ -56,12 +56,27 @@
 
   let maxFeatureNum = 'null';
 
+  // ── Loan Amount propagation: APR by internal purpose label ──────────────────
+  // APRs are decimals (e.g. 0.061 = 6.1%).  Any purpose not listed defaults to
+  // the personal-loan rate of 11.65%.
+  const APR_BY_PURPOSE = {
+    'house':            0.0610,
+    'small_business':   0.0890,
+    'car':              0.0622,
+    'renewable_energy': 0.0849
+  };
+
+  // Tracks whether the one-time FICO drop from changing Loan Amount has fired.
+  let ficoDropApplied = false;
+
   // Propagation map — which features indirectly change when a feature is directly changed
   // Keys are internal feature names; displayName is used for the message
   const PROPAGATION_MAP = {
     'loan_amnt': {
       displayName: 'Loan Amount',
-      targets: ['dti', 'fico_score', 'revol_util']
+      // revol_bal / revol_util only activate when purpose is credit_card or debt_consolidation;
+      // fico_score only activates once (ficoDropApplied flag). Actual active set is computed at runtime.
+      targets: ['fico_score', 'dti', 'revol_bal', 'revol_util']
     },
     'dti': {
       displayName: 'Debt to Income Ratio',
@@ -165,6 +180,10 @@
     featureGrid.loadFeatures(plan.features, constraints);
     featureGrid = featureGrid;
 
+    // Seed lastKnownValues with the initial coach-suggested values so that
+    // the propagation helpers have baseline data even before the user moves any slider.
+    initLastKnownValues();
+
     // console.log(featureGrid);
   };
 
@@ -201,6 +220,150 @@
         triggerPropagation(featureName);
       }, 350);
     }
+  };
+
+  // ────────────────────────────────────────────────────────────────────────────
+  // Value helpers — read / convert feature values from lastKnownValues or plan
+  // ────────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Seed lastKnownValues with each feature's current coach/suggested value.
+   * Called once when the plan is first loaded so helpers always have data.
+   */
+  const initLastKnownValues = () => {
+    if (!plan) return;
+    plan.features.forEach(f => {
+      const name = f.data.name;
+      if (f.isCont) {
+        // Continuous: store in internal (possibly log) space — same as curValue
+        lastKnownValues[name] = f.coachValue;
+      } else if (f.labelEncoder && f.coachValue !== null && f.coachValue !== undefined) {
+        // Categorical: store as label string (e.g. 'debt_consolidation')
+        lastKnownValues[name] = f.labelEncoder[f.coachValue];
+      }
+    });
+  };
+
+  /**
+   * Return the current internal value for a feature.
+   * For continuous: the raw (possibly log-space) number.
+   * For categorical: the label string (e.g. 'debt_consolidation').
+   */
+  const getCurrentValue = (featureName) => {
+    if (lastKnownValues[featureName] !== undefined) return lastKnownValues[featureName];
+    const f = plan?.features.find(f => f.data.name === featureName);
+    if (!f) return null;
+    if (!f.isCont) return f.labelEncoder ? f.labelEncoder[f.coachValue] : null;
+    return f.coachValue;
+  };
+
+  /**
+   * Return the display (human-readable) value for a continuous feature.
+   * Applies the inverse of any stored transform (e.g. 10^x for log10 features).
+   */
+  const getDisplayValue = (featureName) => {
+    const internal = getCurrentValue(featureName);
+    if (internal === null || internal === undefined) return null;
+    const f = plan?.features.find(f => f.data.name === featureName);
+    if (!f || !f.isCont) return internal;
+    return f.transform === 'log10' ? Math.pow(10, internal) : internal;
+  };
+
+  /**
+   * Convert a display value back to the internal representation expected by
+   * the EBM and the slider (e.g. log10 for annual_inc / revol_bal).
+   */
+  const toInternalValue = (displayValue, featureName) => {
+    const f = plan?.features.find(f => f.data.name === featureName);
+    if (!f || !f.isCont) return displayValue;
+    return f.transform === 'log10'
+      ? (displayValue > 0 ? Math.log10(displayValue) : 0)
+      : displayValue;
+  };
+
+  /**
+   * Parse a term label like '36 months' or '60 months' into an integer.
+   */
+  const parseTermMonths = (termLabel) => {
+    const match = String(termLabel || '').match(/(\d+)/);
+    return match ? parseInt(match[1], 10) : 36;
+  };
+
+  // ────────────────────────────────────────────────────────────────────────────
+  // Loan Amount propagation mechanics
+  // ────────────────────────────────────────────────────────────────────────────
+
+  /**
+   * Compute the new values for features that change when Loan Amount is altered.
+   * Returns a map of { featureName: internalValue } for every feature that changed.
+   *
+   * Rules:
+   *  1. FICO Score   — one-time drop of 4 points (ficoDropApplied flag prevents repeat)
+   *  2. DTI          — recalculated via loan amortization formula + existing debt
+   *  3. Revol Balance  — only if purpose is credit_card or debt_consolidation
+   *  4. Revol Util     — derived from new revol balance ÷ credit limit
+   *
+   * @param {number} loanAmount  Display value of the new loan amount (no transform)
+   */
+  const applyLoanAmountPropagation = (loanAmount) => {
+    const updates = {};
+
+    // ── Read current display values for dependent features ───────────────────
+    const annualIncDisplay  = getDisplayValue('annual_inc') || 1;
+    const monthlyIncome     = annualIncDisplay / 12;
+    const dtiDisplay        = getDisplayValue('dti')        || 0;
+    const revolBalDisplay   = getDisplayValue('revol_bal')  || 0;
+    const revolUtilDisplay  = getDisplayValue('revol_util') || 0;
+    const purposeLabel      = getCurrentValue('purpose')    || '';
+    const termLabel         = getCurrentValue('term')       || '36 months';
+    const termMonths        = parseTermMonths(termLabel);
+
+    // ── 1. FICO Score — drop by 4 only on the first loan_amnt change ─────────
+    if (!ficoDropApplied) {
+      const currentFico  = getDisplayValue('fico_score') || 0;
+      const newFico      = currentFico - 4;
+      const newFicoInt   = toInternalValue(newFico, 'fico_score');
+      updates['fico_score']   = newFicoInt;
+      lastKnownValues['fico_score'] = newFicoInt;
+      ficoDropApplied = true;
+    }
+
+    // ── 2. DTI — amortization formula ────────────────────────────────────────
+    // APR defaults to 11.65 % for any purpose not in APR_BY_PURPOSE
+    const apr              = APR_BY_PURPOSE[purposeLabel] ?? 0.1165;
+    const monthlyRate      = apr / 12;
+    // Monthly payment for the new loan (standard amortization formula)
+    const newLoanPayment   = monthlyRate > 0
+      ? (loanAmount * monthlyRate) / (1 - Math.pow(1 + monthlyRate, -termMonths))
+      : loanAmount / termMonths;
+    // Current monthly debt derived from existing DTI
+    const currentMonthlyDebt = (dtiDisplay * monthlyIncome) / 100;
+    const newMonthlyDebt     = currentMonthlyDebt + newLoanPayment;
+    const newDTI             = monthlyIncome > 0 ? (newMonthlyDebt / monthlyIncome) * 100 : 0;
+    const newDTIInt          = toInternalValue(newDTI, 'dti');
+    updates['dti']          = newDTIInt;
+    lastKnownValues['dti']  = newDTIInt;
+
+    // ── 3 & 4. Revolving Balance + Credit Utilization ────────────────────────
+    // These only apply when the loan is used to pay down a revolving credit line
+    if (['credit_card', 'debt_consolidation'].includes(purposeLabel)) {
+      // New balance after paying down with loan proceeds
+      const newRevolBal    = Math.max(0, revolBalDisplay - loanAmount);
+      const newRevolBalInt = toInternalValue(newRevolBal, 'revol_bal');
+      updates['revol_bal']          = newRevolBalInt;
+      lastKnownValues['revol_bal']  = newRevolBalInt;
+
+      // Credit limit is implicit: current balance ÷ (utilization / 100)
+      if (revolUtilDisplay > 0 && revolBalDisplay > 0) {
+        const creditLimit    = revolBalDisplay / (revolUtilDisplay / 100);
+        const newRevolUtil   = (newRevolBal / creditLimit) * 100;
+        const newRevolUtilInt = toInternalValue(newRevolUtil, 'revol_util');
+        updates['revol_util']          = newRevolUtilInt;
+        lastKnownValues['revol_util']  = newRevolUtilInt;
+      }
+    }
+
+    return updates;
   };
 
   /**
@@ -246,72 +409,90 @@
   };
 
   /**
-   * Show propagation message, blue outlines, and animated arrows
-   * when a feature change cascades to other features.
+   * Show propagation message, blue outlines, and animated arrows when a feature
+   * change cascades to other features.  For features that have defined calculation
+   * mechanics (currently loan_amnt), also compute and apply the new derived values
+   * to the EBM and to the affected slider cards.
    */
   const triggerPropagation = async (featureName) => {
     const propagation = PROPAGATION_MAP[featureName];
     if (!propagation) return;
 
-    // Clear any running arrow timer (highlights and message are permanent)
-    if (propagationTimer) {
-      clearTimeout(propagationTimer);
+    if (propagationTimer) clearTimeout(propagationTimer);
+
+    // ── 1. Compute actual targets + derived values (feature-specific logic) ──
+    let activeTargets = [...propagation.targets];
+    let computedUpdates = {}; // featureName → internal value
+
+    if (featureName === 'loan_amnt') {
+      const loanAmount = getCurrentValue('loan_amnt'); // No transform; display = internal
+      if (loanAmount !== null) {
+        computedUpdates = applyLoanAmountPropagation(loanAmount);
+        // Active targets = only the features that were actually computed this time
+        activeTargets = Object.keys(computedUpdates);
+      }
     }
 
-    // Build message dynamically from target count, display name, and target names
-    const count = propagation.targets.length;
+    // ── 2. Build + show the sticky message ───────────────────────────────────
+    const count = activeTargets.length;
     const featureWord = count === 1 ? 'feature' : 'features';
-    const verb = count === 1 ? 'has' : 'have';
-    const targetNames = propagation.targets
+    const targetNames = activeTargets
       .map(name => DISPLAY_NAMES[name] || name)
       .join(', ');
-    propagationMessage = `Changes in ${propagation.displayName} changed ${count} other ${featureWord}: ${targetNames}`;
-
-    // Show the message (permanent — never cleared)
+    propagationMessage = `Changing ${propagation.displayName} changed ${count} other ${featureWord}: ${targetNames}`;
     showPropagationMessage = true;
     showArrows = false;
     arrowPaths = [];
     arrowLabels = [];
 
-    // Wait for DOM to settle
     await tick();
 
-    // Apply permanent blue outline to source + target cards
-    const allNames = [featureName, ...propagation.targets];
+    // ── 3. Blue outlines on source + affected cards ───────────────────────────
+    const allNames = [featureName, ...activeTargets];
     allNames.forEach(name => {
       const el = document.querySelector(`[data-feature-name="${name}"]`);
       if (el) el.classList.add('highlighted');
     });
 
-    // Capture panel bounding rect for arrow clipping
+    // ── 4. Push computed values into the EBM and move the sliders ───────────
+    if (Object.keys(computedUpdates).length > 0) {
+      Object.entries(computedUpdates).forEach(([name, internalValue]) => {
+        plan.ebmLocal.updateFeature(name, internalValue);
+      });
+      planStore.set(plan);
+      // Signal FeatureCard instances to update their slider positions
+      featureValueOverrideStore.set(computedUpdates);
+      // Clear the override store after a short delay; the coachValue on each
+      // feature object has already been updated (by reference) so collapsed
+      // cards will still initialize at the correct position when expanded.
+      setTimeout(() => featureValueOverrideStore.set({}), 400);
+    }
+
+    // ── 5. Draw SVG arrows ────────────────────────────────────────────────────
     if (component) {
       const rect = component.getBoundingClientRect();
       panelClipRect = { x: rect.left, y: rect.top, width: rect.width, height: rect.height };
     }
 
-    // Calculate SVG arrow paths from source card to each target card
     const sourceEl = document.querySelector(`[data-feature-name="${featureName}"]`);
-    if (sourceEl) {
+    if (sourceEl && activeTargets.length > 0) {
       const sourceRect = sourceEl.getBoundingClientRect();
       const sx = sourceRect.left + sourceRect.width / 2;
       const sy = sourceRect.top + sourceRect.height / 2;
 
-      const targetData = propagation.targets
+      const targetData = activeTargets
         .map(name => ({ name, el: document.querySelector(`[data-feature-name="${name}"]`) }))
         .filter(({ el }) => el !== null)
-        .map(({ name, el: targetEl }, i) => {
+        .map(({ name, el: targetEl }) => {
           const targetRect = targetEl.getBoundingClientRect();
           const tx = targetRect.left + targetRect.width / 2;
           const ty = targetRect.top + targetRect.height / 2;
-
-          // Straight line — clearest way to show which feature the arrow points to.
-          // Label placed 20% along the line from the source.
+          // Label at 20% along the line from the source
           const lx = sx + 0.2 * (tx - sx);
           const ly = sy + 0.2 * (ty - sy);
           return {
             path: `M${sx},${sy} L${tx},${ty}`,
-            labelX: lx,
-            labelY: ly,
+            labelX: lx, labelY: ly,
             labelText: `${DISPLAY_NAMES[name] || name} changed`
           };
         });
@@ -320,11 +501,10 @@
       arrowLabels = resolveOverlaps(targetData.map(d => ({
         x: d.labelX, y: d.labelY, text: d.labelText
       })));
-
       showArrows = true;
     }
 
-    // Arrows and labels disappear after 2 seconds; message and highlights stay permanently
+    // Arrows disappear after 2 s; message + highlights are permanent
     propagationTimer = setTimeout(() => {
       showArrows = false;
       arrowPaths = [];

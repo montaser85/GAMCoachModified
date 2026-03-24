@@ -5,7 +5,7 @@
   import { bindInlineSVG, round } from '../../utils/utils';
   import '../../typedef';
   import { onMount, tick, createEventDispatcher } from 'svelte';
-  import { tooltipConfigStore, diffPickerConfigStore } from '../../store';
+  import { tooltipConfigStore, diffPickerConfigStore, featureValueOverrideStore } from '../../store';
 
   import {
     initSlider,
@@ -463,6 +463,26 @@
     bindInlineSVG(component, iconList);
     mounted = true;
   });
+
+  // When FeaturePanel computes a propagated value for this feature,
+  // update the slider position (if expanded) and the internal state (if collapsed).
+  $: {
+    const featureName = feature?.data?.name;
+    if (featureName && initialized) {
+      const overrideVal = $featureValueOverrideStore[featureName];
+      if (overrideVal !== undefined && overrideVal !== null) {
+        // Update internal state — used when card is later expanded
+        state.feature.coachValue = overrideVal;
+        state.feature.curValue = overrideVal;
+        // Update the prop object (passed by reference) so initSlider picks it up
+        feature.coachValue = overrideVal;
+        // If slider is already drawn, move it visually right now
+        if (histDrawn && state.tickXScale) {
+          moveThumb(component, state, 'slider-middle-thumb', overrideVal);
+        }
+      }
+    }
+  }
 
   $: feature && mounted && !initialized && initFeatureCard();
 </script>
