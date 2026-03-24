@@ -60,12 +60,18 @@
   // Add an entry here whenever a feature gets real calculation mechanics so the
   // popup shows an informative message instead of the default placeholder.
   const LINK_POPUP_TEXT = {
-    'fico_score': "A new loan requires a hard credit inquiry—a formal review process that lenders use to assess applicant's creditworthiness. One hard inquiry will typically reduce credit score by fewer than five points."
+    'fico_score': "A new loan requires a hard credit inquiry — a formal review process that lenders use to assess applicant's creditworthiness. One hard inquiry will typically reduce credit score by fewer than five points.",
+    'dti': "A new loan adds to your monthly debt obligations, increasing your Debt-to-Income ratio. A higher DTI signals greater financial risk to lenders, as a larger share of your income is committed to debt repayment.",
+    'revol_bal':  "When a loan is taken for credit card payoff or debt consolidation, the proceeds are used to pay down your revolving balance — the total outstanding amount owed on revolving credit accounts such as credit cards.",
+    'revol_util': "Reducing revolving balance reduces credit utilization and generally improves credit profile."
   };
 
-  // Reactive calculation displayed beneath the FICO popup text once the
-  // one-time drop has been applied.  null = don't show the calculation line.
-  let ficoLinkCalculation = null;
+  // Reactive calculations displayed in popup once propagation has been applied.
+  // null = don't show the calculation block yet.
+  let ficoLinkCalculation     = null;
+  let dtiLinkCalculation      = null;
+  let revolBalLinkCalculation = null;
+  let revolUtilLinkCalculation = null;
 
   // ── Loan Amount propagation: APR by internal purpose label ──────────────────
   // APRs are decimals (e.g. 0.061 = 6.1%).  Any purpose not listed defaults to
@@ -365,7 +371,7 @@
       updates['fico_score']        = newFicoInt;
       lastKnownValues['fico_score'] = newFicoInt;
       // Populate the popup calculation: "742 − 4 = 738"
-      ficoLinkCalculation = { before: Math.round(currentFico), after: Math.round(newFico) };
+      ficoLinkCalculation = { type: 'fico', before: Math.round(currentFico), after: Math.round(newFico) };
       ficoDropApplied = true;
     }
 
@@ -384,6 +390,16 @@
     const newDTIInt          = toInternalValue(newDTI, 'dti');
     updates['dti']          = newDTIInt;
     lastKnownValues['dti']  = newDTIInt;
+    // Populate the DTI popup calculation block with pre-formatted strings
+    const fmt = (n) => '$' + Math.round(n).toLocaleString();
+    dtiLinkCalculation = {
+      type:           'dti',
+      currentDebt:    fmt(currentMonthlyDebt),
+      newLoanPayment: fmt(newLoanPayment),
+      newMonthlyDebt: fmt(newMonthlyDebt),
+      originalDTI:    dtiDisplay.toFixed(2) + '%',
+      newDTI:         newDTI.toFixed(2) + '%'
+    };
 
     // ── 3 & 4. Revolving Balance + Credit Utilization ────────────────────────
     // These only apply when the loan is used to pay down a revolving credit line
@@ -393,14 +409,31 @@
       const newRevolBalInt = toInternalValue(newRevolBal, 'revol_bal');
       updates['revol_bal']          = newRevolBalInt;
       lastKnownValues['revol_bal']  = newRevolBalInt;
+      // Populate the revolving balance popup calculation
+      revolBalLinkCalculation = {
+        type:           'revol_bal',
+        currentBalance: fmt(revolBalDisplay),
+        loanApplied:    fmt(loanAmount),
+        newBalance:     fmt(newRevolBal)
+      };
 
       // Credit limit is implicit: current balance ÷ (utilization / 100)
       if (revolUtilDisplay > 0 && revolBalDisplay > 0) {
-        const creditLimit    = revolBalDisplay / (revolUtilDisplay / 100);
-        const newRevolUtil   = (newRevolBal / creditLimit) * 100;
+        const creditLimit     = revolBalDisplay / (revolUtilDisplay / 100);
+        const newRevolUtil    = (newRevolBal / creditLimit) * 100;
         const newRevolUtilInt = toInternalValue(newRevolUtil, 'revol_util');
         updates['revol_util']          = newRevolUtilInt;
         lastKnownValues['revol_util']  = newRevolUtilInt;
+        // Populate the credit utilization popup calculation
+        revolUtilLinkCalculation = {
+          type:           'revol_util',
+          creditLimit:    fmt(creditLimit),
+          currentBalance: fmt(revolBalDisplay),
+          currentUtil:    revolUtilDisplay.toFixed(2) + '%',
+          newBalance:     fmt(newRevolBal),
+          originalUtil:   revolUtilDisplay.toFixed(2) + '%',
+          newUtil:        newRevolUtil.toFixed(2) + '%'
+        };
       }
     }
 
@@ -737,7 +770,11 @@
               logger={logger}
               isLinked={ALL_TARGETS.has(feature.data.name)}
               linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
-              linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation : null}
+              linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation
+                             : feature.data.name === 'dti'        ? dtiLinkCalculation
+                             : feature.data.name === 'revol_bal'  ? revolBalLinkCalculation
+                             : feature.data.name === 'revol_util' ? revolUtilLinkCalculation
+                             : null}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}
             >
@@ -748,7 +785,11 @@
               logger={logger}
               isLinked={ALL_TARGETS.has(feature.data.name)}
               linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
-              linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation : null}
+              linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation
+                             : feature.data.name === 'dti'        ? dtiLinkCalculation
+                             : feature.data.name === 'revol_bal'  ? revolBalLinkCalculation
+                             : feature.data.name === 'revol_util' ? revolUtilLinkCalculation
+                             : null}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}
             >
@@ -767,7 +808,11 @@
               logger={logger}
               isLinked={ALL_TARGETS.has(feature.data.name)}
               linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
-              linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation : null}
+              linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation
+                             : feature.data.name === 'dti'        ? dtiLinkCalculation
+                             : feature.data.name === 'revol_bal'  ? revolBalLinkCalculation
+                             : feature.data.name === 'revol_util' ? revolUtilLinkCalculation
+                             : null}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}
             >
@@ -778,7 +823,11 @@
               logger={logger}
               isLinked={ALL_TARGETS.has(feature.data.name)}
               linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
-              linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation : null}
+              linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation
+                             : feature.data.name === 'dti'        ? dtiLinkCalculation
+                             : feature.data.name === 'revol_bal'  ? revolBalLinkCalculation
+                             : feature.data.name === 'revol_util' ? revolUtilLinkCalculation
+                             : null}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}
             >
@@ -797,7 +846,11 @@
               logger={logger}
               isLinked={ALL_TARGETS.has(feature.data.name)}
               linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
-              linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation : null}
+              linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation
+                             : feature.data.name === 'dti'        ? dtiLinkCalculation
+                             : feature.data.name === 'revol_bal'  ? revolBalLinkCalculation
+                             : feature.data.name === 'revol_util' ? revolUtilLinkCalculation
+                             : null}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}
             >
@@ -808,7 +861,11 @@
               logger={logger}
               isLinked={ALL_TARGETS.has(feature.data.name)}
               linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
-              linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation : null}
+              linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation
+                             : feature.data.name === 'dti'        ? dtiLinkCalculation
+                             : feature.data.name === 'revol_bal'  ? revolBalLinkCalculation
+                             : feature.data.name === 'revol_util' ? revolUtilLinkCalculation
+                             : null}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}
             >
@@ -837,7 +894,11 @@
               logger={logger}
               isLinked={ALL_TARGETS.has(feature.data.name)}
               linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
-              linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation : null}
+              linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation
+                             : feature.data.name === 'dti'        ? dtiLinkCalculation
+                             : feature.data.name === 'revol_bal'  ? revolBalLinkCalculation
+                             : feature.data.name === 'revol_util' ? revolUtilLinkCalculation
+                             : null}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}
             >
@@ -848,7 +909,11 @@
               logger={logger}
               isLinked={ALL_TARGETS.has(feature.data.name)}
               linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
-              linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation : null}
+              linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation
+                             : feature.data.name === 'dti'        ? dtiLinkCalculation
+                             : feature.data.name === 'revol_bal'  ? revolBalLinkCalculation
+                             : feature.data.name === 'revol_util' ? revolUtilLinkCalculation
+                             : null}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}
             >
@@ -867,7 +932,11 @@
               logger={logger}
               isLinked={ALL_TARGETS.has(feature.data.name)}
               linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
-              linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation : null}
+              linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation
+                             : feature.data.name === 'dti'        ? dtiLinkCalculation
+                             : feature.data.name === 'revol_bal'  ? revolBalLinkCalculation
+                             : feature.data.name === 'revol_util' ? revolUtilLinkCalculation
+                             : null}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}
             >
@@ -878,7 +947,11 @@
               logger={logger}
               isLinked={ALL_TARGETS.has(feature.data.name)}
               linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
-              linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation : null}
+              linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation
+                             : feature.data.name === 'dti'        ? dtiLinkCalculation
+                             : feature.data.name === 'revol_bal'  ? revolBalLinkCalculation
+                             : feature.data.name === 'revol_util' ? revolUtilLinkCalculation
+                             : null}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}
             >
@@ -897,7 +970,11 @@
               logger={logger}
               isLinked={ALL_TARGETS.has(feature.data.name)}
               linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
-              linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation : null}
+              linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation
+                             : feature.data.name === 'dti'        ? dtiLinkCalculation
+                             : feature.data.name === 'revol_bal'  ? revolBalLinkCalculation
+                             : feature.data.name === 'revol_util' ? revolUtilLinkCalculation
+                             : null}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}
             >
@@ -908,7 +985,11 @@
               logger={logger}
               isLinked={ALL_TARGETS.has(feature.data.name)}
               linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
-              linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation : null}
+              linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation
+                             : feature.data.name === 'dti'        ? dtiLinkCalculation
+                             : feature.data.name === 'revol_bal'  ? revolBalLinkCalculation
+                             : feature.data.name === 'revol_util' ? revolUtilLinkCalculation
+                             : null}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}
             >
@@ -937,7 +1018,11 @@
               logger={logger}
               isLinked={ALL_TARGETS.has(feature.data.name)}
               linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
-              linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation : null}
+              linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation
+                             : feature.data.name === 'dti'        ? dtiLinkCalculation
+                             : feature.data.name === 'revol_bal'  ? revolBalLinkCalculation
+                             : feature.data.name === 'revol_util' ? revolUtilLinkCalculation
+                             : null}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}
             >
@@ -948,7 +1033,11 @@
               logger={logger}
               isLinked={ALL_TARGETS.has(feature.data.name)}
               linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
-              linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation : null}
+              linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation
+                             : feature.data.name === 'dti'        ? dtiLinkCalculation
+                             : feature.data.name === 'revol_bal'  ? revolBalLinkCalculation
+                             : feature.data.name === 'revol_util' ? revolUtilLinkCalculation
+                             : null}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}
             >
@@ -967,7 +1056,11 @@
               logger={logger}
               isLinked={ALL_TARGETS.has(feature.data.name)}
               linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
-              linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation : null}
+              linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation
+                             : feature.data.name === 'dti'        ? dtiLinkCalculation
+                             : feature.data.name === 'revol_bal'  ? revolBalLinkCalculation
+                             : feature.data.name === 'revol_util' ? revolUtilLinkCalculation
+                             : null}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}
             >
@@ -978,7 +1071,11 @@
               logger={logger}
               isLinked={ALL_TARGETS.has(feature.data.name)}
               linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
-              linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation : null}
+              linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation
+                             : feature.data.name === 'dti'        ? dtiLinkCalculation
+                             : feature.data.name === 'revol_bal'  ? revolBalLinkCalculation
+                             : feature.data.name === 'revol_util' ? revolUtilLinkCalculation
+                             : null}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}
             >
@@ -997,7 +1094,11 @@
               logger={logger}
               isLinked={ALL_TARGETS.has(feature.data.name)}
               linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
-              linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation : null}
+              linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation
+                             : feature.data.name === 'dti'        ? dtiLinkCalculation
+                             : feature.data.name === 'revol_bal'  ? revolBalLinkCalculation
+                             : feature.data.name === 'revol_util' ? revolUtilLinkCalculation
+                             : null}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}
             >
@@ -1008,7 +1109,11 @@
               logger={logger}
               isLinked={ALL_TARGETS.has(feature.data.name)}
               linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
-              linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation : null}
+              linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation
+                             : feature.data.name === 'dti'        ? dtiLinkCalculation
+                             : feature.data.name === 'revol_bal'  ? revolBalLinkCalculation
+                             : feature.data.name === 'revol_util' ? revolUtilLinkCalculation
+                             : null}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}
             >

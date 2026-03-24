@@ -76,7 +76,7 @@ $card-h-padding: 16px;
     box-shadow: 0 4px 16px hsla(0, 0%, 0%, 0.14);
     z-index: 500;
     white-space: normal;
-    pointer-events: none;
+    pointer-events: auto;
 
     .link-popup-text {
       margin: 0 0 8px 0;
@@ -93,6 +93,42 @@ $card-h-padding: 16px;
       color: $blue-700;
       text-align: center;
       letter-spacing: 0.03em;
+
+      // DTI multi-line calculation layout
+      &.dti-calc {
+        text-align: left;
+        font-weight: 400;
+        font-size: 0.78rem;
+        letter-spacing: 0;
+        padding: 6px 8px;
+        display: flex;
+        flex-direction: column;
+        gap: 3px;
+
+        .dti-line {
+          line-height: 1.4;
+          color: $gray-700;
+
+          &.final {
+            margin-top: 3px;
+            padding-top: 4px;
+            border-top: 1px solid $blue-200;
+            font-weight: 700;
+            color: $blue-700;
+          }
+        }
+      }
+    }
+
+    // Widen the popup when it contains a multi-line DTI calculation
+    &:has(.dti-calc) {
+      width: 270px;
+    }
+
+    // When near the bottom of the viewport, flip the popup to open upward
+    &.flip-up {
+      top: auto;
+      bottom: 28px;
     }
   }
 }

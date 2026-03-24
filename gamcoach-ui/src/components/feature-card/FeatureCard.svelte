@@ -49,6 +49,19 @@
    *  Renders as "before − delta = after" beneath the popup text */
   export let linkCalculation = null;
 
+  // Flip the popup upward when near the bottom of the viewport.
+  // Uses direct DOM manipulation (not Svelte state) to avoid triggering
+  // a re-render, which would disrupt the CSS :hover state and cause flickering.
+  const linkIconMouseEnter = () => {
+    if (!component) return;
+    const icon = component.querySelector('.link-icon');
+    if (!icon) return;
+    const popup = icon.querySelector('.link-popup');
+    if (!popup) return;
+    const rect = icon.getBoundingClientRect();
+    popup.classList.toggle('flip-up', (window.innerHeight - rect.bottom) < 220);
+  };
+
   let mounted = false;
   let initialized = false;
   let histDrawn = false;
@@ -519,7 +532,7 @@
       </div>
 
       {#if isLinked}
-        <div class="link-icon" on:click|stopPropagation>
+        <div class="link-icon" on:click|stopPropagation on:mouseenter={linkIconMouseEnter}>
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.3" stroke-linecap="round" stroke-linejoin="round">
             <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
             <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
@@ -527,9 +540,30 @@
           <div class="link-popup">
             {#if linkPopupText}
               <p class="link-popup-text">{linkPopupText}</p>
-              {#if linkCalculation}
+              {#if linkCalculation?.type === 'fico'}
                 <div class="link-calculation">
                   {linkCalculation.before} &minus; 4 = {linkCalculation.after}
+                </div>
+              {:else if linkCalculation?.type === 'dti'}
+                <div class="link-calculation dti-calc">
+                  <div class="dti-line">Current monthly debt: {linkCalculation.currentDebt}</div>
+                  <div class="dti-line">New loan payment: {linkCalculation.newLoanPayment}</div>
+                  <div class="dti-line">New monthly debt: {linkCalculation.currentDebt} + {linkCalculation.newLoanPayment} = {linkCalculation.newMonthlyDebt}</div>
+                  <div class="dti-line final">As monthly debt rises from {linkCalculation.currentDebt} to {linkCalculation.newMonthlyDebt}, DTI increases from {linkCalculation.originalDTI} to {linkCalculation.newDTI}</div>
+                </div>
+              {:else if linkCalculation?.type === 'revol_bal'}
+                <div class="link-calculation dti-calc">
+                  <div class="dti-line">Current revolving balance: {linkCalculation.currentBalance}</div>
+                  <div class="dti-line">Loan amount applied: {linkCalculation.loanApplied}</div>
+                  <div class="dti-line">New revolving balance: {linkCalculation.currentBalance} &minus; {linkCalculation.loanApplied} = {linkCalculation.newBalance}</div>
+                  <div class="dti-line final">Revolving balance decreases from {linkCalculation.currentBalance} to {linkCalculation.newBalance}</div>
+                </div>
+              {:else if linkCalculation?.type === 'revol_util'}
+                <div class="link-calculation dti-calc">
+                  <div class="dti-line">Credit limit: {linkCalculation.creditLimit} (= current revolving balance {linkCalculation.currentBalance} ÷ current credit utilization {linkCalculation.currentUtil})</div>
+                  <div class="dti-line">New revolving balance: {linkCalculation.newBalance}</div>
+                  <div class="dti-line">New credit utilization: {linkCalculation.newBalance} ÷ {linkCalculation.creditLimit} × 100 = {linkCalculation.newUtil}</div>
+                  <div class="dti-line final">Credit utilization decreases from {linkCalculation.originalUtil} to {linkCalculation.newUtil}</div>
                 </div>
               {/if}
             {:else}
