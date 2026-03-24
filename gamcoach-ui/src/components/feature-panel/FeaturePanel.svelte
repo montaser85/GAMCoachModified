@@ -258,11 +258,14 @@
       clearTimeout(propagationTimer);
     }
 
-    // Build message dynamically from target count and display name
+    // Build message dynamically from target count, display name, and target names
     const count = propagation.targets.length;
     const featureWord = count === 1 ? 'feature' : 'features';
     const verb = count === 1 ? 'has' : 'have';
-    propagationMessage = `${count} other ${featureWord} ${verb} changed with ${propagation.displayName}`;
+    const targetNames = propagation.targets
+      .map(name => DISPLAY_NAMES[name] || name)
+      .join(', ');
+    propagationMessage = `Changes in ${propagation.displayName} changed ${count} other ${featureWord}: ${targetNames}`;
 
     // Show the message (permanent — never cleared)
     showPropagationMessage = true;
@@ -301,29 +304,12 @@
           const tx = targetRect.left + targetRect.width / 2;
           const ty = targetRect.top + targetRect.height / 2;
 
-          // Compute a unit vector perpendicular to this arrow's direction.
-          // Offsetting the control point along the perpendicular (not just upward)
-          // ensures arrows that share the same horizontal or vertical line still fan
-          // out and never overlap each other.
-          const dx = tx - sx;
-          const dy = ty - sy;
-          const len = Math.sqrt(dx * dx + dy * dy) || 1;
-          const perpX = -dy / len;
-          const perpY =  dx / len;
-
-          // Alternate sides (left/right of the arrow direction) and grow the
-          // magnitude for each additional arrow so every curve is unique.
-          const side      = (i % 2 === 0) ? 1 : -1;
-          const magnitude = 70 + Math.floor(i / 2) * 50;
-          const cx = (sx + tx) / 2 + perpX * side * magnitude;
-          const cy = (sy + ty) / 2 + perpY * side * magnitude;
-
-          // Place label 20% along the bezier from the source
-          const t = 0.2;
-          const lx = (1-t)*(1-t)*sx + 2*(1-t)*t*cx + t*t*tx;
-          const ly = (1-t)*(1-t)*sy + 2*(1-t)*t*cy + t*t*ty;
+          // Straight line — clearest way to show which feature the arrow points to.
+          // Label placed 20% along the line from the source.
+          const lx = sx + 0.2 * (tx - sx);
+          const ly = sy + 0.2 * (ty - sy);
           return {
-            path: `M${sx},${sy} Q${cx},${cy} ${tx},${ty}`,
+            path: `M${sx},${sy} L${tx},${ty}`,
             labelX: lx,
             labelY: ly,
             labelText: `${DISPLAY_NAMES[name] || name} changed`
@@ -819,13 +805,13 @@
           />
         {/each}
         {#each arrowLabels as label}
-          {@const pad = 8}
-          {@const approxWidth = label.text.length * 6.4 + pad * 2}
+          {@const pad = 10}
+          {@const approxWidth = label.text.length * 8.8 + pad * 2}
           <rect
             x={label.x - approxWidth / 2}
-            y={label.y - 16}
+            y={label.y - 20}
             width={approxWidth}
-            height={18}
+            height={24}
             rx='3'
             fill='#E3F2FD'
             stroke='#1976D2'
@@ -833,10 +819,10 @@
           />
           <text
             x={label.x}
-            y={label.y - 3}
+            y={label.y - 4}
             text-anchor='middle'
             fill='#1565C0'
-            font-size='11'
+            font-size='15'
             font-weight='600'
             font-family='system-ui, sans-serif'
           >{label.text}</text>
