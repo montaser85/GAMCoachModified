@@ -42,6 +42,13 @@
   /** Whether this feature can be indirectly changed by another feature */
   export let isLinked = false;
 
+  /** Explanatory text shown in the link popup (empty = default placeholder) */
+  export let linkPopupText = '';
+
+  /** Optional calculation to display: { before: number, after: number }
+   *  Renders as "before − delta = after" beneath the popup text */
+  export let linkCalculation = null;
+
   let mounted = false;
   let initialized = false;
   let histDrawn = false;
@@ -518,7 +525,16 @@
             <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>
           </svg>
           <div class="link-popup">
-            The mechanism behind the change will appear here
+            {#if linkPopupText}
+              <p class="link-popup-text">{linkPopupText}</p>
+              {#if linkCalculation}
+                <div class="link-calculation">
+                  {linkCalculation.before} &minus; 4 = {linkCalculation.after}
+                </div>
+              {/if}
+            {:else}
+              The mechanism behind the change will appear here
+            {/if}
           </div>
         </div>
       {/if}

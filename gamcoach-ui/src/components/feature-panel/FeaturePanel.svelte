@@ -56,6 +56,17 @@
 
   let maxFeatureNum = 'null';
 
+  // ── Link-popup explanatory text for indirectly-affected features ────────────
+  // Add an entry here whenever a feature gets real calculation mechanics so the
+  // popup shows an informative message instead of the default placeholder.
+  const LINK_POPUP_TEXT = {
+    'fico_score': "A new loan requires a hard credit inquiry—a formal review process that lenders use to assess applicant's creditworthiness. One hard inquiry will typically reduce credit score by fewer than five points."
+  };
+
+  // Reactive calculation displayed beneath the FICO popup text once the
+  // one-time drop has been applied.  null = don't show the calculation line.
+  let ficoLinkCalculation = null;
+
   // ── Loan Amount propagation: APR by internal purpose label ──────────────────
   // APRs are decimals (e.g. 0.061 = 6.1%).  Any purpose not listed defaults to
   // the personal-loan rate of 11.65%.
@@ -351,8 +362,10 @@
       const currentFico  = getOriginalDisplayValue('fico_score') || 0;
       const newFico      = currentFico - 4;
       const newFicoInt   = toInternalValue(newFico, 'fico_score');
-      updates['fico_score']   = newFicoInt;
+      updates['fico_score']        = newFicoInt;
       lastKnownValues['fico_score'] = newFicoInt;
+      // Populate the popup calculation: "742 − 4 = 738"
+      ficoLinkCalculation = { before: Math.round(currentFico), after: Math.round(newFico) };
       ficoDropApplied = true;
     }
 
@@ -723,6 +736,8 @@
               feature={feature}
               logger={logger}
               isLinked={ALL_TARGETS.has(feature.data.name)}
+              linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
+              linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation : null}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}
             >
@@ -732,6 +747,8 @@
               feature={feature}
               logger={logger}
               isLinked={ALL_TARGETS.has(feature.data.name)}
+              linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
+              linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation : null}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}
             >
@@ -749,6 +766,8 @@
               feature={feature}
               logger={logger}
               isLinked={ALL_TARGETS.has(feature.data.name)}
+              linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
+              linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation : null}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}
             >
@@ -758,6 +777,8 @@
               feature={feature}
               logger={logger}
               isLinked={ALL_TARGETS.has(feature.data.name)}
+              linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
+              linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation : null}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}
             >
@@ -775,6 +796,8 @@
               feature={feature}
               logger={logger}
               isLinked={ALL_TARGETS.has(feature.data.name)}
+              linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
+              linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation : null}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}
             >
@@ -784,6 +807,8 @@
               feature={feature}
               logger={logger}
               isLinked={ALL_TARGETS.has(feature.data.name)}
+              linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
+              linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation : null}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}
             >
@@ -811,6 +836,8 @@
               feature={feature}
               logger={logger}
               isLinked={ALL_TARGETS.has(feature.data.name)}
+              linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
+              linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation : null}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}
             >
@@ -820,6 +847,8 @@
               feature={feature}
               logger={logger}
               isLinked={ALL_TARGETS.has(feature.data.name)}
+              linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
+              linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation : null}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}
             >
@@ -837,6 +866,8 @@
               feature={feature}
               logger={logger}
               isLinked={ALL_TARGETS.has(feature.data.name)}
+              linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
+              linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation : null}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}
             >
@@ -846,6 +877,8 @@
               feature={feature}
               logger={logger}
               isLinked={ALL_TARGETS.has(feature.data.name)}
+              linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
+              linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation : null}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}
             >
@@ -863,6 +896,8 @@
               feature={feature}
               logger={logger}
               isLinked={ALL_TARGETS.has(feature.data.name)}
+              linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
+              linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation : null}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}
             >
@@ -872,6 +907,8 @@
               feature={feature}
               logger={logger}
               isLinked={ALL_TARGETS.has(feature.data.name)}
+              linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
+              linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation : null}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}
             >
@@ -899,6 +936,8 @@
               feature={feature}
               logger={logger}
               isLinked={ALL_TARGETS.has(feature.data.name)}
+              linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
+              linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation : null}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}
             >
@@ -908,6 +947,8 @@
               feature={feature}
               logger={logger}
               isLinked={ALL_TARGETS.has(feature.data.name)}
+              linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
+              linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation : null}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}
             >
@@ -925,6 +966,8 @@
               feature={feature}
               logger={logger}
               isLinked={ALL_TARGETS.has(feature.data.name)}
+              linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
+              linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation : null}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}
             >
@@ -934,6 +977,8 @@
               feature={feature}
               logger={logger}
               isLinked={ALL_TARGETS.has(feature.data.name)}
+              linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
+              linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation : null}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}
             >
@@ -951,6 +996,8 @@
               feature={feature}
               logger={logger}
               isLinked={ALL_TARGETS.has(feature.data.name)}
+              linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
+              linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation : null}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}
             >
@@ -960,6 +1007,8 @@
               feature={feature}
               logger={logger}
               isLinked={ALL_TARGETS.has(feature.data.name)}
+              linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
+              linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation : null}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}
             >

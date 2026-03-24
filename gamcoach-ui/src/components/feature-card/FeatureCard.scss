@@ -77,6 +77,23 @@ $card-h-padding: 16px;
     z-index: 500;
     white-space: normal;
     pointer-events: none;
+
+    .link-popup-text {
+      margin: 0 0 8px 0;
+    }
+
+    .link-calculation {
+      margin-top: 4px;
+      padding: 5px 8px;
+      background: $blue-50;
+      border: 1px solid $blue-200;
+      border-radius: 4px;
+      font-size: 0.92rem;
+      font-weight: 700;
+      color: $blue-700;
+      text-align: center;
+      letter-spacing: 0.03em;
+    }
   }
 }
 
