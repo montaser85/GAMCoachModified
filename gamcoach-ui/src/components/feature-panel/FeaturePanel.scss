@@ -26,9 +26,15 @@
 }
 
 .propagation-message {
+  position: sticky;
+  top: 0;
+  z-index: 3;
   color: $blue-700;
   font-size: 0.9rem;
   font-weight: 500;
+  padding: 6px $panel-h-padding;
+  background-color: $blue-50;
+  border-bottom: 1px solid $blue-200;
 }
 
 .propagation-arrows-overlay {

@@ -56,20 +56,87 @@
 
   let maxFeatureNum = 'null';
 
-  // Propagation state — when Loan Amount changes, 3 other features are affected
+  // Propagation map — which features indirectly change when a feature is directly changed
+  // Keys are internal feature names; displayName is used for the message
   const PROPAGATION_MAP = {
     'loan_amnt': {
-      targets: ['dti', 'fico_score', 'revol_util'],
-      message: '3 other features have changed with Loan Amount'
+      displayName: 'Loan Amount',
+      targets: ['dti', 'fico_score', 'revol_util']
+    },
+    'dti': {
+      displayName: 'Debt to Income Ratio',
+      targets: ['annual_inc']
+    },
+    'revol_bal': {
+      displayName: 'Revolving Balance',
+      targets: ['dti', 'revol_util']
+    },
+    'open_acc': {
+      displayName: 'Number of Open Accounts',
+      targets: ['fico_score', 'total_acc']
+    },
+    'fico_score': {
+      displayName: 'FICO Score',
+      targets: ['loan_amnt', 'revol_util']
+    },
+    'term': {
+      displayName: 'Payment Period',
+      targets: ['dti']
+    },
+    'home_ownership': {
+      displayName: 'Home Ownership',
+      targets: ['open_acc', 'revol_util', 'total_acc', 'mort_acc']
+    },
+    'purpose': {
+      displayName: 'Loan Purpose',
+      targets: ['revol_bal', 'fico_score', 'revol_util']
+    },
+    'inq_last_6mths': {
+      displayName: 'Number of Credit Inquiries',
+      targets: ['fico_score']
+    },
+    'pub_rec_bankruptcies': {
+      displayName: 'Number of Bankruptcies',
+      targets: ['fico_score']
+    },
+    'annual_inc': {
+      displayName: 'Annual Income',
+      targets: ['loan_amnt', 'dti', 'revol_bal']
+    },
+    'revol_util': {
+      displayName: 'Credit Utilization',
+      targets: ['dti', 'revol_bal', 'fico_score']
     }
   };
+
+  // Flat set of every feature that can be indirectly changed — used to show the linked icon
+  const ALL_TARGETS = new Set(
+    Object.values(PROPAGATION_MAP).flatMap(p => p.targets)
+  );
+  // Display names for all features — used in arrow labels
+  const DISPLAY_NAMES = {
+    'loan_amnt': 'Loan Amount', 'dti': 'Debt to Income Ratio',
+    'annual_inc': 'Annual Income', 'revol_bal': 'Revolving Balance',
+    'open_acc': 'Number of Open Accounts', 'fico_score': 'FICO Score',
+    'term': 'Payment Period', 'home_ownership': 'Home Ownership',
+    'purpose': 'Loan Purpose', 'inq_last_6mths': 'Number of Credit Inquiries',
+    'pub_rec_bankruptcies': 'Number of Bankruptcies', 'revol_util': 'Credit Utilization',
+    'total_acc': 'Number of Accounts', 'mort_acc': 'Number of Mortgages',
+    'earliest_cr_line': 'Credit History Length', 'emp_length': 'Employment Length',
+    'verification_status': 'Verification Status', 'delinq_2yrs': 'Number of Past Due',
+    'pub_rec': 'Number of Derogatory Records', 'application_type': 'Application Type'
+  };
+
   let showPropagationMessage = false;
   let propagationMessage = '';
   let showArrows = false;
   let arrowPaths = [];
+  let arrowLabels = [];
   let panelClipRect = null;
   let propagationTimer = null;
   let propagationDebounceTimer = null;
+  // Track last known values to avoid triggering on card expansion (not real user changes)
+  let lastKnownValues = {};
 
   // Set up the GAM Coach feature cards
   const initFeatureCards = () => {
@@ -120,14 +187,62 @@
     // Update the store
     planStore.set(plan);
 
-    // Debounce propagation effects — only fire after the user finishes dragging
-    // (i.e., when no new value events arrive for 350ms, meaning mouse was released)
-    if (propagationDebounceTimer) clearTimeout(propagationDebounceTimer);
-    const capturedName = feature.data.name;
-    propagationDebounceTimer = setTimeout(() => {
-      propagationDebounceTimer = null;
-      triggerPropagation(capturedName);
-    }, 350);
+    // Only trigger propagation if the value actually changed from what was last seen.
+    // This prevents arrows firing when a card is expanded (which replays the current value).
+    const featureName = feature.data.name;
+    const previousValue = lastKnownValues[featureName];
+    lastKnownValues[featureName] = newValue;
+
+    if (previousValue !== undefined && previousValue !== newValue) {
+      // Debounce — only fire after user stops dragging (350ms of silence)
+      if (propagationDebounceTimer) clearTimeout(propagationDebounceTimer);
+      propagationDebounceTimer = setTimeout(() => {
+        propagationDebounceTimer = null;
+        triggerPropagation(featureName);
+      }, 350);
+    }
+  };
+
+  /**
+   * Iteratively push overlapping labels apart so they never stack on top of each other.
+   * Modifies the label array in place and returns it.
+   */
+  const resolveOverlaps = (labels) => {
+    const LABEL_H = 20;    // approximate label height in px
+    const PAD = 5;         // minimum gap between labels
+    const MAX_ITER = 40;
+
+    for (let iter = 0; iter < MAX_ITER; iter++) {
+      let anyMoved = false;
+      for (let i = 0; i < labels.length; i++) {
+        for (let j = i + 1; j < labels.length; j++) {
+          const a = labels[i];
+          const b = labels[j];
+          const aHalfW = (a.text.length * 6.4 + 16) / 2;
+          const bHalfW = (b.text.length * 6.4 + 16) / 2;
+          const minDx = aHalfW + bHalfW + PAD;
+          const minDy = LABEL_H + PAD;
+          const dx = Math.abs(a.x - b.x);
+          const dy = Math.abs(a.y - b.y);
+
+          if (dx < minDx && dy < minDy) {
+            // Resolve on the axis with the smaller overlap to move labels the least
+            if (minDy - dy <= minDx - dx) {
+              const push = (minDy - dy) / 2 + 1;
+              if (a.y <= b.y) { a.y -= push; b.y += push; }
+              else             { a.y += push; b.y -= push; }
+            } else {
+              const push = (minDx - dx) / 2 + 1;
+              if (a.x <= b.x) { a.x -= push; b.x += push; }
+              else             { a.x += push; b.x -= push; }
+            }
+            anyMoved = true;
+          }
+        }
+      }
+      if (!anyMoved) break;
+    }
+    return labels;
   };
 
   /**
@@ -143,11 +258,17 @@
       clearTimeout(propagationTimer);
     }
 
+    // Build message dynamically from target count and display name
+    const count = propagation.targets.length;
+    const featureWord = count === 1 ? 'feature' : 'features';
+    const verb = count === 1 ? 'has' : 'have';
+    propagationMessage = `${count} other ${featureWord} ${verb} changed with ${propagation.displayName}`;
+
     // Show the message (permanent — never cleared)
-    propagationMessage = propagation.message;
     showPropagationMessage = true;
     showArrows = false;
     arrowPaths = [];
+    arrowLabels = [];
 
     // Wait for DOM to settle
     await tick();
@@ -172,26 +293,56 @@
       const sx = sourceRect.left + sourceRect.width / 2;
       const sy = sourceRect.top + sourceRect.height / 2;
 
-      arrowPaths = propagation.targets
-        .map(name => document.querySelector(`[data-feature-name="${name}"]`))
-        .filter(el => el !== null)
-        .map(targetEl => {
+      const targetData = propagation.targets
+        .map(name => ({ name, el: document.querySelector(`[data-feature-name="${name}"]`) }))
+        .filter(({ el }) => el !== null)
+        .map(({ name, el: targetEl }, i) => {
           const targetRect = targetEl.getBoundingClientRect();
           const tx = targetRect.left + targetRect.width / 2;
           const ty = targetRect.top + targetRect.height / 2;
-          // Control point arches above the midpoint for a clean curve
-          const cx = (sx + tx) / 2;
-          const cy = (sy + ty) / 2 - 80;
-          return `M${sx},${sy} Q${cx},${cy} ${tx},${ty}`;
+
+          // Compute a unit vector perpendicular to this arrow's direction.
+          // Offsetting the control point along the perpendicular (not just upward)
+          // ensures arrows that share the same horizontal or vertical line still fan
+          // out and never overlap each other.
+          const dx = tx - sx;
+          const dy = ty - sy;
+          const len = Math.sqrt(dx * dx + dy * dy) || 1;
+          const perpX = -dy / len;
+          const perpY =  dx / len;
+
+          // Alternate sides (left/right of the arrow direction) and grow the
+          // magnitude for each additional arrow so every curve is unique.
+          const side      = (i % 2 === 0) ? 1 : -1;
+          const magnitude = 70 + Math.floor(i / 2) * 50;
+          const cx = (sx + tx) / 2 + perpX * side * magnitude;
+          const cy = (sy + ty) / 2 + perpY * side * magnitude;
+
+          // Place label 20% along the bezier from the source
+          const t = 0.2;
+          const lx = (1-t)*(1-t)*sx + 2*(1-t)*t*cx + t*t*tx;
+          const ly = (1-t)*(1-t)*sy + 2*(1-t)*t*cy + t*t*ty;
+          return {
+            path: `M${sx},${sy} Q${cx},${cy} ${tx},${ty}`,
+            labelX: lx,
+            labelY: ly,
+            labelText: `${DISPLAY_NAMES[name] || name} changed`
+          };
         });
+
+      arrowPaths = targetData.map(d => d.path);
+      arrowLabels = resolveOverlaps(targetData.map(d => ({
+        x: d.labelX, y: d.labelY, text: d.labelText
+      })));
 
       showArrows = true;
     }
 
-    // Arrows disappear after 2 seconds; message and highlights stay permanently
+    // Arrows and labels disappear after 2 seconds; message and highlights stay permanently
     propagationTimer = setTimeout(() => {
       showArrows = false;
       arrowPaths = [];
+      arrowLabels = [];
       propagationTimer = null;
     }, 2000);
   };
@@ -340,14 +491,15 @@
 
 <div class='feature-panel' bind:this={component}>
 
+  {#if showPropagationMessage}
+    <div class='propagation-message' transition:fade={{ duration: 300 }}>
+      {propagationMessage}
+    </div>
+  {/if}
+
   <div class='card-block'>
     <div class='row-header'>
       <span class='label'>Suggested Changes</span>
-      {#if showPropagationMessage}
-        <span class='propagation-message' transition:fade={{ duration: 300 }}>
-          {propagationMessage}
-        </span>
-      {/if}
       <span class='label'>New plans can change
         <div class='select' id='hidden-select'>
           <select>
@@ -376,6 +528,7 @@
             <FeatureCard
               feature={feature}
               logger={logger}
+              isLinked={ALL_TARGETS.has(feature.data.name)}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}
             >
@@ -384,6 +537,7 @@
             <FeatureCardCat
               feature={feature}
               logger={logger}
+              isLinked={ALL_TARGETS.has(feature.data.name)}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}
             >
@@ -400,6 +554,7 @@
             <FeatureCard
               feature={feature}
               logger={logger}
+              isLinked={ALL_TARGETS.has(feature.data.name)}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}
             >
@@ -408,6 +563,7 @@
             <FeatureCardCat
               feature={feature}
               logger={logger}
+              isLinked={ALL_TARGETS.has(feature.data.name)}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}
             >
@@ -424,6 +580,7 @@
             <FeatureCard
               feature={feature}
               logger={logger}
+              isLinked={ALL_TARGETS.has(feature.data.name)}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}
             >
@@ -432,6 +589,7 @@
             <FeatureCardCat
               feature={feature}
               logger={logger}
+              isLinked={ALL_TARGETS.has(feature.data.name)}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}
             >
@@ -458,6 +616,7 @@
             <FeatureCard
               feature={feature}
               logger={logger}
+              isLinked={ALL_TARGETS.has(feature.data.name)}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}
             >
@@ -466,6 +625,7 @@
             <FeatureCardCat
               feature={feature}
               logger={logger}
+              isLinked={ALL_TARGETS.has(feature.data.name)}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}
             >
@@ -482,6 +642,7 @@
             <FeatureCard
               feature={feature}
               logger={logger}
+              isLinked={ALL_TARGETS.has(feature.data.name)}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}
             >
@@ -490,6 +651,7 @@
             <FeatureCardCat
               feature={feature}
               logger={logger}
+              isLinked={ALL_TARGETS.has(feature.data.name)}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}
             >
@@ -506,6 +668,7 @@
             <FeatureCard
               feature={feature}
               logger={logger}
+              isLinked={ALL_TARGETS.has(feature.data.name)}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}
             >
@@ -514,6 +677,7 @@
             <FeatureCardCat
               feature={feature}
               logger={logger}
+              isLinked={ALL_TARGETS.has(feature.data.name)}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}
             >
@@ -540,6 +704,7 @@
             <FeatureCard
               feature={feature}
               logger={logger}
+              isLinked={ALL_TARGETS.has(feature.data.name)}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}
             >
@@ -548,6 +713,7 @@
             <FeatureCardCat
               feature={feature}
               logger={logger}
+              isLinked={ALL_TARGETS.has(feature.data.name)}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}
             >
@@ -564,6 +730,7 @@
             <FeatureCard
               feature={feature}
               logger={logger}
+              isLinked={ALL_TARGETS.has(feature.data.name)}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}
             >
@@ -572,6 +739,7 @@
             <FeatureCardCat
               feature={feature}
               logger={logger}
+              isLinked={ALL_TARGETS.has(feature.data.name)}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}
             >
@@ -588,6 +756,7 @@
             <FeatureCard
               feature={feature}
               logger={logger}
+              isLinked={ALL_TARGETS.has(feature.data.name)}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}
             >
@@ -596,6 +765,7 @@
             <FeatureCardCat
               feature={feature}
               logger={logger}
+              isLinked={ALL_TARGETS.has(feature.data.name)}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}
             >
@@ -647,6 +817,29 @@
             marker-end='url(#prop-arrowhead)'
             stroke-dasharray='6 3'
           />
+        {/each}
+        {#each arrowLabels as label}
+          {@const pad = 8}
+          {@const approxWidth = label.text.length * 6.4 + pad * 2}
+          <rect
+            x={label.x - approxWidth / 2}
+            y={label.y - 16}
+            width={approxWidth}
+            height={18}
+            rx='3'
+            fill='#E3F2FD'
+            stroke='#1976D2'
+            stroke-width='0.5'
+          />
+          <text
+            x={label.x}
+            y={label.y - 3}
+            text-anchor='middle'
+            fill='#1565C0'
+            font-size='11'
+            font-weight='600'
+            font-family='system-ui, sans-serif'
+          >{label.text}</text>
         {/each}
       </g>
     </svg>
