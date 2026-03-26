@@ -161,6 +161,7 @@
 
   let showPropagationMessage = false;
   let propagationMessage = '';
+  let bannerEl = null;
   let showArrows = false;
   let arrowPaths = [];
   let arrowLabels = [];
@@ -521,6 +522,13 @@
 
     await tick();
 
+    // Restart blink animation on the banner (works whether or not message text changed)
+    if (bannerEl) {
+      bannerEl.style.animation = 'none';
+      void bannerEl.offsetHeight; // force reflow so browser resets the animation
+      bannerEl.style.animation = '';
+    }
+
     // ── 3. Blue outlines on source + affected cards ───────────────────────────
     const allNames = [featureName, ...activeTargets];
     allNames.forEach(name => {
@@ -732,7 +740,7 @@
 <div class='feature-panel' bind:this={component}>
 
   {#if showPropagationMessage}
-    <div class='propagation-message' transition:fade={{ duration: 300 }}>
+    <div class='propagation-message' bind:this={bannerEl} transition:fade={{ duration: 300 }}>
       {propagationMessage}
     </div>
   {/if}

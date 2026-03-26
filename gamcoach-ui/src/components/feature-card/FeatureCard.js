@@ -159,8 +159,11 @@ export const initSlider = (component, state) => {
     .select(`#${rightThumbID}`)
     .on('mousedown', (e) => mouseDownHandler(e, component, state));
 
-  // Move the curValue thumb to the coach value
-  moveThumb(component, state, middleThumbID, state.feature.coachValue);
+  // Move the curValue thumb to the hypothetical value (if a propagated value was
+  // stored) or the coach value — coachValue itself is never overwritten so the
+  // green suggested-change mark on the histogram always reflects the original
+  // coach recommendation.
+  moveThumb(component, state, middleThumbID, state.feature.curValue);
 
   d3.select(component)
     .select(`#${middleThumbID}`)
@@ -641,6 +644,15 @@ export const initHist = (component, state) => {
     .style('stroke', 'white')
     .style('stroke-dasharray', '0')
     .lower();
+
+  // Hide the coach mark entirely for features with no original coach suggestion
+  // (i.e. features outside the Suggested Changes panel). The element is still
+  // created so downstream annotation-positioning code can reference it safely.
+  if (state.feature.coachValue === state.feature.originalValue) {
+    state.densityCoachMark
+      .style('visibility', 'hidden')
+      .style('pointer-events', 'none');
+  }
 
   // --- Original ---
   state.densityOriginalMark = markGroup

@@ -255,7 +255,7 @@
           : (d) => d,
       transform: feature.transform,
       originalValue: feature.originalValue,
-      curValue: feature.coachValue,
+      curValue: feature.hypotheticalValue !== undefined ? feature.hypotheticalValue : feature.coachValue,
       coachValue: feature.coachValue,
       curMin:
         feature.acceptableRange === null
@@ -378,6 +378,13 @@
         initSlider(component, state);
 
         histDrawn = true;
+      } else if (!isExpanded) {
+        // Card was already drawn but is now becoming visible again.
+        // Re-sync the slider thumb: moveThumb calls made while the card was
+        // collapsed used getBoundingClientRect() = 0 (hidden element), so the
+        // thumb ended up at xPos = 0. Now that the card is visible we can
+        // compute the correct pixel position.
+        moveThumb(component, state, 'slider-middle-thumb', state.feature.curValue);
       }
 
       isExpanded = !isExpanded;
@@ -491,13 +498,19 @@
     if (featureName && initialized) {
       const overrideVal = $featureValueOverrideStore[featureName];
       if (overrideVal !== undefined && overrideVal !== null) {
-        // Update internal state — used when card is later expanded
-        state.feature.coachValue = overrideVal;
+        // Store as hypothetical value — never overwrites coachValue so the
+        // green "suggested change" mark on the histogram stays at the original
+        // coach suggestion for features in the Suggested Changes panel, and
+        // remains absent for features outside it.
+        feature.hypotheticalValue = overrideVal;
         state.feature.curValue = overrideVal;
-        // Update the prop object (passed by reference) so initSlider picks it up
-        feature.coachValue = overrideVal;
-        // If slider is already drawn, move it visually right now
-        if (histDrawn && state.tickXScale) {
+        // Only call moveThumb when the card is expanded and visible.
+        // When collapsed, getBoundingClientRect() returns 0 for the slider
+        // track, making xPos = 0 (thumb snaps to left) while the SVG
+        // density-user-mark (which uses a pre-computed tickXScale) updates
+        // correctly — causing a mismatch. We defer the visual sync to the
+        // moment the card is re-expanded (see headerClicked below).
+        if (histDrawn && state.tickXScale && isExpanded) {
           moveThumb(component, state, 'slider-middle-thumb', overrideVal);
         }
       }

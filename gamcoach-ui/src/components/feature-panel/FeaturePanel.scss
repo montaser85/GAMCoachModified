@@ -25,6 +25,16 @@
   }
 }
 
+@keyframes blink3 {
+  0%   { opacity: 1; }
+  16%  { opacity: 0.05; }
+  33%  { opacity: 1; }
+  50%  { opacity: 0.05; }
+  67%  { opacity: 1; }
+  84%  { opacity: 0.05; }
+  100% { opacity: 1; }
+}
+
 .propagation-message {
   position: sticky;
   top: 0;
@@ -35,6 +45,7 @@
   padding: 6px $panel-h-padding;
   background-color: $blue-50;
   border-bottom: 1px solid $blue-200;
+  animation: blink3 2.1s ease-in-out 1;
 }
 
 .propagation-arrows-overlay {
