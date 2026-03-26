@@ -25,7 +25,7 @@ $card-h-padding: 16px;
   }
 
   &:hover {
-    z-index: 10;  // raise above sibling cards so the link popup is never covered
+    z-index: 10000;  // must exceed the SVG arrows overlay (9999) so the link popup renders on top
     box-shadow: 0px 0px 5px hsla(0, 0%, 0%, 0.06),
       0px 0px 10px hsla(0, 0%, 0%, 0.1);
   }

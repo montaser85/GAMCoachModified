@@ -166,8 +166,11 @@
   let arrowPaths = [];
   let arrowLabels = [];
   let panelClipRect = null;
-  let propagationTimer = null;
   let propagationDebounceTimer = null;
+  // Remembered so the scroll handler can redraw arrows at updated positions
+  let lastArrowSource = null;
+  let lastArrowTargets = [];
+  let scrollRafId = null;
   // Track last known values to avoid triggering on card expansion (not real user changes)
   let lastKnownValues = {};
   // Snapshot of every feature's value at page-load time (coach suggestions).
@@ -484,6 +487,119 @@
   };
 
   /**
+   * Find the t parameter (0–1) where the line from (sx,sy)→(tx,ty) crosses
+   * a rect boundary.  `side` = 'exit' returns the smallest positive t (leaving
+   * the source); 'entry' returns the largest t < 1 (entering the target).
+   * Edge crossings are validated against the perpendicular axis so only real
+   * intersections with the rectangle sides are returned.
+   */
+  const rectEdgeT = (sx, sy, tx, ty, rect, side) => {
+    const dx = tx - sx;
+    const dy = ty - sy;
+    const ts = [];
+    if (dx !== 0) {
+      const tR = (rect.right  - sx) / dx;
+      const tL = (rect.left   - sx) / dx;
+      const yR = sy + tR * dy;
+      const yL = sy + tL * dy;
+      if (tR > 0 && tR < 1 && yR >= rect.top && yR <= rect.bottom) ts.push(tR);
+      if (tL > 0 && tL < 1 && yL >= rect.top && yL <= rect.bottom) ts.push(tL);
+    }
+    if (dy !== 0) {
+      const tB = (rect.bottom - sy) / dy;
+      const tT = (rect.top    - sy) / dy;
+      const xB = sx + tB * dx;
+      const xT = sx + tT * dx;
+      if (tB > 0 && tB < 1 && xB >= rect.left && xB <= rect.right) ts.push(tB);
+      if (tT > 0 && tT < 1 && xT >= rect.left && xT <= rect.right) ts.push(tT);
+    }
+    if (ts.length === 0) return side === 'exit' ? 0 : 1;
+    return side === 'exit' ? Math.min(...ts) : Math.max(...ts);
+  };
+
+
+  /**
+   * (Re)draw SVG arrows from lastArrowSource to each of lastArrowTargets using
+   * fresh getBoundingClientRect() calls.  Safe to call at any time — including
+   * from a scroll handler — because it reads live viewport coordinates.
+   */
+  const recomputeArrows = () => {
+    if (!showArrows || !lastArrowSource || !lastArrowTargets.length) return;
+
+    if (component) {
+      const rect = component.getBoundingClientRect();
+      panelClipRect = { x: rect.left, y: rect.top, width: rect.width, height: rect.height };
+    }
+
+    const sourceEl = document.querySelector(`[data-feature-name="${lastArrowSource}"]`);
+    if (!sourceEl) return;
+
+    const sourceRect = sourceEl.getBoundingClientRect();
+    const sx = sourceRect.left + sourceRect.width / 2;
+    const sy = sourceRect.top + sourceRect.height / 2;
+
+    const targetData = lastArrowTargets
+      .map(name => ({ name, el: document.querySelector(`[data-feature-name="${name}"]`) }))
+      .filter(({ el }) => el !== null)
+      .map(({ name, el: targetEl }) => {
+        const targetRect = targetEl.getBoundingClientRect();
+        const tx = targetRect.left + targetRect.width / 2;
+        const ty = targetRect.top + targetRect.height / 2;
+        const dx = tx - sx;
+        const dy = ty - sy;
+        const len = Math.sqrt(dx * dx + dy * dy);
+
+        // Arrow: source card edge → target card edge
+        const tSrcExit  = rectEdgeT(sx, sy, tx, ty, sourceRect, 'exit');
+        const tTgtEntry = rectEdgeT(sx, sy, tx, ty, targetRect, 'entry');
+        const x1 = sx + tSrcExit  * dx;
+        const y1 = sy + tSrcExit  * dy;
+        const x2 = sx + tTgtEntry * dx;
+        const y2 = sy + tTgtEntry * dy;
+
+        // Place the label close to the source card — just srcMargin px past its
+        // edge — so the user can see at a glance which feature drove the change.
+        // tgtBuffer acts as a hard upper cap to prevent the label from creeping
+        // onto the target card's name/value area.
+        // If the two cards are too close for both constraints to fit, fall back
+        // to the geometric midpoint of the arrow segment.
+        const srcMargin = 55;  // px past source edge — clears label rect (~24 px tall + diagonal slack) while staying near source
+        const tgtBuffer = 90;  // px before target edge — clear of name+value row
+        const tNear = len > 0 ? tSrcExit  + srcMargin / len : tSrcExit;
+        const tFar  = len > 0 ? tTgtEntry - tgtBuffer / len : tTgtEntry;
+        const tLabel = tFar > tNear
+          ? tNear                                   // close to source, within safe zone
+          : (tSrcExit + tTgtEntry) / 2;             // fallback: arrow midpoint
+        const lx = sx + tLabel * dx;
+        const ly = sy + tLabel * dy;
+
+        return {
+          path: `M${x1},${y1} L${x2},${y2}`,
+          labelX: lx, labelY: ly,
+          labelText: `${DISPLAY_NAMES[name] || name} changed`
+        };
+      });
+
+    arrowPaths = targetData.map(d => d.path);
+    arrowLabels = resolveOverlaps(targetData.map(d => ({
+      x: d.labelX, y: d.labelY, text: d.labelText
+    })));
+  };
+
+  /**
+   * Scroll handler — redraws arrows at updated viewport positions once per
+   * animation frame so the lines always connect to the cards while scrolling.
+   * Uses capture phase so it fires for any scrollable container, not just window.
+   */
+  const onScroll = () => {
+    if (scrollRafId) return;
+    scrollRafId = requestAnimationFrame(() => {
+      recomputeArrows();
+      scrollRafId = null;
+    });
+  };
+
+  /**
    * Show propagation message, blue outlines, and animated arrows when a feature
    * change cascades to other features.  For features that have defined calculation
    * mechanics (currently loan_amnt), also compute and apply the new derived values
@@ -492,8 +608,6 @@
   const triggerPropagation = async (featureName) => {
     const propagation = PROPAGATION_MAP[featureName];
     if (!propagation) return;
-
-    if (propagationTimer) clearTimeout(propagationTimer);
 
     // ── 1. Compute actual targets + derived values (feature-specific logic) ──
     let activeTargets = [...propagation.targets];
@@ -551,48 +665,19 @@
     }
 
     // ── 5. Draw SVG arrows ────────────────────────────────────────────────────
-    if (component) {
-      const rect = component.getBoundingClientRect();
-      panelClipRect = { x: rect.left, y: rect.top, width: rect.width, height: rect.height };
-    }
-
-    const sourceEl = document.querySelector(`[data-feature-name="${featureName}"]`);
-    if (sourceEl && activeTargets.length > 0) {
-      const sourceRect = sourceEl.getBoundingClientRect();
-      const sx = sourceRect.left + sourceRect.width / 2;
-      const sy = sourceRect.top + sourceRect.height / 2;
-
-      const targetData = activeTargets
-        .map(name => ({ name, el: document.querySelector(`[data-feature-name="${name}"]`) }))
-        .filter(({ el }) => el !== null)
-        .map(({ name, el: targetEl }) => {
-          const targetRect = targetEl.getBoundingClientRect();
-          const tx = targetRect.left + targetRect.width / 2;
-          const ty = targetRect.top + targetRect.height / 2;
-          // Label at 20% along the line from the source
-          const lx = sx + 0.2 * (tx - sx);
-          const ly = sy + 0.2 * (ty - sy);
-          return {
-            path: `M${sx},${sy} L${tx},${ty}`,
-            labelX: lx, labelY: ly,
-            labelText: `${DISPLAY_NAMES[name] || name} changed`
-          };
-        });
-
-      arrowPaths = targetData.map(d => d.path);
-      arrowLabels = resolveOverlaps(targetData.map(d => ({
-        x: d.labelX, y: d.labelY, text: d.labelText
-      })));
+    if (activeTargets.length > 0) {
+      lastArrowSource = featureName;
+      lastArrowTargets = activeTargets;
       showArrows = true;
-    }
-
-    // Arrows disappear after 2 s; message + highlights are permanent
-    propagationTimer = setTimeout(() => {
+      recomputeArrows();
+    } else {
       showArrows = false;
       arrowPaths = [];
       arrowLabels = [];
-      propagationTimer = null;
-    }, 2000);
+      lastArrowSource = null;
+      lastArrowTargets = [];
+    }
+
   };
 
   const maxFeatureNumChanged = () => {
@@ -720,12 +805,16 @@
     mounted = true;
     const iconList = [];
     bindInlineSVG(component, iconList);
+    // capture:true catches scroll events from any scrollable container, not
+    // just the window — required because the feature panel has its own scroll area.
+    window.addEventListener('scroll', onScroll, { passive: true, capture: true });
   });
 
   onDestroy(() => {
     unsubscribes.forEach(unsub => unsub());
-    if (propagationTimer) clearTimeout(propagationTimer);
     if (propagationDebounceTimer) clearTimeout(propagationDebounceTimer);
+    window.removeEventListener('scroll', onScroll, { capture: true });
+    if (scrollRafId) cancelAnimationFrame(scrollRafId);
   });
 
   $: windowLoaded && planStore && !initialized && initFeatureCards();
