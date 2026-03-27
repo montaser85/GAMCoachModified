@@ -539,95 +539,115 @@
 
     const sourceRect = sourceEl.getBoundingClientRect();
     const sx = sourceRect.left + sourceRect.width / 2;
-    const sy = sourceRect.top + sourceRect.height / 2;
+    const sy = sourceRect.top  + sourceRect.height / 2;
 
-    const targetData = lastArrowTargets
+    // ── Step 1: collect all valid target positions ────────────────────────
+    const targets = lastArrowTargets
       .map(name => ({ name, el: document.querySelector(`[data-feature-name="${name}"]`) }))
       .filter(({ el }) => el !== null)
-      .map(({ name, el: targetEl }) => {
-        const targetRect = targetEl.getBoundingClientRect();
-        const tx = targetRect.left + targetRect.width / 2;
-        const ty = targetRect.top + targetRect.height / 2;
-        const dx = tx - sx;
-        const dy = ty - sy;
-        const len = Math.sqrt(dx * dx + dy * dy);
-
-        // Arrow: source card edge → target card edge
-        const tSrcExit  = rectEdgeT(sx, sy, tx, ty, sourceRect, 'exit');
-        const tTgtEntry = rectEdgeT(sx, sy, tx, ty, targetRect, 'entry');
-        const x1 = sx + tSrcExit  * dx;
-        const y1 = sy + tSrcExit  * dy;
-        const x2 = sx + tTgtEntry * dx;
-        const y2 = sy + tTgtEntry * dy;
-
-        // Place the label close to the source card — just srcMargin px past its
-        // edge — so the user can see at a glance which feature drove the change.
-        // tgtBuffer acts as a hard upper cap to prevent the label from creeping
-        // onto the target card's name/value area.
-        // If the two cards are too close for both constraints to fit, fall back
-        // to the geometric midpoint of the arrow segment.
-        const srcMargin = 55;  // px past source edge — clears label rect (~24 px tall + diagonal slack) while staying near source
-        const tgtBuffer = 90;  // px before target edge — clear of name+value row
-        const tNear = len > 0 ? tSrcExit  + srcMargin / len : tSrcExit;
-        const tFar  = len > 0 ? tTgtEntry - tgtBuffer / len : tTgtEntry;
-        const tLabel = tFar > tNear
-          ? tNear                                   // close to source, within safe zone
-          : (tSrcExit + tTgtEntry) / 2;             // fallback: arrow midpoint
-
-        // Offset the label perpendicular to the arrow so it floats BESIDE the
-        // line rather than sitting on top of it.  This keeps the arrow — and
-        // its arrowhead — fully visible even when source and target are close.
-        // Perpendicular-right unit vector (relative to source→target direction):
-        //   rotate (dx,dy)/len by −90°  →  (dy/len, −dx/len)
-        const perpX = len > 0 ?  dy / len : 0;
-        const perpY = len > 0 ? -dx / len : 0;
-        const perpOffset = 24;   // px sideways from the arrow line
-        const lx = sx + tLabel * dx + perpX * perpOffset;
-        const ly = sy + tLabel * dy + perpY * perpOffset;
-
-        return {
-          path: `M${x1},${y1} L${x2},${y2}`,
-          exitX: x1, exitY: y1,   // source-card edge exit point for this arrow
-          labelX: lx, labelY: ly,
-          labelText: `${DISPLAY_NAMES[name] || name} changed`
-        };
+      .map(({ name, el }) => {
+        const r = el.getBoundingClientRect();
+        return { name, targetRect: r,
+                 tx: r.left + r.width  / 2,
+                 ty: r.top  + r.height / 2 };
       });
+
+    if (!targets.length) return;
+
+    // ── Step 2: single bundle origin on the source card edge ─────────────
+    // Average unit vectors from source centre toward every target gives the
+    // dominant outward direction.  Following that direction to the card
+    // boundary produces one shared starting point so all arrows originate
+    // from the same spot.
+    let sumUx = 0, sumUy = 0;
+    targets.forEach(({ tx, ty }) => {
+      const dx = tx - sx, dy = ty - sy;
+      const len = Math.sqrt(dx * dx + dy * dy);
+      if (len > 0) { sumUx += dx / len; sumUy += dy / len; }
+    });
+    const domLen = Math.sqrt(sumUx * sumUx + sumUy * sumUy);
+    const domUx  = domLen > 0 ? sumUx / domLen : 0;
+    const domUy  = domLen > 0 ? sumUy / domLen : 1;   // fallback: downward
+
+    const tBundle  = rectEdgeT(sx, sy, sx + domUx * 1000, sy + domUy * 1000, sourceRect, 'exit');
+    const bundleX  = sx + tBundle * domUx * 1000;
+    const bundleY  = sy + tBundle * domUy * 1000;
+
+    // ── Step 3: per-target arrow data ────────────────────────────────────
+    const targetData = targets.map(({ name, targetRect, tx, ty }) => {
+      // End point: entry into the target card edge (line from source centre)
+      const dx = tx - sx, dy = ty - sy;
+      const tTgtEntry = rectEdgeT(sx, sy, tx, ty, targetRect, 'entry');
+      const x2 = sx + tTgtEntry * dx;
+      const y2 = sy + tTgtEntry * dy;
+
+      // Label placed along the bundle-origin → target-edge segment,
+      // srcMargin px from the bundle origin and at least tgtBuffer px
+      // before the target edge.
+      const adx = x2 - bundleX, ady = y2 - bundleY;
+      const alen = Math.sqrt(adx * adx + ady * ady);
+      const srcMargin = 55;   // px from bundle origin
+      const tgtBuffer = 90;   // px before target edge
+      const tNear = alen > 0 ? srcMargin / alen : 0;
+      const tFar  = alen > 0 ? Math.max(0, (alen - tgtBuffer) / alen) : 1;
+      const tLabel = tFar > tNear ? tNear : (tNear + tFar) / 2;
+
+      // Float the label perpendicular to the arrow to keep the line visible
+      const perpX = alen > 0 ?  ady / alen : 0;
+      const perpY = alen > 0 ? -adx / alen : 0;
+      const lx = bundleX + tLabel * adx + perpX * 24;
+      const ly = bundleY + tLabel * ady + perpY * 24;
+
+      return {
+        path: `M${bundleX},${bundleY} L${x2},${y2}`,
+        labelX: lx, labelY: ly,
+        labelText: `${DISPLAY_NAMES[name] || name} changed`
+      };
+    });
 
     arrowPaths = targetData.map(d => d.path);
     arrowLabels = resolveOverlaps(targetData.map(d => ({
       x: d.labelX, y: d.labelY, text: d.labelText
     })));
 
-    // Place the × button just outside the source card in the dominant
-    // outward direction of all arrows.
-    //
-    // Using the centroid of exit points is unreliable: when arrows fan in
-    // opposite directions (e.g. one target above, two below) the centroid
-    // can collapse back toward the card centre, so adding a small offset
-    // still lands inside the card.
-    //
-    // Instead: average the *unit* vectors from (sx,sy) to each exit point,
-    // re-normalise to get a single dominant direction, walk from the centre
-    // to the card boundary in that direction, then step btnPad px further so
-    // the full circle (r = 13) sits visibly outside the card.
-    let sumUx = 0, sumUy = 0;
-    targetData.forEach(d => {
-      const dx = d.exitX - sx, dy = d.exitY - sy;
-      const len = Math.sqrt(dx * dx + dy * dy);
-      if (len > 0) { sumUx += dx / len; sumUy += dy / len; }
+    // ── Step 4: dismiss button just beyond the bundle origin ─────────────
+    // Default: btnPad px past the bundle origin in the dominant direction so
+    // the circle (r=13) sits fully outside the source card.
+    // If that position overlaps any label rect we nudge the button
+    // PERPENDICULAR to the dominant direction (not along it — moving further
+    // along the dominant direction would bring it closer to the labels).
+    // We try both perpendicular sides in increasing steps until clear.
+    const btnPad = 22;
+    const btnR   = 14;   // slightly larger than visual r=13 for a safety margin
+    const perpUx = -domUy;
+    const perpUy =  domUx;
+
+    const overlapsLabel = (bx, by) => targetData.some(d => {
+      const hw = (d.labelText.length * 8.8 + 20) / 2;
+      return bx + btnR > d.labelX - hw  &&
+             bx - btnR < d.labelX + hw  &&
+             by + btnR > d.labelY - 20  &&   // label rect top
+             by - btnR < d.labelY + 4;        // label rect bottom
     });
-    const domLen = Math.sqrt(sumUx * sumUx + sumUy * sumUy);
-    const domUx  = domLen > 0 ? sumUx / domLen : 0;
-    const domUy  = domLen > 0 ? sumUy / domLen : 1;  // fallback: downward
 
-    // Walk from source centre to card edge in the dominant direction
-    const tEdge  = rectEdgeT(sx, sy, sx + domUx * 1000, sy + domUy * 1000, sourceRect, 'exit');
-    const edgeX  = sx + tEdge * domUx * 1000;
-    const edgeY  = sy + tEdge * domUy * 1000;
+    let btnX = bundleX + domUx * btnPad;
+    let btnY = bundleY + domUy * btnPad;
 
-    // Step beyond the edge so the button circle is fully outside the card
-    const btnPad = 22;   // px; circle r=13 → 9 px clear gap from card border
-    arrowDismissBtn = { x: edgeX + domUx * btnPad, y: edgeY + domUy * btnPad };
+    if (overlapsLabel(btnX, btnY)) {
+      let placed = false;
+      // Try perpendicular nudges on both sides, smallest step first
+      outer: for (const nudge of [18, 32, 48, 65]) {
+        for (const sign of [1, -1]) {
+          const tx = btnX + perpUx * sign * nudge;
+          const ty = btnY + perpUy * sign * nudge;
+          if (!overlapsLabel(tx, ty)) {
+            btnX = tx; btnY = ty; placed = true; break outer;
+          }
+        }
+      }
+    }
+
+    arrowDismissBtn = { x: btnX, y: btnY };
   };
 
   /**
