@@ -87,3 +87,8 @@ export const checkModalConfigStore = writable({
 // Maps feature name → internal value for programmatic slider overrides.
 // FeatureCard subscribes and moves its slider when its name appears here.
 export const featureValueOverrideStore = writable({});
+
+// Incremented each time any FeatureCard header is clicked (expand/collapse).
+// FeaturePanel subscribes to this to know it must recompute arrow positions
+// throughout the 250 ms card animation.
+export const cardToggleStore = writable(0);

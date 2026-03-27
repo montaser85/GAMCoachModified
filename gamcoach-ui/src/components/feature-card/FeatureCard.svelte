@@ -5,7 +5,7 @@
   import { bindInlineSVG, round } from '../../utils/utils';
   import '../../typedef';
   import { onMount, tick, createEventDispatcher } from 'svelte';
-  import { tooltipConfigStore, diffPickerConfigStore, featureValueOverrideStore } from '../../store';
+  import { tooltipConfigStore, diffPickerConfigStore, featureValueOverrideStore, cardToggleStore } from '../../store';
 
   import {
     initSlider,
@@ -336,6 +336,10 @@
   export const headerClicked = async (e) => {
     e.preventDefault();
     e.stopPropagation();
+
+    // Notify FeaturePanel that a card is about to animate so it can recompute
+    // arrow positions throughout the 250 ms expand/collapse animation.
+    cardToggleStore.update(n => n + 1);
 
     logger?.addLog({
       eventName: `[${feature.data.name}] clicked`,

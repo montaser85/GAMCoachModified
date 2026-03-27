@@ -13,7 +13,7 @@
 
   import { onMount, onDestroy, tick } from 'svelte';
   import { fade } from 'svelte/transition';
-  import { tooltipConfigStore, featureValueOverrideStore } from '../../store';
+  import { tooltipConfigStore, featureValueOverrideStore, cardToggleStore } from '../../store';
 
   export let windowLoaded = false;
   export let planStore = null;
@@ -171,6 +171,8 @@
   let lastArrowSource = null;
   let lastArrowTargets = [];
   let scrollRafId = null;
+  let cardAnimRafId = null;   // rAF handle for the card-expand/collapse loop
+  let cardAnimEndTime = 0;    // timestamp after which the loop should stop
   // Track last known values to avoid triggering on card expansion (not real user changes)
   let lastKnownValues = {};
   // Snapshot of every feature's value at page-load time (coach suggestions).
@@ -570,8 +572,17 @@
         const tLabel = tFar > tNear
           ? tNear                                   // close to source, within safe zone
           : (tSrcExit + tTgtEntry) / 2;             // fallback: arrow midpoint
-        const lx = sx + tLabel * dx;
-        const ly = sy + tLabel * dy;
+
+        // Offset the label perpendicular to the arrow so it floats BESIDE the
+        // line rather than sitting on top of it.  This keeps the arrow — and
+        // its arrowhead — fully visible even when source and target are close.
+        // Perpendicular-right unit vector (relative to source→target direction):
+        //   rotate (dx,dy)/len by −90°  →  (dy/len, −dx/len)
+        const perpX = len > 0 ?  dy / len : 0;
+        const perpY = len > 0 ? -dx / len : 0;
+        const perpOffset = 24;   // px sideways from the arrow line
+        const lx = sx + tLabel * dx + perpX * perpOffset;
+        const ly = sy + tLabel * dy + perpY * perpOffset;
 
         return {
           path: `M${x1},${y1} L${x2},${y2}`,
@@ -597,6 +608,29 @@
       recomputeArrows();
       scrollRafId = null;
     });
+  };
+
+  /**
+   * Called whenever a FeatureCard starts its expand/collapse animation.
+   * Runs a rAF loop for slightly longer than the 250 ms card animation so
+   * arrows continuously track every card as it moves during the transition.
+   */
+  const onCardToggle = () => {
+    // Extend the deadline by the animation duration + a small buffer each time
+    // a card is clicked (handles rapid successive clicks gracefully).
+    cardAnimEndTime = performance.now() + 320;
+
+    if (cardAnimRafId) return;   // loop already running
+
+    const loop = () => {
+      recomputeArrows();
+      if (performance.now() < cardAnimEndTime) {
+        cardAnimRafId = requestAnimationFrame(loop);
+      } else {
+        cardAnimRafId = null;
+      }
+    };
+    cardAnimRafId = requestAnimationFrame(loop);
   };
 
   /**
@@ -808,6 +842,14 @@
     // capture:true catches scroll events from any scrollable container, not
     // just the window — required because the feature panel has its own scroll area.
     window.addEventListener('scroll', onScroll, { passive: true, capture: true });
+    // Subscribe to cardToggleStore so we recompute arrows throughout every
+    // expand/collapse animation without touching every <FeatureCard> tag.
+    // The store starts at 0; skip the initial emission (n === 0) so we don't
+    // fire at mount time before any cards or arrows exist.
+    const unsubCardToggle = cardToggleStore.subscribe(n => {
+      if (n > 0) onCardToggle();
+    });
+    unsubscribes.push(unsubCardToggle);
   });
 
   onDestroy(() => {
@@ -815,6 +857,7 @@
     if (propagationDebounceTimer) clearTimeout(propagationDebounceTimer);
     window.removeEventListener('scroll', onScroll, { capture: true });
     if (scrollRafId) cancelAnimationFrame(scrollRafId);
+    if (cardAnimRafId) cancelAnimationFrame(cardAnimRafId);
   });
 
   $: windowLoaded && planStore && !initialized && initFeatureCards();
