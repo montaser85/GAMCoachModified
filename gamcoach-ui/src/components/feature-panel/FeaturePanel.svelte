@@ -165,6 +165,7 @@
   let showArrows = false;
   let arrowPaths = [];
   let arrowLabels = [];
+  let arrowDismissBtn = null;   // { x, y } for the single × button near the source card
   let panelClipRect = null;
   let propagationDebounceTimer = null;
   // Remembered so the scroll handler can redraw arrows at updated positions
@@ -586,6 +587,7 @@
 
         return {
           path: `M${x1},${y1} L${x2},${y2}`,
+          exitX: x1, exitY: y1,   // source-card edge exit point for this arrow
           labelX: lx, labelY: ly,
           labelText: `${DISPLAY_NAMES[name] || name} changed`
         };
@@ -595,6 +597,49 @@
     arrowLabels = resolveOverlaps(targetData.map(d => ({
       x: d.labelX, y: d.labelY, text: d.labelText
     })));
+
+    // Place the × button just outside the source card in the dominant
+    // outward direction of all arrows.
+    //
+    // Using the centroid of exit points is unreliable: when arrows fan in
+    // opposite directions (e.g. one target above, two below) the centroid
+    // can collapse back toward the card centre, so adding a small offset
+    // still lands inside the card.
+    //
+    // Instead: average the *unit* vectors from (sx,sy) to each exit point,
+    // re-normalise to get a single dominant direction, walk from the centre
+    // to the card boundary in that direction, then step btnPad px further so
+    // the full circle (r = 13) sits visibly outside the card.
+    let sumUx = 0, sumUy = 0;
+    targetData.forEach(d => {
+      const dx = d.exitX - sx, dy = d.exitY - sy;
+      const len = Math.sqrt(dx * dx + dy * dy);
+      if (len > 0) { sumUx += dx / len; sumUy += dy / len; }
+    });
+    const domLen = Math.sqrt(sumUx * sumUx + sumUy * sumUy);
+    const domUx  = domLen > 0 ? sumUx / domLen : 0;
+    const domUy  = domLen > 0 ? sumUy / domLen : 1;  // fallback: downward
+
+    // Walk from source centre to card edge in the dominant direction
+    const tEdge  = rectEdgeT(sx, sy, sx + domUx * 1000, sy + domUy * 1000, sourceRect, 'exit');
+    const edgeX  = sx + tEdge * domUx * 1000;
+    const edgeY  = sy + tEdge * domUy * 1000;
+
+    // Step beyond the edge so the button circle is fully outside the card
+    const btnPad = 22;   // px; circle r=13 → 9 px clear gap from card border
+    arrowDismissBtn = { x: edgeX + domUx * btnPad, y: edgeY + domUy * btnPad };
+  };
+
+  /**
+   * Remove all arrows and the dismiss button when the user clicks ×.
+   */
+  const dismissArrows = () => {
+    showArrows      = false;
+    arrowPaths      = [];
+    arrowLabels     = [];
+    arrowDismissBtn = null;
+    lastArrowSource  = null;
+    lastArrowTargets = [];
   };
 
   /**
@@ -667,6 +712,7 @@
     showArrows = false;
     arrowPaths = [];
     arrowLabels = [];
+    arrowDismissBtn = null;
 
     await tick();
 
@@ -708,6 +754,7 @@
       showArrows = false;
       arrowPaths = [];
       arrowLabels = [];
+      arrowDismissBtn = null;
       lastArrowSource = null;
       lastArrowTargets = [];
     }
@@ -1329,6 +1376,40 @@
             font-family='system-ui, sans-serif'
           >{label.text}</text>
         {/each}
+
+        {#if arrowDismissBtn}
+          <!-- Single × button near the source card's top-right corner.
+               pointer-events:all overrides the overlay's pointer-events:none
+               so only this element is interactive. -->
+          <g
+            style='pointer-events: all; cursor: pointer;'
+            on:click={dismissArrows}
+            role='button'
+            tabindex='0'
+            aria-label='Hide dependency arrows'
+            on:keydown={e => e.key === 'Enter' && dismissArrows()}
+          >
+            <title>Click to hide the dependency arrows</title>
+            <circle
+              cx={arrowDismissBtn.x}
+              cy={arrowDismissBtn.y}
+              r='13'
+              fill='white'
+              stroke='#1976D2'
+              stroke-width='1.5'
+            />
+            <text
+              x={arrowDismissBtn.x}
+              y={arrowDismissBtn.y + 5}
+              text-anchor='middle'
+              fill='#1976D2'
+              font-size='15'
+              font-weight='700'
+              font-family='system-ui, sans-serif'
+              style='pointer-events: none; user-select: none;'
+            >✕</text>
+          </g>
+        {/if}
       </g>
     </svg>
   {/if}
