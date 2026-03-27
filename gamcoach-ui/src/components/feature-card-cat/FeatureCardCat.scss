@@ -10,6 +10,59 @@ $card-h-padding: 16px;
   padding: $card-v-padding $card-h-padding 5px $card-h-padding;
 }
 
+.link-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: $blue-500;
+  cursor: pointer;
+  padding: 2px 4px;
+  border-radius: 3px;
+  flex-shrink: 0;
+  transition: color 0.15s;
+
+  .link-chain-wrap {
+    position: relative;
+    display: inline-flex;
+    align-items: flex-end;
+    line-height: 0;
+    padding-top: 7px;
+    padding-right: 16px;
+
+    .link-badge {
+      position: absolute;
+      top: 0;
+      right: 0;
+      width: 18px;
+      height: 18px;
+      background: transparent;
+      border: 2.5px solid $blue-500;
+      border-radius: 50%;
+      color: $blue-500;
+      font-size: 12px;
+      font-weight: 700;
+      font-style: italic;
+      font-family: Georgia, serif;
+      -webkit-text-stroke: 0.4px currentColor;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      line-height: 1;
+      pointer-events: none;
+      transition: border-color 0.15s, color 0.15s;
+    }
+  }
+
+  &:hover {
+    color: $blue-700;
+
+    .link-badge {
+      border-color: $blue-700;
+      color: $blue-700;
+    }
+  }
+}
+
 .arrow-right {
   box-sizing: border-box;
   position: relative;
