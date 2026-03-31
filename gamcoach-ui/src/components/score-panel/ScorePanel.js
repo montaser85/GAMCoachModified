@@ -318,17 +318,35 @@ export class ScorePanel {
 
     if (changed.length === 0) return null;
 
-    const totalAbsDelta = changed.reduce((s, d) => s + Math.abs(d.delta), 0);
+    const maxAbsDelta       = Math.max(...changed.map(d => Math.abs(d.delta)));
+    const totalAbsDelta     = changed.reduce((s, d) => s + Math.abs(d.delta), 0);
+    const totalLogOddsDelta = changed.reduce((s, d) => s + d.delta, 0); // net (signed)
+    const totalPPChange     = (this.curValue - this.originalValue) * 100;
+
     changed.forEach(d => {
-      d.proportion = totalAbsDelta > 0 ? Math.abs(d.delta) / totalAbsDelta : 0;
+      // Bar width: signed fraction of largest contributor (fills ±1 half)
+      d.proportion = maxAbsDelta > 0 ? d.delta / maxAbsDelta : 0;
+
+      // Actual pp contribution: each feature's share of the net log-odds shift,
+      // scaled to the total pp change.  Values add up to totalPPChange exactly.
+      d.actualPP = totalLogOddsDelta !== 0
+        ? parseFloat((d.delta / totalLogOddsDelta * totalPPChange).toFixed(1))
+        : 0;
+
+      // Percentage share of total absolute log-odds movement (with sign).
+      d.pctOfTotal = totalAbsDelta > 0
+        ? Math.round(d.delta / totalAbsDelta * 100)
+        : 0;
     });
     changed.sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
 
+    const rawDelta = Math.round(totalPPChange);
     return {
-      origPct:  Math.round(this.originalValue * 100),
-      curPct:   Math.round(this.curValue * 100),
-      deltaPP:  Math.round((this.curValue - this.originalValue) * 100),
-      features: changed
+      origPct:   Math.round(this.originalValue * 100),
+      curPct:    Math.round(this.curValue * 100),
+      deltaSign: rawDelta > 0 ? '+' : '',
+      deltaPP:   rawDelta,
+      features:  changed
     };
   }
 
