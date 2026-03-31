@@ -21,7 +21,6 @@
   let mounted = false;
   let plan = null;
 
-  // Set up tooltip
   let tooltipConfig = null;
   unsubscribes.push(
     tooltipConfigStore.subscribe((value) => {
@@ -29,23 +28,17 @@
     })
   );
 
-  // Component variables
-  /** @type {HTMLElement}*/
+  /** @type {HTMLElement} */
   let component = null;
 
-  /** @type {HTMLElement}*/
+  /** @type {HTMLElement} */
   let decision = null;
 
-  /** @type {ScorePanel}*/
+  /** @type {ScorePanel} */
   let scorePanel = null;
 
-  /**
-   * @param {boolean} newValue
-   */
   const updateInRange = (newValue) => {
-
     if (isInRange !== newValue) {
-      /** @type {HTMLElement} */
       let parentNode = d3.select(component).node();
       while (!parentNode.classList.contains('tab') && parentNode !== null) {
         parentNode = parentNode.parentElement;
@@ -53,12 +46,11 @@
       d3.select(parentNode)
         .select('.star-wrapper')
         .classed('disabled', !newValue)
-        .attr('title', newValue ?
-          'Click to save this plan' :
-          'You can only save plans that give you desired outcomes'
+        .attr('title', newValue
+          ? 'Click to save this plan'
+          : 'You can only save plans that give you desired outcomes'
         );
     }
-
     isInRange = newValue;
   };
 
@@ -66,34 +58,27 @@
     initialized = true;
     isInRange = !isFailed;
 
-    // Subscribe the plan store
     unsubscribes.push(
-      planStore.subscribe(value => {
-        plan = value;
-      })
+      planStore.subscribe(value => { plan = value; })
     );
 
     await tick();
 
-    scorePanel = new ScorePanel(component, scoreWidth, planLabel, planStore,
-      tooltipConfigStore, updateInRange, logger);
+    scorePanel = new ScorePanel(
+      component, scoreWidth, planLabel, planStore,
+      tooltipConfigStore, updateInRange, logger
+    );
 
     d3.select(decision).style('width', `${planLabel.textWidth}px`);
-
     scorePanel.initSVG();
   };
 
-  /**
-   * Reset the component when the planLabels is updated
-   */
   const planLabelUpdated = () => {
     scorePanel?.destroy();
     initialized = false;
   };
 
-  onMount(() => {
-    mounted = true;
-  });
+  onMount(() => { mounted = true; });
 
   onDestroy(() => {
     unsubscribes.forEach((unsub) => unsub());
@@ -106,9 +91,7 @@
 </script>
 
 <div class="score-panel" bind:this={component}>
-
   <svg class="score-svg" width="10" height="10"/>
-
   {#if plan}
     <span class='decision'
       class:regression={planLabel.isRegression}
@@ -126,7 +109,6 @@
       {/if}
     </span>
   {/if}
-
 </div>
 
 <style lang="scss">

@@ -6,6 +6,7 @@ import { Writable } from 'svelte/store';
 import '../../typedef';
 import { Plan } from '../coach/Coach';
 import { sigmoid } from '../../ebm/ebm';
+import { propagatedFeaturesStore, breakdownPopupStore } from '../../store';
 
 const formatter = d3.format(',.2~f');
 
@@ -50,6 +51,7 @@ export class ScorePanel {
    * @param {number} scoreWidth
    * @param {object} planLabel
    * @param {Writable<Plan>} planStore
+   * @param {import('svelte/store').Writable} tooltipConfigStore
    * @param {(newValue: boolean) => void} updateInRange
    * @param {Logger | null} logger
    */
@@ -68,6 +70,12 @@ export class ScorePanel {
     /** @type {Logger} */
     this.logger = logger;
 
+    // Track propagated features so breakdown labels are correct.
+    this._propagatedFeatures = new Set();
+    this.unsubscribes.push(
+      propagatedFeaturesStore.subscribe(v => { this._propagatedFeatures = v; })
+    );
+
     // Subscribe to the plan store
     this.unsubscribes.push(
       planStore.subscribe((value) => {
@@ -75,6 +83,14 @@ export class ScorePanel {
         this.planUpdated();
       })
     );
+
+    // Capture the original per-feature EBM scores computed from the original
+    // input sample.  We must call countScore(curExample) rather than copying
+    // the live countedScores object because countedScores may already reflect
+    // user changes if ScorePanel is re-initialized after plan edits.
+    this.originalCountedScores = this.plan
+      ? this.plan.ebmLocal.countScore(this.plan.curExample)
+      : {};
 
     // Subscribe to the tooltip store
     this.unsubscribes.push(
@@ -122,6 +138,26 @@ export class ScorePanel {
         .transition(widthTransition)
         .attr('width', this.xScale(this.curValue));
 
+      // Update delta highlight rect
+      const deltaClass = this.curValue > this.originalValue
+        ? 'delta-up'
+        : this.curValue < this.originalValue
+          ? 'delta-down'
+          : 'delta-hidden';
+      this.svg
+        .select('.delta-rect')
+        .attr('class', `delta-rect ${deltaClass}`)
+        .transition(widthTransition)
+        .attr('x', this.xScale(Math.min(this.curValue, this.originalValue)))
+        .attr('width', Math.abs(this.xScale(this.curValue) - this.xScale(this.originalValue)));
+
+      // Update current value indicator
+      this.svg
+        .select('.current-value')
+        .attr('class', `current-value${this.curValue === this.originalValue ? ' current-hidden' : ''}`)
+        .transition(widthTransition)
+        .attr('x', this.xScale(this.curValue) - (this.lineWidth + 1) / 2);
+
       // Update isInRange from the score panel svelte
       this.updateInRange(this.isInRange);
     }
@@ -131,6 +167,9 @@ export class ScorePanel {
     if (this.svg !== null) {
       this.svg.selectAll('*').remove();
     }
+    // Hide popup when this panel is destroyed / re-initialized
+    clearTimeout(this._hidePopupTimer);
+    breakdownPopupStore.set({ show: false, x: 0, y: 0, data: null, pinned: false });
     this.unsubscribes.forEach((d) => d());
   }
 
@@ -206,6 +245,93 @@ export class ScorePanel {
     this.tooltipConfigStore.set(this.tooltipConfig);
   }
 
+  /**
+   * Format a raw feature value for display in the breakdown popup.
+   * Handles log10 transforms and categorical label encoding.
+   * @param {number} val      Raw value (may be in log space)
+   * @param {object} feature  Feature object from plan.features
+   * @returns {string}
+   */
+  formatVal(val, feature) {
+    // Categorical feature — map level ID to label
+    if (!feature.isCont && feature.labelEncoder) {
+      return feature.labelEncoder[Math.round(val)] ?? String(val);
+    }
+    // Continuous — apply inverse transform if needed.
+    // feature.transform is set from config.usesTransform in Coach.js.
+    const transform = feature.transform;
+    const displayVal = transform === 'log10'
+      ? Math.pow(10, val)
+      : val;
+    if (typeof displayVal !== 'number') return String(displayVal);
+    if (feature.requiresInt || Math.abs(displayVal) >= 1000) {
+      return Math.round(displayVal).toLocaleString();
+    }
+    return d3.format(',.2~f')(displayVal);
+  }
+
+  /**
+   * Compute the per-feature score-change breakdown for the popup.
+   * @param {Set<string>} [propagatedFeatures]  Names of features changed via propagation
+   * @returns {object|null}  Breakdown data, or null if no changes
+   */
+  computeBreakdown(propagatedFeatures = new Set()) {
+    if (!this.plan) return null;
+
+    const currentScores = this.plan.ebmLocal.countedScores;
+    const features = this.plan.features;
+    const changed = [];
+
+    features.forEach(f => {
+      const name = f.data.name;
+      const origScore = this.originalCountedScores[name] ?? 0;
+      const curScore  = currentScores[name] ?? 0;
+      const delta     = curScore - origScore;
+
+      if (Math.abs(delta) > 1e-6) {
+        // Original display value
+        const origValStr = this.formatVal(f.originalValue, f);
+
+        // Current display value — read from ebmLocal.sample (updated by
+        // updateFeature) so propagated changes are reflected correctly.
+        const curRaw    = (this.plan.ebmLocal.sample && f.featureID !== undefined)
+          ? this.plan.ebmLocal.sample[f.featureID]
+          : (f.myValue ?? f.originalValue);
+        const curValStr = this.formatVal(curRaw, f);
+
+        // Human-readable display name
+        const displayName = f.data.description?.displayName
+          || f.data.name.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+
+        changed.push({
+          name,
+          displayName,
+          delta,
+          direction: delta > 0 ? 'up' : 'down',
+          origValStr,
+          curValStr,
+          isPropagated: propagatedFeatures.has(name),
+          proportion: 0  // filled in below
+        });
+      }
+    });
+
+    if (changed.length === 0) return null;
+
+    const totalAbsDelta = changed.reduce((s, d) => s + Math.abs(d.delta), 0);
+    changed.forEach(d => {
+      d.proportion = totalAbsDelta > 0 ? Math.abs(d.delta) / totalAbsDelta : 0;
+    });
+    changed.sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
+
+    return {
+      origPct:  Math.round(this.originalValue * 100),
+      curPct:   Math.round(this.curValue * 100),
+      deltaPP:  Math.round((this.curValue - this.originalValue) * 100),
+      features: changed
+    };
+  }
+
   initSVG = () => {
     // Set the SVG height to fit its container
     this.svg = d3
@@ -270,6 +396,46 @@ export class ScorePanel {
       )
       .on('mouseleave', () => this.mouseleaveHandler());
 
+    // Draw the delta highlight between original score and current score.
+    // Red when score decreased (bad), blue when score increased (good).
+    const deltaClass = this.curValue > this.originalValue
+      ? 'delta-up'
+      : this.curValue < this.originalValue
+        ? 'delta-down'
+        : 'delta-hidden';
+    midLayer
+      .append('rect')
+      .attr('class', `delta-rect ${deltaClass}`)
+      .attr('y', contentHeight - this.rectHeight)
+      .attr('x', this.xScale(Math.min(this.curValue, this.originalValue)))
+      .attr('width', Math.abs(this.xScale(this.curValue) - this.xScale(this.originalValue)))
+      .attr('height', this.rectHeight)
+      .attr('clip-path', `url(#score-bar-clip-${this.planLabel.planIndex})`)
+      .attr('cursor', 'pointer')
+      .on('mouseenter', (e) => {
+        clearTimeout(this._hidePopupTimer);
+        const rect = e.currentTarget.getBoundingClientRect();
+        const data = this.computeBreakdown(this._propagatedFeatures);
+        breakdownPopupStore.update(v =>
+          v.pinned ? v : { show: true, x: rect.left, y: rect.bottom + 6, data, pinned: false }
+        );
+      })
+      .on('click', (e) => {
+        // Click pins the popup — it stays open until the X button is clicked.
+        clearTimeout(this._hidePopupTimer);
+        const rect = e.currentTarget.getBoundingClientRect();
+        const data = this.computeBreakdown(this._propagatedFeatures);
+        breakdownPopupStore.set({ show: true, x: rect.left, y: rect.bottom + 6, data, pinned: true });
+      })
+      .on('mouseleave', () => {
+        // Only auto-hide when not pinned; delay lets pointer reach the popup.
+        this._hidePopupTimer = setTimeout(() => {
+          breakdownPopupStore.update(v =>
+            v.pinned ? v : { ...v, show: false }
+          );
+        }, 150);
+      });
+
     // Draw the bottom lines
     topLayer
       .append('rect')
@@ -322,6 +488,27 @@ export class ScorePanel {
           )}`,
           170,
           20,
+          's'
+        )
+      )
+      .on('mouseleave', () => this.mouseleaveHandler());
+
+    // Current score indicator — darker and slightly thicker than the original
+    // value indicator so it is visually distinct and clearly "the live position".
+    // Only rendered when curValue differs from originalValue.
+    topLayer
+      .append('rect')
+      .attr('class', `current-value${this.curValue === this.originalValue ? ' current-hidden' : ''}`)
+      .attr('x', this.xScale(this.curValue) - (this.lineWidth + 1) / 2)
+      .attr('width', this.lineWidth + 1)
+      .attr('y', 5)
+      .attr('height', contentHeight - 5)
+      .on('mouseenter', (e) =>
+        this.mouseenterHandler(
+          e,
+          `Current score: ${formatter(this.curValue)}`,
+          140,
+          15,
           's'
         )
       )

@@ -55,6 +55,191 @@
       transform: scaleY(3);
     }
   }
+
+  // Delta highlight between original score and current score.
+  // pointer-events must be 'all' so mouseenter/mouseleave fire for the
+  // score-change breakdown popup.
+  :global(.delta-rect) {
+    pointer-events: all;
+    transition: fill 200ms;
+  }
+  :global(.delta-up) {
+    fill: $blue-500;
+    opacity: 1;
+  }
+  :global(.delta-down) {
+    fill: $red-500;
+    opacity: 1;
+  }
+  :global(.delta-hidden) {
+    fill: transparent;
+  }
+
+  // Current score indicator — darker than original-value so it reads as
+  // "live position"; hidden when score has not yet changed from baseline.
+  :global(.current-value) {
+    fill: $gray-900;
+    stroke-linejoin: round;
+    stroke-width: 10;
+    stroke-opacity: 0;
+    stroke: white;
+    transform-origin: center;
+    -webkit-backface-visibility: hidden;
+    -webkit-transform: translateZ(0);
+    transition: fill 200ms;
+
+    &:hover {
+      transform: scaleY(3);
+    }
+  }
+  :global(.current-hidden) {
+    fill: transparent;
+    pointer-events: none;
+  }
+}
+
+// ── Score-change breakdown popup styles live in BreakdownPopup.svelte ─────
+// (kept here as a tombstone so git blame is clear)
+.bd-popup-placeholder {
+  position: fixed;
+  z-index: 9000;
+  background: white;
+  border: 1px solid $gray-200;
+  border-radius: 8px;
+  box-shadow: 0 4px 20px hsla(0, 0%, 0%, 0.14);
+  padding: 12px 14px;
+  font-size: 0.8rem;
+  color: $gray-800;
+  pointer-events: all;
+
+  .bd-header {
+    margin-bottom: 8px;
+
+    .bd-header-left {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 2px;
+    }
+
+    .bd-scores {
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: $gray-900;
+    }
+
+    .bd-delta {
+      font-size: 0.85rem;
+      font-weight: 700;
+      padding: 1px 7px;
+      border-radius: 10px;
+      &.bd-delta-pos {
+        background: $blue-50;
+        color: $blue-700;
+        border: 1px solid $blue-200;
+      }
+      &.bd-delta-neg {
+        background: $red-50;
+        color: $red-700;
+        border: 1px solid $red-200;
+      }
+    }
+
+    .bd-subtitle {
+      font-size: 0.7rem;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      color: $gray-500;
+      text-transform: uppercase;
+    }
+  }
+
+  // Stacked proportional bar
+  .bd-stacked-bar {
+    display: flex;
+    height: 8px;
+    border-radius: 4px;
+    overflow: hidden;
+    margin-bottom: 10px;
+    background: $gray-200;
+
+    .bd-segment {
+      height: 100%;
+      transition: opacity 0.15s;
+      &:hover { opacity: 0.8; }
+    }
+  }
+
+  // Feature rows
+  .bd-rows {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+
+  .bd-row {
+    display: grid;
+    grid-template-columns: 10px 1fr auto auto 80px 32px;
+    align-items: center;
+    gap: 6px;
+    font-size: 0.76rem;
+
+    .bd-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 2px;
+      flex-shrink: 0;
+    }
+
+    .bd-name {
+      font-weight: 600;
+      color: $gray-800;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .bd-badge {
+      font-size: 0.65rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      padding: 1px 5px;
+      border-radius: 3px;
+      background: $blue-50;
+      color: $blue-700;
+      border: 1px solid $blue-200;
+      white-space: nowrap;
+      &.bd-badge-prop {
+        background: $gray-100;
+        color: $gray-600;
+        border-color: $gray-300;
+      }
+    }
+
+    .bd-values {
+      color: $gray-600;
+      white-space: nowrap;
+      font-size: 0.72rem;
+    }
+
+    .bd-bar-wrap {
+      height: 5px;
+      background: $gray-200;
+      border-radius: 3px;
+      overflow: hidden;
+
+      .bd-bar {
+        height: 100%;
+        border-radius: 3px;
+      }
+    }
+
+    .bd-pct {
+      font-weight: 700;
+      color: $gray-700;
+      text-align: right;
+    }
+  }
 }
 
 .decision {

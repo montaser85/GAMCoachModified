@@ -13,7 +13,7 @@
 
   import { onMount, onDestroy, tick } from 'svelte';
   import { fade } from 'svelte/transition';
-  import { tooltipConfigStore, featureValueOverrideStore, cardToggleStore } from '../../store';
+  import { tooltipConfigStore, featureValueOverrideStore, cardToggleStore, propagatedFeaturesStore } from '../../store';
 
   export let windowLoaded = false;
   export let planStore = null;
@@ -355,6 +355,7 @@
    */
   const applyLoanAmountPropagation = (loanAmount) => {
     const updates = {};
+    const propagated = new Set();
 
     // ── Read ORIGINAL baseline values for dependent features ────────────────
     // Always use originalValues (coach suggestions at load time) so that
@@ -380,6 +381,7 @@
       // Populate the popup calculation: "742 − 4 = 738"
       ficoLinkCalculation = { type: 'fico', before: Math.round(currentFico), after: Math.round(newFico) };
       ficoDropApplied = true;
+      propagated.add('fico_score');
     }
 
     // ── 2. DTI — amortization formula ────────────────────────────────────────
@@ -397,6 +399,7 @@
     const newDTIInt          = toInternalValue(newDTI, 'dti');
     updates['dti']          = newDTIInt;
     lastKnownValues['dti']  = newDTIInt;
+    propagated.add('dti');
     // Populate the DTI popup calculation block with pre-formatted strings
     const fmt = (n) => '$' + Math.round(n).toLocaleString();
     dtiLinkCalculation = {
@@ -416,6 +419,7 @@
       const newRevolBalInt = toInternalValue(newRevolBal, 'revol_bal');
       updates['revol_bal']          = newRevolBalInt;
       lastKnownValues['revol_bal']  = newRevolBalInt;
+      propagated.add('revol_bal');
       // Populate the revolving balance popup calculation
       revolBalLinkCalculation = {
         type:           'revol_bal',
@@ -431,6 +435,7 @@
         const newRevolUtilInt = toInternalValue(newRevolUtil, 'revol_util');
         updates['revol_util']          = newRevolUtilInt;
         lastKnownValues['revol_util']  = newRevolUtilInt;
+        propagated.add('revol_util');
         // Populate the credit utilization popup calculation
         revolUtilLinkCalculation = {
           type:           'revol_util',
@@ -443,6 +448,10 @@
         };
       }
     }
+
+    // Publish which features were changed via propagation so ScorePanel
+    // can label them correctly in the score-change breakdown popup.
+    propagatedFeaturesStore.set(propagated);
 
     return updates;
   };

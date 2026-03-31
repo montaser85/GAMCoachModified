@@ -8,6 +8,7 @@
   import BookmarkPanel from '../bookmark-panel/BookmarkPanel.svelte';
   import CheckModal from '../check-modal/CheckModal.svelte';
   import Tooltip from '../Tooltip.svelte';
+  import BreakdownPopup from '../BreakdownPopup.svelte';
   import Youtube from './Youtube.svelte';
 
   import d3 from '../../utils/d3-import';
@@ -266,6 +267,7 @@
 
 <div class="page">
   <Tooltip bind:this={tooltip} />
+  <BreakdownPopup />
 
   <div class="top" id="top">
     <div class="top-fill" />

@@ -9,6 +9,7 @@
   import ConstraintRatingForm from '../input-form/ConstraintRatingForm.svelte';
   import BookmarkPanel from '../bookmark-panel/BookmarkPanel.svelte';
   import Tooltip from '../Tooltip.svelte';
+  import BreakdownPopup from '../BreakdownPopup.svelte';
 
   import d3 from '../../utils/d3-import';
   import { Logger } from '../../utils/logger';
@@ -298,6 +299,7 @@
 
 <div class="page">
   <Tooltip bind:this={tooltip} />
+  <BreakdownPopup />
 
   <div class="top" id="top">
     <div class="top-fill" />

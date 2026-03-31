@@ -88,6 +88,17 @@ export const checkModalConfigStore = writable({
 // FeatureCard subscribes and moves its slider when its name appears here.
 export const featureValueOverrideStore = writable({});
 
+// Set of feature names whose current values were changed via propagation
+// (as opposed to direct user interaction).  FeaturePanel updates this
+// whenever applyLoanAmountPropagation runs; ScorePanel reads it to label
+// rows in the score-change breakdown popup as DIRECT or PROPAGATED.
+export const propagatedFeaturesStore = writable(new Set());
+
+// Score-change breakdown popup.  ScorePanel.js sets this from D3 event
+// handlers; BreakdownPopup.svelte (rendered at app root, outside any CSS
+// transform) reads it and renders the popup with position:absolute.
+export const breakdownPopupStore = writable({ show: false, x: 0, y: 0, data: null, pinned: false });
+
 // Incremented each time any FeatureCard header is clicked (expand/collapse).
 // FeaturePanel subscribes to this to know it must recompute arrow positions
 // throughout the 250 ms card animation.

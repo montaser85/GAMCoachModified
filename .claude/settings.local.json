@@ -7,7 +7,8 @@
       "Bash(python3:*)",
       "Bash(node:*)",
       "Bash(python:*)",
-      "Bash(pip install:*)"
+      "Bash(pip install:*)",
+      "Bash(find 'D:\\\\OSU\\\\Dr B research group\\\\GAM_Coach\\\\gam-coach_modified\\\\gamcoach-ui\\\\src' -name typedef.js -o -name typedef.d.ts -o -name *typedef*)"
     ]
   }
 }
