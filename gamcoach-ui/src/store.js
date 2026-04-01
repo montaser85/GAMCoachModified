@@ -103,3 +103,6 @@ export const breakdownPopupStore = writable({ show: false, x: 0, y: 0, data: nul
 // FeaturePanel subscribes to this to know it must recompute arrow positions
 // throughout the 250 ms card animation.
 export const cardToggleStore = writable(0);
+
+// Controls the Plan Comparison modal visibility.
+export const compareOpenStore = writable(false);

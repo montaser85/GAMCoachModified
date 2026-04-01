@@ -55,15 +55,14 @@ $card-h-padding: 16px;
   .link-chain-wrap {
     position: relative;
     display: inline-flex;
-    align-items: flex-end;   // chain icon sits at bottom-left; badge at top-right
+    align-items: center;
+    justify-content: center;
     line-height: 0;
-    padding-top: 7px;        // vertical space reserved for the badge
-    padding-right: 16px;     // horizontal space reserved for the badge
+    width: 22px;
+    height: 22px;
 
     .link-badge {
-      position: absolute;
-      top: 0;
-      right: 0;
+      position: relative;
       width: 18px;
       height: 18px;
       background: transparent;

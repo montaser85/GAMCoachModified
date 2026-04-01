@@ -231,6 +231,11 @@
     // Update the local EBM
     plan.ebmLocal.updateFeature(feature.data.name, newValue);
 
+    // Persist the user's chosen value on the feature object so that when the
+    // plan tab is revisited (causing FeatureCard to remount), the slider
+    // re-initialises to this value instead of falling back to coachValue.
+    feature.hypotheticalValue = newValue;
+
     // Update the store
     planStore.set(plan);
 

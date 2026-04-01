@@ -9,8 +9,11 @@
     confirmModalConfigStore,
     bookmarkConfigStore,
     inputFormConfigStore,
-    checkModalConfigStore
+    checkModalConfigStore,
+    compareOpenStore
   } from '../../store';
+
+  import CompareModal from '../compare-modal/CompareModal.svelte';
 
   import ScorePanel from '../score-panel/ScorePanel.svelte';
   import '../../typedef';
@@ -51,6 +54,9 @@
 
   /** @type {Map<number, Plan>} */
   const localPlans = new Map();
+  // Incremented each time any plan store emits — passed to CompareModal so it
+  // can reactively rebuild the comparison table without needing its own store subscriptions.
+  let localPlansVersion = 0;
 
   // Set up tooltip
   unsubscribes.push(
@@ -286,6 +292,7 @@
    */
   const planStoreUpdated = (value, planIndex) => {
     localPlans.set(planIndex, value);
+    localPlansVersion += 1; // triggers CompareModal reactive rebuild
 
     // Set up the bookmark config features property
     if (bookmarkConfig.features === null) {
@@ -423,6 +430,14 @@
   };
 
   /**
+   * Toggle the plan comparison modal.
+   */
+  const compareClicked = () => {
+    compareOpenStore.update(v => !v);
+    logger?.addLog({ eventName: 'compare opened', elementName: 'compare' });
+  };
+
+  /**
    * Open the check modal for manual prediction testing
    */
   const checkClicked = () => {
@@ -468,6 +483,16 @@
       </span>
     </div>
     <div class="coach-controls">
+      <div class="icon-wrapper" on:click={compareClicked} title="Compare all plans side by side">
+        <svg class="compare-svg" viewBox="0 0 20 20" width="18" height="18"
+             fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="1.5" y="2.5" width="7" height="15" rx="1.5"/>
+          <rect x="11.5" y="2.5" width="7" height="15" rx="1.5"/>
+          <line x1="5" y1="6.5" x2="5" y2="6.5"/>
+          <line x1="15" y1="6.5" x2="15" y2="6.5"/>
+        </svg>
+        <span class="icon-label">Compare</span>
+      </div>
       <div class="icon-wrapper" on:click={bookmarkClicked} title="Saved plans">
         <div class="svg-icon icon-star-outline" />
         <span class="icon-label">Bookmarks</span>
@@ -581,8 +606,23 @@
       </div>
     {/if}
   </div>
+
+  <!-- Plan comparison modal — rendered inside coach-panel so it has access
+       to localPlans and planLabels; position:fixed in CSS places it above all. -->
+  <CompareModal
+    {plans}
+    {planLabels}
+    {localPlans}
+    {localPlansVersion}
+  />
 </div>
 
 <style lang="scss">
   @import './CoachPanel.scss';
+
+  /* Compare button SVG icon — inherits current-color from .icon-wrapper */
+  .compare-svg {
+    display: block;
+    color: inherit;
+  }
 </style>
