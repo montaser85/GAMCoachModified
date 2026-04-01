@@ -161,6 +161,14 @@ export class ScorePanel {
       // Update isInRange from the score panel svelte
       this.updateInRange(this.isInRange);
     }
+
+    // If the breakdown popup is pinned, refresh its data live so it stays
+    // in sync with whatever slider the user just moved.
+    breakdownPopupStore.update(v => {
+      if (!v.pinned) return v;
+      const data = this.computeBreakdown(this._propagatedFeatures);
+      return { ...v, data };
+    });
   }
 
   destroy() {
