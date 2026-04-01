@@ -614,6 +614,7 @@
 
       return {
         path: `M${bundleX},${bundleY} L${x2},${y2}`,
+        endX: x2, endY: y2,
         labelX: lx, labelY: ly,
         labelText: `${DISPLAY_NAMES[name] || name} changed`
       };
@@ -624,41 +625,46 @@
       x: d.labelX, y: d.labelY, text: d.labelText
     })));
 
-    // ── Step 4: dismiss button just beyond the bundle origin ─────────────
-    // Default: btnPad px past the bundle origin in the dominant direction so
-    // the circle (r=13) sits fully outside the source card.
-    // If that position overlaps any label rect we nudge the button
-    // PERPENDICULAR to the dominant direction (not along it — moving further
-    // along the dominant direction would bring it closer to the labels).
-    // We try both perpendicular sides in increasing steps until clear.
-    const btnPad = 22;
-    const btnR   = 14;   // slightly larger than visual r=13 for a safety margin
-    const perpUx = -domUy;
-    const perpUy =  domUx;
+    // ── Step 4: dismiss button beside the last arrowhead ─────────────────
+    // Start from the last (bottom-most) arrowhead tip and try candidate
+    // positions in order until one doesn't overlap any feature card.
+    const last   = targetData[targetData.length - 1];
+    const adxL   = last.endX - bundleX;
+    const adyL   = last.endY - bundleY;
+    const alenL  = Math.sqrt(adxL * adxL + adyL * adyL);
+    // Unit vectors: perpendicular (clockwise) and reverse-arrow direction
+    const pUx    = alenL > 0 ?  adyL / alenL : 1;
+    const pUy    = alenL > 0 ? -adxL / alenL : 0;
+    const rUx    = alenL > 0 ? -adxL / alenL : 0;   // back along arrow
+    const rUy    = alenL > 0 ? -adyL / alenL : -1;
 
-    const overlapsLabel = (bx, by) => targetData.some(d => {
-      const hw = (d.labelText.length * 8.8 + 20) / 2;
-      return bx + btnR > d.labelX - hw  &&
-             bx - btnR < d.labelX + hw  &&
-             by + btnR > d.labelY - 20  &&   // label rect top
-             by - btnR < d.labelY + 4;        // label rect bottom
-    });
+    // Collect all feature-card bounding rects for overlap testing.
+    const btnR = 14;
+    const cardRects = Array.from(
+      document.querySelectorAll('[data-feature-name]')
+    ).map(el => el.getBoundingClientRect());
 
-    let btnX = bundleX + domUx * btnPad;
-    let btnY = bundleY + domUy * btnPad;
+    const overlapsCard = (bx, by) => cardRects.some(r =>
+      bx + btnR > r.left && bx - btnR < r.right &&
+      by + btnR > r.top  && by - btnR < r.bottom
+    );
 
-    if (overlapsLabel(btnX, btnY)) {
-      let placed = false;
-      // Try perpendicular nudges on both sides, smallest step first
-      outer: for (const nudge of [18, 32, 48, 65]) {
-        for (const sign of [1, -1]) {
-          const tx = btnX + perpUx * sign * nudge;
-          const ty = btnY + perpUy * sign * nudge;
-          if (!overlapsLabel(tx, ty)) {
-            btnX = tx; btnY = ty; placed = true; break outer;
-          }
-        }
-      }
+    // Candidate positions: perp both sides at increasing distances,
+    // then pull back along the arrow (between tip and source).
+    const candidates = [
+      [ pUx,  pUy, 26], [ -pUx, -pUy, 26],
+      [ pUx,  pUy, 40], [ -pUx, -pUy, 40],
+      [ pUx,  pUy, 56], [ -pUx, -pUy, 56],
+      [ rUx,  rUy, 30], [ rUx,   rUy, 50],
+    ];
+
+    let btnX = last.endX + pUx * 26;
+    let btnY = last.endY + pUy * 26;
+
+    for (const [ux, uy, dist] of candidates) {
+      const cx = last.endX + ux * dist;
+      const cy = last.endY + uy * dist;
+      if (!overlapsCard(cx, cy)) { btnX = cx; btnY = cy; break; }
     }
 
     arrowDismissBtn = { x: btnX, y: btnY };
@@ -1423,7 +1429,7 @@
             aria-label='Hide dependency arrows'
             on:keydown={e => e.key === 'Enter' && dismissArrows()}
           >
-            <title>Click to hide the dependency arrows</title>
+            <title>Click to hide ALL the dependency arrows</title>
             <circle
               cx={arrowDismissBtn.x}
               cy={arrowDismissBtn.y}
