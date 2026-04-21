@@ -106,3 +106,10 @@ export const cardToggleStore = writable(0);
 
 // Controls the Plan Comparison modal visibility.
 export const compareOpenStore = writable(false);
+
+// Sidebar open/closed state
+export const historySidebarOpenStore = writable(false);
+
+// History entries per plan: Map<planIndex, HistoryEntry[]>
+// Each HistoryEntry contains: { entryNumber, score, probPct, features, timestamp, isPinned, previousScore }
+export const historyEntriesStore = writable(new Map());

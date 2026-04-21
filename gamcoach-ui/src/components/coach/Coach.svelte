@@ -2,6 +2,7 @@
   //@ts-check
   import FeaturePanel from '../feature-panel/FeaturePanel.svelte';
   import CoachPanel from '../coach-panel/CoachPanel.svelte';
+  import HistorySidebar from '../history-sidebar/HistorySidebar.svelte';
 
   import { EBM } from '../../ebm/ebm';
   import {
@@ -22,7 +23,9 @@
     inputFormConfigStore,
     ebmStore,
     constraintsStore,
-    bookmarkConfigStore
+    bookmarkConfigStore,
+    historySidebarOpenStore,
+    historyEntriesStore
   } from '../../store';
 
   // import modelDataLC from '../../config/data/lc-classifier.json';
@@ -136,49 +139,119 @@
     unsubscribes.forEach((unsub) => unsub());
   });
 
+  /**
+   * Restore a plan to a saved history state
+   */
+  const handleRestoreEntry = (entry) => {
+    if (!plans || entry.planIndex === undefined) return;
+
+    const planStore = plans.planStores.get(entry.planIndex);
+    if (!planStore) return;
+
+    // Get current plan from store
+    let plan;
+    const unsubscribe = planStore.subscribe((value) => {
+      plan = value;
+    });
+    unsubscribe();
+
+    if (!plan) return;
+
+    // Restore all feature values from the history entry
+    for (const feature of entry.features) {
+      // Find the feature object to get the correct name
+      const planFeature = plan.features.find((f) => f.featureID === feature.featureID);
+      if (planFeature) {
+        const featureName = planFeature.data?.name;
+        if (featureName) {
+          plan.ebmLocal.updateFeature(featureName, feature.newValue);
+        }
+      }
+    }
+
+    // Update the plan store to trigger reactivity
+    planStore.set(plan);
+  };
+
+  /**
+   * Toggle pin on a history entry
+   */
+  const handleTogglePin = (planIndex, entryIndex, newPinnedState) => {
+    historyEntriesStore.update((map) => {
+      const entries = map.get(planIndex) || [];
+      const entry = entries[entryIndex];
+      if (entry) {
+        entry.isPinned = newPinnedState;
+      }
+      const newMap = new Map(map);
+      newMap.set(planIndex, [...entries]);
+      return newMap;
+    });
+  };
+
   $: curExample && !initialized && initModel();
 </script>
 
-<div class="coach-panel-wrapper">
-  <CoachPanel
-    {windowLoaded}
-    bind:plans
-    {logger}
-    {ebm}
-    modelData={curModelData}
-    on:regenerateClicked={() =>
-      regeneratePlans(
-        constraints,
-        curModelData,
-        curExample,
-        plans,
-        plansUpdated,
-        logger
-      )}
-  />
+<div class="main-content-wrapper" class:sidebar-open={$historySidebarOpenStore}>
+  <div class="coach-panel-wrapper">
+    <CoachPanel
+      {windowLoaded}
+      bind:plans
+      {logger}
+      {ebm}
+      modelData={curModelData}
+      on:regenerateClicked={() =>
+        regeneratePlans(
+          constraints,
+          curModelData,
+          curExample,
+          plans,
+          plansUpdated,
+          logger
+        )}
+    />
+  </div>
+
+  {#if plans === null}
+    <div class="feature-panel-wrapper">
+      <FeaturePanel {logger} planStore={null} {constraintsStore} />
+    </div>
+  {:else}
+    {#key plans.activePlanIndex}
+      <div class="feature-panel-wrapper">
+        <FeaturePanel
+          {windowLoaded}
+          {logger}
+          planStore={plans.planStores.has(plans.activePlanIndex)
+            ? plans.planStores.get(plans.activePlanIndex)
+            : null}
+          {constraintsStore}
+        />
+      </div>
+    {/key}
+  {/if}
 </div>
 
-{#if plans === null}
-  <div class="feature-panel-wrapper">
-    <FeaturePanel {logger} planStore={null} {constraintsStore} />
-  </div>
-{:else}
-  {#key plans.activePlanIndex}
-    <div class="feature-panel-wrapper">
-      <FeaturePanel
-        {windowLoaded}
-        {logger}
-        planStore={plans.planStores.has(plans.activePlanIndex)
-          ? plans.planStores.get(plans.activePlanIndex)
-          : null}
-        {constraintsStore}
-      />
-    </div>
-  {/key}
-{/if}
+<!-- History Sidebar -->
+<HistorySidebar
+  activePlanIndex={plans?.activePlanIndex || 0}
+  onRestoreEntry={handleRestoreEntry}
+  onTogglePin={handleTogglePin}
+/>
 
 <style lang="scss">
   @import '../../define';
+
+  .main-content-wrapper {
+    display: flex;
+    flex-direction: column;
+    transition: padding-right 200ms ease-out;
+    padding-right: 0;
+
+    &.sidebar-open {
+      padding-right: 320px;
+    }
+  }
 
   .main-standalone {
     display: flex;

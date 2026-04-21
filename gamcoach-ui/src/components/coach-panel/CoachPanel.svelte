@@ -10,8 +10,12 @@
     bookmarkConfigStore,
     inputFormConfigStore,
     checkModalConfigStore,
-    compareOpenStore
+    compareOpenStore,
+    propagatedFeaturesStore,
+    historyEntriesStore,
+    historySidebarOpenStore
   } from '../../store';
+  import { createHistoryEntry, addHistoryEntry } from '../../utils/historyManager';
 
   import CompareModal from '../compare-modal/CompareModal.svelte';
 
@@ -58,10 +62,24 @@
   // can reactively rebuild the comparison table without needing its own store subscriptions.
   let localPlansVersion = 0;
 
+  // History tracking
+  /** @type {Map<number, number>} Track previous score for each plan for history delta */
+  const previousScores = new Map();
+  /** @type {Map<number, NodeJS.Timeout>} Track pending history entry timeouts */
+  const pendingHistoryTimeouts = new Map();
+  let propagatedFeatures = new Set();
+
   // Set up tooltip
   unsubscribes.push(
     tooltipConfigStore.subscribe((value) => {
       tooltipConfig = value;
+    })
+  );
+
+  // Track propagated features for history
+  unsubscribes.push(
+    propagatedFeaturesStore.subscribe((value) => {
+      propagatedFeatures = value;
     })
   );
 
@@ -294,6 +312,56 @@
     localPlans.set(planIndex, value);
     localPlansVersion += 1; // triggers CompareModal reactive rebuild
 
+    // ─── History tracking: capture entry if score changed ─────────────────
+    const currentScore = value.ebmLocal.predScore;
+    const previousScore = previousScores.get(planIndex);
+
+    if (previousScore === undefined) {
+      // First update: just record the score, don't create entry
+      previousScores.set(planIndex, currentScore);
+      return;
+    }
+
+    // If score didn't change, do nothing
+    if (previousScore === currentScore) {
+      return;
+    }
+
+    // Score changed! Cancel any pending timeout for this plan
+    const pendingTimeout = pendingHistoryTimeouts.get(planIndex);
+    if (pendingTimeout) {
+      clearTimeout(pendingTimeout);
+    }
+
+    // Set a new timeout to create the entry after 800ms of no changes
+    // This waits for the user to "settle" on a new value
+    const newTimeout = setTimeout(() => {
+      historyEntriesStore.update((historyMap) => {
+        // Get the previous entry (if any) to compare against
+        const previousEntry = (historyMap.get(planIndex) || []).slice(-1)[0] || null;
+
+        const entry = createHistoryEntry(
+          planIndex,
+          value,
+          propagatedFeatures,
+          previousScore,
+          1,  // Will be renumbered by addHistoryEntry
+          previousEntry  // Pass previous entry as baseline
+        );
+
+        entry.planIndex = planIndex; // Store plan index for restoration
+
+        return addHistoryEntry(historyMap, planIndex, entry);
+      });
+
+      // Update previous score for next comparison
+      previousScores.set(planIndex, currentScore);
+      pendingHistoryTimeouts.delete(planIndex);
+    }, 800);
+
+    // Track this timeout so we can cancel it if score changes again
+    pendingHistoryTimeouts.set(planIndex, newTimeout);
+
     // Set up the bookmark config features property
     if (bookmarkConfig.features === null) {
       bookmarkConfig.features = value.features;
@@ -316,6 +384,10 @@
     plans.planStores.forEach((planStore, planIndex) => {
       // Add this plan index to a local array and subscribe the store
       if (!localPlans.has(planIndex)) {
+        // Initialize history tracking for this plan
+        // Use undefined so first update won't create an entry
+        previousScores.set(planIndex, undefined);
+
         unsubscribes.push(
           planStore.subscribe((value) => planStoreUpdated(value, planIndex))
         );
@@ -467,6 +539,11 @@
 
   onDestroy(() => {
     unsubscribes.forEach((unsub) => unsub());
+    // Clean up any pending history timeouts
+    pendingHistoryTimeouts.forEach((timeout) => {
+      clearTimeout(timeout);
+    });
+    pendingHistoryTimeouts.clear();
   });
 
   $: windowLoaded && plans && !initialized && initPlanPanel();
@@ -492,6 +569,13 @@
           <line x1="15" y1="6.5" x2="15" y2="6.5"/>
         </svg>
         <span class="icon-label">Compare</span>
+      </div>
+      <div class="icon-wrapper" on:click={() => historySidebarOpenStore.update(v => !v)} title="Exploration history">
+        <svg viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="10" cy="10" r="8.5"/>
+          <polyline points="10,6 10,10 14,12"/>
+        </svg>
+        <span class="icon-label">History</span>
       </div>
       <div class="icon-wrapper" on:click={bookmarkClicked} title="Saved plans">
         <div class="svg-icon icon-star-outline" />
