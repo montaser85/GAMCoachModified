@@ -13,7 +13,8 @@
     compareOpenStore,
     propagatedFeaturesStore,
     historyEntriesStore,
-    historySidebarOpenStore
+    historySidebarOpenStore,
+    isRestoringEntryStore
   } from '../../store';
   import { createHistoryEntry, addHistoryEntry } from '../../utils/historyManager';
 
@@ -70,6 +71,7 @@
   /** @type {Map<number, NodeJS.Timeout>} Track pending history entry timeouts */
   const pendingHistoryTimeouts = new Map();
   let propagatedFeatures = new Set();
+  let isRestoringEntry = false;
 
   // Set up tooltip
   unsubscribes.push(
@@ -82,6 +84,13 @@
   unsubscribes.push(
     propagatedFeaturesStore.subscribe((value) => {
       propagatedFeatures = value;
+    })
+  );
+
+  // Track restoration state
+  unsubscribes.push(
+    isRestoringEntryStore.subscribe((value) => {
+      isRestoringEntry = value;
     })
   );
 
@@ -324,6 +333,11 @@
       return;
     }
 
+    // If we're restoring an entry, skip history entry creation
+    if (isRestoringEntry) {
+      return;
+    }
+
     // If score didn't change, do nothing
     if (previousScore === currentScore) {
       return;
@@ -432,7 +446,6 @@
           })
         );
 
-        console.log('Adding to local plan', planIndex);
       }
     });
   };

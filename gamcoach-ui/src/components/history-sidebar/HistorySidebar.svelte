@@ -31,12 +31,20 @@
    */
   const handleEntryClick = (e, entryIndex) => {
     const rect = e.currentTarget.getBoundingClientRect();
+
+    // Center the tooltip in the sidebar (sidebar is 320px wide)
+    // Sidebar center = window.innerWidth - 160
+    const x = window.innerWidth - 160;
+
     confirmTooltip = {
-      x: rect.left + rect.width / 2,
+      x: x,
       y: rect.top - 10,
       entryIndex
     };
-    confirmingEntry = planEntries[entryIndex];
+    // Account for reversed display order: if we're showing 3 entries reversed,
+    // displayIndex 0 corresponds to planEntries[2], displayIndex 1 to planEntries[1], etc.
+    const actualIndex = planEntries.length - 1 - entryIndex;
+    confirmingEntry = planEntries[actualIndex];
   };
 
   /**
@@ -88,9 +96,6 @@
           {#each [...planEntries].reverse() as entry, idx (idx)}
             <div
               class="entry-card"
-              on:click={(e) => handleEntryClick(e, idx)}
-              role="button"
-              tabindex="0"
               title={entry.timestamp ? new Date(entry.timestamp).toLocaleString() : ''}
             >
               <!-- Entry Header -->
@@ -99,6 +104,13 @@
                   <span class="entry-number">Entry {entry.entryNumber}</span>
                   <span class="entry-score">{entry.probPct}%</span>
                 </div>
+                <button
+                  class="restore-btn"
+                  on:click={(e) => handleEntryClick(e, idx)}
+                  title="Restore this entry"
+                >
+                  Restore
+                </button>
               </div>
 
               <!-- Direct Features -->
@@ -261,7 +273,7 @@
   .entry-header {
     display: flex;
     justify-content: space-between;
-    align-items: flex-start;
+    align-items: center;
     margin-bottom: 10px;
     gap: 8px;
   }
@@ -272,6 +284,28 @@
     gap: 8px;
     flex: 1;
     min-width: 0;
+  }
+
+  .restore-btn {
+    flex: 0 0 auto;
+    padding: 4px 12px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    background: $blue-600;
+    color: white;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 150ms;
+    white-space: nowrap;
+
+    &:hover {
+      background: $blue-700;
+    }
+
+    &:active {
+      background: $blue-800;
+    }
   }
 
   .entry-number {

@@ -15,7 +15,7 @@
 
   import d3 from '../../utils/d3-import';
   import { Logger } from '../../utils/logger';
-  import { onMount, onDestroy } from 'svelte';
+  import { onMount, onDestroy, tick } from 'svelte';
   import { writable } from 'svelte/store';
   import { fade, fly } from 'svelte/transition';
   import {
@@ -25,7 +25,10 @@
     constraintsStore,
     bookmarkConfigStore,
     historySidebarOpenStore,
-    historyEntriesStore
+    historyEntriesStore,
+    isRestoringEntryStore,
+    propagatedFeaturesStore,
+    featureValueOverrideStore
   } from '../../store';
 
   // import modelDataLC from '../../config/data/lc-classifier.json';
@@ -39,6 +42,7 @@
   export let logger = null;
 
   let initialized = false;
+  let restorationCounter = 0;  // Used to force FeaturePanel re-render on restoration
   const unsubscribes = [];
 
   // Set up tooltip
@@ -142,7 +146,7 @@
   /**
    * Restore a plan to a saved history state
    */
-  const handleRestoreEntry = (entry) => {
+  const handleRestoreEntry = async (entry) => {
     if (!plans || entry.planIndex === undefined) return;
 
     const planIndex = entry.planIndex;
@@ -161,6 +165,9 @@
     // Restore ALL feature values from the complete state stored in the entry
     // Use allFeatureValues which contains the complete model state at that entry
     if (entry.allFeatureValues) {
+      let updateCount = 0;
+
+      // Use updateFeature which handles all necessary updates and triggering
       for (const feature of plan.features) {
         const featureID = feature.featureID;
         const restoredValue = entry.allFeatureValues[featureID];
@@ -169,20 +176,55 @@
           const featureName = feature.data?.name;
           if (featureName) {
             plan.ebmLocal.updateFeature(featureName, restoredValue);
+            updateCount++;
           }
+
+          // CRITICAL: Set hypotheticalValue to the restored value so FeatureCard
+          // initializes with the correct restored value when remounting
+          feature.hypotheticalValue = restoredValue;
         }
       }
     }
 
+    // Clear propagated features since we're in a clean restored state
+    propagatedFeaturesStore.set(new Set());
+
+    // Clear feature value overrides to ensure FeaturePanel shows the restored values
+    featureValueOverrideStore.set({});
+
+    // IMPORTANT: Set the restoration flag BEFORE updating the plan
+    // This tells the history system to skip creating a new entry when the plan updates
+    isRestoringEntryStore.set(true);
+
     // Update the plan store to trigger reactivity
-    planStore.set(plan);
+    // Use update() instead of set() to ensure proper notification
+    planStore.update(() => plan);
+
+    // Reset the restoration flag after a brief delay to let the store update complete
+    setTimeout(() => {
+      isRestoringEntryStore.set(false);
+    }, 50);
+
+    // Wait for Svelte to process the planStore update before triggering the FeaturePanel re-render
+    // This ensures the updated plan values are available when FeaturePanel subscribes
+    await tick();
+
+    // Increment restoration counter to force FeaturePanel re-render
+    restorationCounter++;
 
     // Update history: move restored entry to the end and renumber all entries
     historyEntriesStore.update((historyMap) => {
       const entries = historyMap.get(planIndex) || [];
 
-      // Find the index of the restored entry
-      const restoredEntryIndex = entries.findIndex(e => e.entryNumber === entry.entryNumber);
+      // Find the index of the restored entry by matching the exact entry object or entryNumber
+      let restoredEntryIndex = -1;
+      for (let i = 0; i < entries.length; i++) {
+        // Match by entryNumber and score to be sure we have the right entry
+        if (entries[i].entryNumber === entry.entryNumber && entries[i].score === entry.score) {
+          restoredEntryIndex = i;
+          break;
+        }
+      }
 
       if (restoredEntryIndex !== -1) {
         // Remove the restored entry from its current position
@@ -234,7 +276,7 @@
       <FeaturePanel {logger} planStore={null} {constraintsStore} />
     </div>
   {:else}
-    {#key plans.activePlanIndex}
+    {#key `${plans.activePlanIndex}-${restorationCounter}`}
       <div class="feature-panel-wrapper">
         <FeaturePanel
           {windowLoaded}

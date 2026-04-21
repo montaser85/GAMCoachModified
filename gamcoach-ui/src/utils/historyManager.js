@@ -74,7 +74,6 @@ export function createHistoryEntry(planIndex, plan, propagatedFeatures, previous
     } catch (error) {
       // Silently skip features with errors in propagation logic
       // They will be treated as direct changes if they appear in the history
-      console.warn(`Error processing feature ${feature.featureID} for history:`, error);
     }
   }
 

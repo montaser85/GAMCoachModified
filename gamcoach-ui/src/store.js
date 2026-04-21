@@ -113,3 +113,6 @@ export const historySidebarOpenStore = writable(false);
 // History entries per plan: Map<planIndex, HistoryEntry[]>
 // Each HistoryEntry contains: { entryNumber, score, probPct, features, timestamp, previousScore }
 export const historyEntriesStore = writable(new Map());
+
+// Flag to indicate when we're restoring a history entry (to prevent new entry creation)
+export const isRestoringEntryStore = writable(false);
