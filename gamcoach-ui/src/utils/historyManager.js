@@ -16,55 +16,77 @@
  * @param {number} previousScore - Previous probability (for delta calculation)
  * @param {number} entryNumber - Sequential entry number
  * @param {HistoryEntry} previousEntry - Previous entry (to compare against) or null for first entry
+ * @param {object} initialFeatureState - Initial feature state (after coach suggestions) for first entry
  * @returns {HistoryEntry}
  */
-export function createHistoryEntry(planIndex, plan, propagatedFeatures, previousScore, entryNumber, previousEntry) {
-  const features = [];
+export function createHistoryEntry(planIndex, plan, propagatedFeatures, previousScore, entryNumber, previousEntry, initialFeatureState) {
+  const changedFeatures = [];
+  const unchangedFeatures = [];
 
-  // Determine the baseline values: either from previous entry or from original input
+  // Determine the baseline values: either from previous entry's complete state, initial state, or original input
   const baselineValues = {};
-  if (previousEntry && previousEntry.features) {
-    // Use previous entry's final values as baseline
-    for (const feat of previousEntry.features) {
-      baselineValues[feat.featureID] = feat.newValue;
-    }
-    // Also add unchanged features from previous entry
-    for (const feature of plan.features) {
-      if (!baselineValues.hasOwnProperty(feature.featureID)) {
-        // This feature wasn't in previous entry, so use original
-        baselineValues[feature.featureID] = plan.curExample[feature.featureID];
-      }
-    }
+  if (previousEntry && previousEntry.allFeatureValues) {
+    // Use the complete feature state from previous entry as baseline
+    // This includes all features, not just the ones that changed
+    Object.assign(baselineValues, previousEntry.allFeatureValues);
+  } else if (initialFeatureState) {
+    // First entry: use the initial state (after coach suggestions were applied)
+    Object.assign(baselineValues, initialFeatureState);
   } else {
-    // First entry: use original values as baseline
+    // Fallback: use original values as baseline
     for (const feature of plan.features) {
       baselineValues[feature.featureID] = plan.curExample[feature.featureID];
     }
   }
 
-  // Capture features that changed in THIS step (compared to previous state)
+  // Capture all features - both changed and unchanged
   for (const feature of plan.features) {
-    const currentVal = plan.ebmLocal.sample[feature.featureID];
-    const baselineVal = baselineValues[feature.featureID];
+    try {
+      const currentVal = plan.ebmLocal.sample[feature.featureID];
+      const baselineVal = baselineValues[feature.featureID];
+      const displayName = feature.data?.description?.displayName || feature.data?.name || `Feature ${feature.featureID}`;
 
-    // Only include features that changed in THIS step
-    if (currentVal !== baselineVal) {
-      const isAuto = propagatedFeatures && propagatedFeatures.has(feature.data.name);
+      // Check if feature changed
+      if (currentVal !== baselineVal) {
+        // Determine if this feature was auto-changed (propagated)
+        // Check if the feature name appears in propagatedFeatures (same logic as arrows)
+        const featureName = feature.data?.name;
+        const isAuto = propagatedFeatures && featureName && propagatedFeatures.has(featureName);
 
-      features.push({
-        featureID: feature.featureID,
-        name: feature.data?.description?.displayName || feature.data?.name || `Feature ${feature.featureID}`,
-        oldValue: baselineVal,
-        newValue: currentVal,
-        displayOldValue: formatValue(baselineVal, feature),
-        displayNewValue: formatValue(currentVal, feature),
-        isAuto
-      });
+        changedFeatures.push({
+          featureID: feature.featureID,
+          name: displayName,
+          oldValue: baselineVal,
+          newValue: currentVal,
+          displayOldValue: formatValue(baselineVal, feature),
+          displayNewValue: formatValue(currentVal, feature),
+          isAuto: isAuto || false  // Default to false if propagation check fails
+        });
+      } else {
+        // Feature didn't change - add to unchanged list
+        unchangedFeatures.push({
+          featureID: feature.featureID,
+          name: displayName,
+          value: currentVal,
+          displayValue: formatValue(currentVal, feature)
+        });
+      }
+    } catch (error) {
+      // Silently skip features with errors in propagation logic
+      // They will be treated as direct changes if they appear in the history
+      console.warn(`Error processing feature ${feature.featureID} for history:`, error);
     }
   }
 
   const currentProb = Math.round(sigmoid(plan.ebmLocal.predScore) * 100);
   const previousProb = Math.round(sigmoid(previousScore) * 100);
+
+  // Store the complete current state of ALL features (not just changed ones)
+  // This is needed to correctly determine what changed in the NEXT entry
+  const allFeatureValues = {};
+  for (const feature of plan.features) {
+    allFeatureValues[feature.featureID] = plan.ebmLocal.sample[feature.featureID];
+  }
 
   return {
     entryNumber,
@@ -72,9 +94,10 @@ export function createHistoryEntry(planIndex, plan, propagatedFeatures, previous
     probPct: currentProb,
     previousScore,
     previousProbPct: previousProb,
-    features,
-    timestamp: Date.now(),
-    isPinned: false
+    features: changedFeatures,  // Features that changed (DIRECT or AUTO)
+    unchangedFeatures: unchangedFeatures,  // Features that didn't change
+    allFeatureValues,  // Store complete state for next baseline
+    timestamp: Date.now()
   };
 }
 
@@ -123,24 +146,12 @@ function sigmoid(x) {
 export function addHistoryEntry(historyMap, planIndex, entry) {
   const entries = historyMap.get(planIndex) || [];
 
-  // Renumber all entries after adding
+  // Add the new entry
   entries.push(entry);
 
-  // Enforce 10-entry cap
+  // Enforce 10-entry cap (remove oldest entry if exceeded)
   if (entries.length > 10) {
-    // Find how many pinned entries there are
-    const pinnedCount = entries.filter(e => e.isPinned).length;
-
-    if (pinnedCount < 3) {
-      // Remove oldest unpinned entry
-      const unpinnedIdx = entries.findIndex(e => !e.isPinned);
-      if (unpinnedIdx !== -1) {
-        entries.splice(unpinnedIdx, 1);
-      }
-    } else {
-      // All 3 pins used, remove oldest entry (pinned or not)
-      entries.shift();
-    }
+    entries.shift();
   }
 
   // Renumber all entries
@@ -151,34 +162,6 @@ export function addHistoryEntry(historyMap, planIndex, entry) {
   // Ensure we have a copy of the array with the updated entries
   const newMap = new Map(historyMap);
   newMap.set(planIndex, [...entries]);  // Create a new array reference for reactivity
-  return newMap;
-}
-
-/**
- * Toggle pin on a history entry
- * @param {Map<number, HistoryEntry[]>} historyMap - Map of plan index to entries
- * @param {number} planIndex - Plan index
- * @param {number} entryIndex - Entry index within that plan
- * @returns {Map<number, HistoryEntry[]>} - Updated history map
- */
-export function toggleEntryPin(historyMap, planIndex, entryIndex) {
-  const entries = historyMap.get(planIndex) || [];
-  const entry = entries[entryIndex];
-
-  if (!entry) return historyMap;
-
-  // Count current pins
-  const currentPins = entries.filter(e => e.isPinned).length;
-
-  // If trying to pin and already at 3, do nothing
-  if (!entry.isPinned && currentPins >= 3) {
-    return historyMap;
-  }
-
-  entry.isPinned = !entry.isPinned;
-
-  const newMap = new Map(historyMap);
-  newMap.set(planIndex, [...entries]);
   return newMap;
 }
 

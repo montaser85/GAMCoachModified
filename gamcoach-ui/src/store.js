@@ -111,5 +111,5 @@ export const compareOpenStore = writable(false);
 export const historySidebarOpenStore = writable(false);
 
 // History entries per plan: Map<planIndex, HistoryEntry[]>
-// Each HistoryEntry contains: { entryNumber, score, probPct, features, timestamp, isPinned, previousScore }
+// Each HistoryEntry contains: { entryNumber, score, probPct, features, timestamp, previousScore }
 export const historyEntriesStore = writable(new Map());

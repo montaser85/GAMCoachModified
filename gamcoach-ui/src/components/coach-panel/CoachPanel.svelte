@@ -65,6 +65,8 @@
   // History tracking
   /** @type {Map<number, number>} Track previous score for each plan for history delta */
   const previousScores = new Map();
+  /** @type {Map<number, object>} Track initial feature state (after coach suggestions loaded) */
+  const initialFeatureStates = new Map();
   /** @type {Map<number, NodeJS.Timeout>} Track pending history entry timeouts */
   const pendingHistoryTimeouts = new Map();
   let propagatedFeatures = new Set();
@@ -333,6 +335,14 @@
       clearTimeout(pendingTimeout);
     }
 
+    // IMPORTANT: Capture propagatedFeatures and currentScore NOW so we can create the entry
+    // with the correct values 800ms later. If we wait, these values might change.
+    const capturedPropagatedFeatures = new Set(propagatedFeatures);
+    const capturedCurrentScore = currentScore;
+    const capturedPreviousScore = previousScore;
+    const capturedPlanValue = value;  // Capture the plan state too
+
+
     // Set a new timeout to create the entry after 800ms of no changes
     // This waits for the user to "settle" on a new value
     const newTimeout = setTimeout(() => {
@@ -340,13 +350,25 @@
         // Get the previous entry (if any) to compare against
         const previousEntry = (historyMap.get(planIndex) || []).slice(-1)[0] || null;
 
+        // For the first entry, use the initial feature state (after coach suggestions)
+        // not the original input values
+        if (!previousEntry && !initialFeatureStates.has(planIndex)) {
+          // Fallback: if initial state wasn't captured, use current sample
+          const initialState = {};
+          for (const feature of capturedPlanValue.features) {
+            initialState[feature.featureID] = capturedPlanValue.ebmLocal.sample[feature.featureID];
+          }
+          initialFeatureStates.set(planIndex, initialState);
+        }
+
         const entry = createHistoryEntry(
           planIndex,
-          value,
-          propagatedFeatures,
-          previousScore,
+          capturedPlanValue,  // Use the captured plan from when score changed
+          capturedPropagatedFeatures,  // Use the captured propagation
+          capturedPreviousScore,  // Use the captured previous score
           1,  // Will be renumbered by addHistoryEntry
-          previousEntry  // Pass previous entry as baseline
+          previousEntry,  // Pass previous entry as baseline
+          !previousEntry ? initialFeatureStates.get(planIndex) : null  // Pass initial state for Entry 1
         );
 
         entry.planIndex = planIndex; // Store plan index for restoration
@@ -354,10 +376,15 @@
         return addHistoryEntry(historyMap, planIndex, entry);
       });
 
-      // Update previous score for next comparison
-      previousScores.set(planIndex, currentScore);
+      // IMPORTANT: Clear propagatedFeaturesStore after entry is created
+      // so the next direct change starts fresh without old propagation data
+      propagatedFeaturesStore.set(new Set());
+
       pendingHistoryTimeouts.delete(planIndex);
     }, 800);
+
+    // Update previousScore IMMEDIATELY so next change has correct baseline
+    previousScores.set(planIndex, currentScore);
 
     // Track this timeout so we can cancel it if score changes again
     pendingHistoryTimeouts.set(planIndex, newTimeout);
@@ -388,8 +415,21 @@
         // Use undefined so first update won't create an entry
         previousScores.set(planIndex, undefined);
 
+        let isFirstUpdate = true;
         unsubscribes.push(
-          planStore.subscribe((value) => planStoreUpdated(value, planIndex))
+          planStore.subscribe((value) => {
+            // Capture the initial feature state (after coach suggestions are applied)
+            // on the very first update for this plan
+            if (isFirstUpdate) {
+              const initialState = {};
+              for (const feature of value.features) {
+                initialState[feature.featureID] = value.ebmLocal.sample[feature.featureID];
+              }
+              initialFeatureStates.set(planIndex, initialState);
+              isFirstUpdate = false;
+            }
+            planStoreUpdated(value, planIndex);
+          })
         );
 
         console.log('Adding to local plan', planIndex);

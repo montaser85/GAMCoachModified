@@ -7,13 +7,24 @@
   /** Callback to restore a history entry state: (entry) => void */
   export let onRestoreEntry = null;
 
-  /** Callback to toggle pin on an entry: (planIndex, entryIndex, newPinnedState) => void */
-  export let onTogglePin = null;
 
   let confirmTooltip = null;
   let confirmingEntry = null;
+  let expandedUnchanged = new Set();  // Track which entries have expanded unchanged features
 
   $: planEntries = $historyEntriesStore?.get(activePlanIndex) || [];
+
+  /**
+   * Toggle expanded state for unchanged features
+   */
+  const toggleUnchangedExpanded = (entryIndex) => {
+    if (expandedUnchanged.has(entryIndex)) {
+      expandedUnchanged.delete(entryIndex);
+    } else {
+      expandedUnchanged.add(entryIndex);
+    }
+    expandedUnchanged = expandedUnchanged;  // Trigger reactivity
+  };
 
   /**
    * Show confirmation tooltip when entry is clicked
@@ -47,16 +58,6 @@
     confirmingEntry = null;
   };
 
-  /**
-   * Toggle pin on an entry
-   */
-  const handleTogglePin = (e, entryIndex) => {
-    e.stopPropagation();
-    if (onTogglePin) {
-      const newPinned = !planEntries[entryIndex].isPinned;
-      onTogglePin(activePlanIndex, entryIndex, newPinned);
-    }
-  };
 
   /**
    * Format a feature value for display
@@ -84,10 +85,9 @@
         {#if planEntries.length === 0}
           <div class="no-entries">No entries yet. Start modifying features to build your history.</div>
         {:else}
-          {#each planEntries as entry, idx (idx)}
+          {#each [...planEntries].reverse() as entry, idx (idx)}
             <div
               class="entry-card"
-              class:pinned={entry.isPinned}
               on:click={(e) => handleEntryClick(e, idx)}
               role="button"
               tabindex="0"
@@ -98,24 +98,7 @@
                 <div class="entry-info">
                   <span class="entry-number">Entry {entry.entryNumber}</span>
                   <span class="entry-score">{entry.probPct}%</span>
-                  {#if entry.previousScore !== undefined && idx > 0}
-                    <span class="entry-delta" class:positive={entry.probPct - entry.previousScore > 0}>
-                      {entry.probPct - entry.previousScore > 0 ? '+' : ''}{(entry.probPct - entry.previousScore).toFixed(1)}pp
-                    </span>
-                  {/if}
                 </div>
-                <button
-                  class="pin-btn"
-                  class:pinned={entry.isPinned}
-                  on:click={(e) => handleTogglePin(e, idx)}
-                  title={entry.isPinned ? 'Unpin' : 'Pin (keep max 3)'}
-                >
-                  {#if entry.isPinned}
-                    📌
-                  {:else}
-                    📍
-                  {/if}
-                </button>
               </div>
 
               <!-- Direct Features -->
@@ -145,6 +128,34 @@
                       </span>
                     </div>
                   {/each}
+                </div>
+              {/if}
+
+              <!-- Unchanged Features (Collapsible) -->
+              {#if entry.unchangedFeatures && entry.unchangedFeatures.length > 0}
+                <div class="features-group">
+                  <button
+                    class="group-label-btn unchanged"
+                    on:click={() => toggleUnchangedExpanded(idx)}
+                    title="Toggle unchanged features"
+                  >
+                    <span class="expand-icon">
+                      {expandedUnchanged.has(idx) ? '▼' : '▶'}
+                    </span>
+                    <span>UNCHANGED ({entry.unchangedFeatures.length})</span>
+                  </button>
+                  {#if expandedUnchanged.has(idx)}
+                    <div class="unchanged-features-list">
+                      {#each entry.unchangedFeatures as feat (feat.featureID)}
+                        <div class="feature-row unchanged">
+                          <span class="feature-name">{feat.name}</span>
+                          <span class="feature-values">
+                            {feat.displayValue}
+                          </span>
+                        </div>
+                      {/each}
+                    </div>
+                  {/if}
                 </div>
               {/if}
             </div>
@@ -245,16 +256,6 @@
       border-color: $gray-300;
       box-shadow: 0 2px 4px hsla(0, 0%, 0%, 0.04);
     }
-
-    &.pinned {
-      border-color: $orange-200;
-      background: $orange-50;
-
-      &:hover {
-        border-color: $orange-300;
-        background: $orange-50;
-      }
-    }
   }
 
   .entry-header {
@@ -286,35 +287,6 @@
     color: $gray-900;
   }
 
-  .entry-delta {
-    font-size: 0.75rem;
-    font-weight: 600;
-    color: $red-500;
-
-    &.positive {
-      color: $green-600;
-    }
-  }
-
-  .pin-btn {
-    background: none;
-    border: none;
-    cursor: pointer;
-    font-size: 1rem;
-    padding: 2px 4px;
-    flex: 0 0 auto;
-    opacity: 0.6;
-    transition: opacity 150ms;
-
-    &:hover {
-      opacity: 1;
-    }
-
-    &.pinned {
-      opacity: 1;
-    }
-  }
-
   /* ── Features Groups ─────────────────────────────── */
   .features-group {
     margin-bottom: 8px;
@@ -341,6 +313,43 @@
     }
   }
 
+  .group-label-btn {
+    background: none;
+    border: none;
+    padding: 0 4px;
+    font-size: 0.65rem;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    cursor: pointer;
+    color: $gray-500;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-bottom: 4px;
+    transition: color 150ms;
+
+    &:hover {
+      color: $gray-600;
+    }
+
+    &.unchanged {
+      color: $gray-500;
+    }
+  }
+
+  .expand-icon {
+    display: inline-block;
+    font-size: 0.5rem;
+    width: 0.5rem;
+    text-align: center;
+    transition: transform 150ms;
+  }
+
+  .unchanged-features-list {
+    margin-bottom: 8px;
+  }
+
   .feature-row {
     font-size: 0.75rem;
     line-height: 1.3;
@@ -361,6 +370,13 @@
       color: $gray-600;
       font-weight: 400;
       background: hsla(0, 0%, 0%, 0.01);
+    }
+
+    &.unchanged {
+      color: $gray-500;
+      font-weight: 400;
+      background: hsla(0, 0%, 0%, 0.005);
+      opacity: 0.8;
     }
 
     &:last-child {

@@ -145,7 +145,8 @@
   const handleRestoreEntry = (entry) => {
     if (!plans || entry.planIndex === undefined) return;
 
-    const planStore = plans.planStores.get(entry.planIndex);
+    const planIndex = entry.planIndex;
+    const planStore = plans.planStores.get(planIndex);
     if (!planStore) return;
 
     // Get current plan from store
@@ -157,37 +158,53 @@
 
     if (!plan) return;
 
-    // Restore all feature values from the history entry
-    for (const feature of entry.features) {
-      // Find the feature object to get the correct name
-      const planFeature = plan.features.find((f) => f.featureID === feature.featureID);
-      if (planFeature) {
-        const featureName = planFeature.data?.name;
-        if (featureName) {
-          plan.ebmLocal.updateFeature(featureName, feature.newValue);
+    // Restore ALL feature values from the complete state stored in the entry
+    // Use allFeatureValues which contains the complete model state at that entry
+    if (entry.allFeatureValues) {
+      for (const feature of plan.features) {
+        const featureID = feature.featureID;
+        const restoredValue = entry.allFeatureValues[featureID];
+
+        if (restoredValue !== undefined) {
+          const featureName = feature.data?.name;
+          if (featureName) {
+            plan.ebmLocal.updateFeature(featureName, restoredValue);
+          }
         }
       }
     }
 
     // Update the plan store to trigger reactivity
     planStore.set(plan);
-  };
 
-  /**
-   * Toggle pin on a history entry
-   */
-  const handleTogglePin = (planIndex, entryIndex, newPinnedState) => {
-    historyEntriesStore.update((map) => {
-      const entries = map.get(planIndex) || [];
-      const entry = entries[entryIndex];
-      if (entry) {
-        entry.isPinned = newPinnedState;
+    // Update history: move restored entry to the end and renumber all entries
+    historyEntriesStore.update((historyMap) => {
+      const entries = historyMap.get(planIndex) || [];
+
+      // Find the index of the restored entry
+      const restoredEntryIndex = entries.findIndex(e => e.entryNumber === entry.entryNumber);
+
+      if (restoredEntryIndex !== -1) {
+        // Remove the restored entry from its current position
+        const restoredEntry = entries.splice(restoredEntryIndex, 1)[0];
+
+        // Add it to the end
+        entries.push(restoredEntry);
+
+        // Renumber all entries sequentially
+        entries.forEach((e, idx) => {
+          e.entryNumber = idx + 1;
+        });
+
+        const newMap = new Map(historyMap);
+        newMap.set(planIndex, [...entries]);
+        return newMap;
       }
-      const newMap = new Map(map);
-      newMap.set(planIndex, [...entries]);
-      return newMap;
+
+      return historyMap;
     });
   };
+
 
   $: curExample && !initialized && initModel();
 </script>
@@ -236,7 +253,6 @@
 <HistorySidebar
   activePlanIndex={plans?.activePlanIndex || 0}
   onRestoreEntry={handleRestoreEntry}
-  onTogglePin={handleTogglePin}
 />
 
 <style lang="scss">
