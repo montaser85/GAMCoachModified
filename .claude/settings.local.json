@@ -8,7 +8,12 @@
       "Bash(node:*)",
       "Bash(python:*)",
       "Bash(pip install:*)",
-      "Bash(find 'D:\\\\OSU\\\\Dr B research group\\\\GAM_Coach\\\\gam-coach_modified\\\\gamcoach-ui\\\\src' -name typedef.js -o -name typedef.d.ts -o -name *typedef*)"
+      "Bash(find 'D:\\\\OSU\\\\Dr B research group\\\\GAM_Coach\\\\gam-coach_modified\\\\gamcoach-ui\\\\src' -name typedef.js -o -name typedef.d.ts -o -name *typedef*)",
+      "Read(//c/Users/monta/AppData/Roaming/Claude/local-agent-mode-sessions/skills-plugin/eae6e040-0639-42a2-9c38-47a68ddede97/2d21225c-fc7e-4ec5-9e45-b957a062529f/skills/docx/**)",
+      "Bash(extract-text \"C:\\\\Users\\\\monta\\\\Downloads\\\\CausalChange_ClaudeCode_Brief.docx\")",
+      "Bash(pandoc \"C:\\\\Users\\\\monta\\\\Downloads\\\\CausalChange_ClaudeCode_Brief.docx\" -t markdown -o \"C:\\\\Users\\\\monta\\\\AppData\\\\Local\\\\Temp\\\\claude\\\\D--OSU-Dr-B-research-group-GAM-Coach-gam-coach-modified\\\\8c4c60b6-96b7-43c4-ae72-14fbe576e739\\\\scratchpad\\\\brief.md\")",
+      "Bash(npm test *)",
+      "Bash(npm run *)"
     ]
   }
 }

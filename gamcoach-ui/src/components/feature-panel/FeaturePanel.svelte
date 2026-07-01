@@ -14,6 +14,13 @@
   import { onMount, onDestroy, tick } from 'svelte';
   import { fade } from 'svelte/transition';
   import { tooltipConfigStore, featureValueOverrideStore, cardToggleStore, propagatedFeaturesStore } from '../../store';
+  import {
+    propagate,
+    allDependentFeatures,
+    featureHasOutgoingEdges,
+    computeParams,
+    creditLimitFromBaseline
+  } from '../../engine/index.mjs';
 
   export let windowLoaded = false;
   export let planStore = null;
@@ -73,78 +80,18 @@
   let revolBalLinkCalculation = null;
   let revolUtilLinkCalculation = null;
 
-  // ── Loan Amount propagation: APR by internal purpose label ──────────────────
-  // APRs are decimals (e.g. 0.061 = 6.1%).  Any purpose not listed defaults to
-  // the personal-loan rate of 11.65%.
-  const APR_BY_PURPOSE = {
-    'house':            0.0610,
-    'small_business':   0.0890,
-    'car':              0.0622,
-    'renewable_energy': 0.0849
-  };
+  // ── Causal Propagation Engine wiring ────────────────────────────────────────
+  // The engine (src/engine) is the single source of truth for every
+  // indirect/dependent change. The set of features that can be indirectly
+  // changed — used to show the linked icon — is derived from the engine's
+  // declarative edge set so the UI always matches the implemented edges.
+  const ALL_TARGETS = allDependentFeatures();
 
-  // Tracks whether the one-time FICO drop from changing Loan Amount has fired.
-  let ficoDropApplied = false;
-
-  // Propagation map — which features indirectly change when a feature is directly changed
-  // Keys are internal feature names; displayName is used for the message
-  const PROPAGATION_MAP = {
-    'loan_amnt': {
-      displayName: 'Loan Amount',
-      // revol_bal / revol_util only activate when purpose is credit_card or debt_consolidation;
-      // fico_score only activates once (ficoDropApplied flag). Actual active set is computed at runtime.
-      targets: ['fico_score', 'dti', 'revol_bal', 'revol_util']
-    },
-    'dti': {
-      displayName: 'Debt to Income Ratio',
-      targets: ['annual_inc']
-    },
-    'revol_bal': {
-      displayName: 'Revolving Balance',
-      targets: ['dti', 'revol_util']
-    },
-    'open_acc': {
-      displayName: 'Number of Open Accounts',
-      targets: ['fico_score', 'total_acc']
-    },
-    'fico_score': {
-      displayName: 'FICO Score',
-      targets: ['loan_amnt', 'revol_util']
-    },
-    'term': {
-      displayName: 'Payment Period',
-      targets: ['dti']
-    },
-    'home_ownership': {
-      displayName: 'Home Ownership',
-      targets: ['open_acc', 'revol_util', 'total_acc', 'mort_acc']
-    },
-    'purpose': {
-      displayName: 'Loan Purpose',
-      targets: ['revol_bal', 'fico_score', 'revol_util']
-    },
-    'inq_last_6mths': {
-      displayName: 'Number of Credit Inquiries',
-      targets: ['fico_score']
-    },
-    'pub_rec_bankruptcies': {
-      displayName: 'Number of Bankruptcies',
-      targets: ['fico_score']
-    },
-    'annual_inc': {
-      displayName: 'Annual Income',
-      targets: ['loan_amnt', 'dti', 'revol_bal']
-    },
-    'revol_util': {
-      displayName: 'Credit Utilization',
-      targets: ['dti', 'revol_bal', 'fico_score']
-    }
-  };
-
-  // Flat set of every feature that can be indirectly changed — used to show the linked icon
-  const ALL_TARGETS = new Set(
-    Object.values(PROPAGATION_MAP).flatMap(p => p.targets)
-  );
+  // The applicant's ORIGINAL input profile, in engine display units, frozen at
+  // load. This is the single baseline for every net-change computation
+  // (engine Section 8). Built in initLastKnownValues() once the plan is ready.
+  /** @type {Record<string, number|string>|null} */
+  let applicantBaselineState = null;
   // Display names for all features — used in arrow labels
   const DISPLAY_NAMES = {
     'loan_amnt': 'Loan Amount', 'dti': 'Debt to Income Ratio',
@@ -281,6 +228,11 @@
         originalValues[name]  = val; // frozen baseline — never overwritten
       }
     });
+
+    // Freeze the applicant's ORIGINAL input as the engine baseline (display
+    // units). Uses feature.originalValue (the applicant's real starting profile),
+    // NOT the coach-suggested values.
+    applicantBaselineState = buildEngineState(f => f.originalValue);
   };
 
   /**
@@ -343,122 +295,104 @@
   };
 
   // ────────────────────────────────────────────────────────────────────────────
-  // Loan Amount propagation mechanics
+  // Causal engine adapter — convert between the model's internal representation
+  // and the engine's plain display-unit state (keyed by internal feature name).
   // ────────────────────────────────────────────────────────────────────────────
 
   /**
-   * Compute the new values for features that change when Loan Amount is altered.
-   * Returns a map of { featureName: internalValue } for every feature that changed.
-   *
-   * Rules:
-   *  1. FICO Score   — one-time drop of 4 points (ficoDropApplied flag prevents repeat)
-   *  2. DTI          — recalculated via loan amortization formula + existing debt
-   *  3. Revol Balance  — only if purpose is credit_card or debt_consolidation
-   *  4. Revol Util     — derived from new revol balance ÷ credit limit
-   *
-   * @param {number} loanAmount  Display value of the new loan amount (no transform)
+   * Build a full engine state (all features, display units) from a per-feature
+   * source of internal values.
+   *   - continuous: raw internal number, un-transformed for display (10^x for log10)
+   *   - categorical: decoded to its label string; `term` further parsed to months
+   * @param {(f: Feature) => (number|string)} getInternal
+   * @returns {Record<string, number|string>}
    */
-  const applyLoanAmountPropagation = (loanAmount) => {
-    const updates = {};
-    const propagated = new Set();
+  const buildEngineState = (getInternal) => {
+    const state = {};
+    if (!plan) return state;
+    plan.features.forEach(f => {
+      const name = f.data.name;
+      const raw = getInternal(f);
+      if (!f.isCont) {
+        // Categorical: int code -> label string via labelEncoder[code].
+        const label = f.labelEncoder ? f.labelEncoder[raw] : raw;
+        state[name] = name === 'term' ? parseTermMonths(label) : label;
+      } else {
+        state[name] = f.transform === 'log10' ? Math.pow(10, raw) : raw;
+      }
+    });
+    return state;
+  };
 
-    // ── Read ORIGINAL baseline values for dependent features ────────────────
-    // Always use originalValues (coach suggestions at load time) so that
-    // repeated changes to Loan Amount don't stack — each calculation is
-    // computed fresh relative to the same starting point.
-    const annualIncDisplay  = getOriginalDisplayValue('annual_inc') || 1;
-    const monthlyIncome     = annualIncDisplay / 12;
-    const dtiDisplay        = getOriginalDisplayValue('dti')        || 0;
-    const revolBalDisplay   = getOriginalDisplayValue('revol_bal')  || 0;
-    const revolUtilDisplay  = getOriginalDisplayValue('revol_util') || 0;
-    // Purpose and term use current values — the user may have changed them intentionally
-    const purposeLabel      = getCurrentValue('purpose')            || '';
-    const termLabel         = getCurrentValue('term')               || '36 months';
-    const termMonths        = parseTermMonths(termLabel);
+  /** Current full state (post-edit) read from the authoritative EBM sample. */
+  const buildCurrentEngineState = () =>
+    buildEngineState(f => plan.ebmLocal.sample[f.featureID]);
 
-    // ── 1. FICO Score — drop by 4 only on the first loan_amnt change ─────────
-    if (!ficoDropApplied) {
-      const currentFico  = getOriginalDisplayValue('fico_score') || 0;
-      const newFico      = currentFico - 4;
-      const newFicoInt   = toInternalValue(newFico, 'fico_score');
-      updates['fico_score']        = newFicoInt;
-      lastKnownValues['fico_score'] = newFicoInt;
-      // Populate the popup calculation: "742 − 4 = 738"
-      ficoLinkCalculation = { type: 'fico', before: Math.round(currentFico), after: Math.round(newFico) };
-      ficoDropApplied = true;
-      propagated.add('fico_score');
+  /**
+   * Convert an engine display value for `featureName` back into the internal
+   * representation the EBM/slider expect (log10 for annual_inc/revol_bal;
+   * rounded for integer features).
+   */
+  const displayToInternal = (featureName, displayValue) => {
+    const f = plan?.features.find(ff => ff.data.name === featureName);
+    if (!f) return displayValue;
+    let d = displayValue;
+    if (f.requiresInt) d = Math.round(d);
+    return toInternalValue(d, featureName);
+  };
+
+  /**
+   * Populate the FICO / DTI / revolving link-popup calculation blocks from the
+   * engine's own parameters so the explanation matches the applied values.
+   * Blocks whose shape doesn't fit a given trigger are left null (the popup then
+   * shows just its generic explanatory text).
+   */
+  const populateLinkCalculations = (editedFeature, baseline, current, next, changedSet) => {
+    ficoLinkCalculation = null;
+    dtiLinkCalculation = null;
+    revolBalLinkCalculation = null;
+    revolUtilLinkCalculation = null;
+
+    const params = computeParams(baseline, current);
+    const fmt = (n) => '$' + Math.round(n).toLocaleString();
+
+    if (changedSet.has('fico_score')) {
+      ficoLinkCalculation = {
+        type: 'fico',
+        before: Math.round(baseline.fico_score),
+        after: Math.round(next.fico_score)
+      };
     }
 
-    // ── 2. DTI — amortization formula ────────────────────────────────────────
-    // APR defaults to 11.65 % for any purpose not in APR_BY_PURPOSE
-    const apr              = APR_BY_PURPOSE[purposeLabel] ?? 0.1165;
-    const monthlyRate      = apr / 12;
-    // Monthly payment for the new loan (standard amortization formula)
-    const newLoanPayment   = monthlyRate > 0
-      ? (loanAmount * monthlyRate) / (1 - Math.pow(1 + monthlyRate, -termMonths))
-      : loanAmount / termMonths;
-    // Current monthly debt derived from existing DTI
-    const currentMonthlyDebt = (dtiDisplay * monthlyIncome) / 100;
-    const newMonthlyDebt     = currentMonthlyDebt + newLoanPayment;
-    const newDTI             = monthlyIncome > 0 ? (newMonthlyDebt / monthlyIncome) * 100 : 0;
-    const newDTIInt          = toInternalValue(newDTI, 'dti');
-    updates['dti']          = newDTIInt;
-    lastKnownValues['dti']  = newDTIInt;
-    propagated.add('dti');
-    // Populate the DTI popup calculation block with pre-formatted strings
-    const fmt = (n) => '$' + Math.round(n).toLocaleString();
-    dtiLinkCalculation = {
-      type:           'dti',
-      currentDebt:    fmt(currentMonthlyDebt),
-      newLoanPayment: fmt(newLoanPayment),
-      newMonthlyDebt: fmt(newMonthlyDebt),
-      originalDTI:    dtiDisplay.toFixed(2) + '%',
-      newDTI:         newDTI.toFixed(2) + '%'
-    };
-
-    // ── 3 & 4. Revolving Balance + Credit Utilization ────────────────────────
-    // These only apply when the loan is used to pay down a revolving credit line
-    if (['credit_card', 'debt_consolidation'].includes(purposeLabel)) {
-      // New balance after paying down with loan proceeds
-      const newRevolBal    = Math.max(0, revolBalDisplay - loanAmount);
-      const newRevolBalInt = toInternalValue(newRevolBal, 'revol_bal');
-      updates['revol_bal']          = newRevolBalInt;
-      lastKnownValues['revol_bal']  = newRevolBalInt;
-      propagated.add('revol_bal');
-      // Populate the revolving balance popup calculation
-      revolBalLinkCalculation = {
-        type:           'revol_bal',
-        currentBalance: fmt(revolBalDisplay),
-        loanApplied:    fmt(loanAmount),
-        newBalance:     fmt(newRevolBal)
+    if (changedSet.has('dti') && ['loan_amnt', 'term', 'purpose'].includes(editedFeature)) {
+      const currentMonthlyDebt = params.currentMonthlyDebtPayment;
+      const newLoanPayment = params.monthlyLoanPayment;
+      const newMonthlyDebt = currentMonthlyDebt + newLoanPayment;
+      dtiLinkCalculation = {
+        type: 'dti',
+        currentDebt: fmt(currentMonthlyDebt),
+        newLoanPayment: fmt(newLoanPayment),
+        newMonthlyDebt: fmt(newMonthlyDebt),
+        originalDTI: Number(baseline.dti).toFixed(2) + '%',
+        newDTI: Number(next.dti).toFixed(2) + '%'
       };
+    }
 
-      // Credit limit is implicit: current balance ÷ (utilization / 100)
-      if (revolUtilDisplay > 0 && revolBalDisplay > 0) {
-        const creditLimit     = revolBalDisplay / (revolUtilDisplay / 100);
-        const newRevolUtil    = (newRevolBal / creditLimit) * 100;
-        const newRevolUtilInt = toInternalValue(newRevolUtil, 'revol_util');
-        updates['revol_util']          = newRevolUtilInt;
-        lastKnownValues['revol_util']  = newRevolUtilInt;
-        propagated.add('revol_util');
-        // Populate the credit utilization popup calculation
+    // Revolving Balance edit -> Credit Utilization popup (New Util = Bal / Limit).
+    if (changedSet.has('revol_util') && editedFeature === 'revol_bal') {
+      const creditLimit = creditLimitFromBaseline(baseline);
+      if (creditLimit) {
         revolUtilLinkCalculation = {
-          type:           'revol_util',
-          creditLimit:    fmt(creditLimit),
-          currentBalance: fmt(revolBalDisplay),
-          currentUtil:    revolUtilDisplay.toFixed(2) + '%',
-          newBalance:     fmt(newRevolBal),
-          originalUtil:   revolUtilDisplay.toFixed(2) + '%',
-          newUtil:        newRevolUtil.toFixed(2) + '%'
+          type: 'revol_util',
+          creditLimit: fmt(creditLimit),
+          currentBalance: fmt(baseline.revol_bal),
+          currentUtil: Number(baseline.revol_util).toFixed(2) + '%',
+          newBalance: fmt(current.revol_bal),
+          originalUtil: Number(baseline.revol_util).toFixed(2) + '%',
+          newUtil: Number(next.revol_util).toFixed(2) + '%'
         };
       }
     }
-
-    // Publish which features were changed via propagation so ScorePanel
-    // can label them correctly in the score-change breakdown popup.
-    propagatedFeaturesStore.set(propagated);
-
-    return updates;
   };
 
   /**
@@ -719,27 +653,55 @@
   };
 
   /**
-   * Show propagation message, blue outlines, and animated arrows when a feature
-   * change cascades to other features.  For features that have defined calculation
-   * mechanics (currently loan_amnt), also compute and apply the new derived values
-   * to the EBM and to the affected slider cards.
+   * Run the causal propagation engine for a directly-edited feature, then show
+   * the message / outlines / arrows and push the engine's computed dependent
+   * values into the EBM and the affected slider cards. The engine (src/engine)
+   * is the single source of truth for which features change and by how much.
    */
   const triggerPropagation = async (featureName) => {
-    const propagation = PROPAGATION_MAP[featureName];
-    if (!propagation) return;
+    if (!featureHasOutgoingEdges(featureName)) return;
+    if (!applicantBaselineState || !plan) return;
 
-    // ── 1. Compute actual targets + derived values (feature-specific logic) ──
-    let activeTargets = [...propagation.targets];
-    let computedUpdates = {}; // featureName → internal value
+    // ── 1. Run the engine against the frozen applicant baseline ──────────────
+    const baseline = applicantBaselineState;
+    const current  = buildCurrentEngineState();
+    const { state: next, log } = propagate(featureName, baseline, current, baseline);
 
-    if (featureName === 'loan_amnt') {
-      const loanAmount = getCurrentValue('loan_amnt'); // No transform; display = internal
-      if (loanAmount !== null) {
-        computedUpdates = applyLoanAmountPropagation(loanAmount);
-        // Active targets = only the features that were actually computed this time
-        activeTargets = Object.keys(computedUpdates);
-      }
+    // Dependents that actually changed vs. the current state.
+    const computedUpdates = {}; // internal feature name → internal value
+    const activeTargets = [];
+    const changedSet = new Set();
+    const deps = [...new Set(log.filter(l => !l.note).map(l => l.dependent))];
+    deps.forEach(dep => {
+      const before = current[dep];
+      const after  = next[dep];
+      const changed = (typeof after === 'number' && typeof before === 'number')
+        ? Math.abs(after - before) > 1e-6
+        : after !== before;
+      if (!changed) return;
+      computedUpdates[dep] = displayToInternal(dep, after);
+      activeTargets.push(dep);
+      changedSet.add(dep);
+    });
+
+    // Publish which features changed via propagation so ScorePanel can label
+    // them PROPAGATED (vs DIRECT) in the score-change breakdown popup.
+    propagatedFeaturesStore.set(changedSet);
+    // Populate the link-popup calculation blocks from the engine's parameters.
+    populateLinkCalculations(featureName, baseline, current, next, changedSet);
+
+    // Nothing actually propagated (e.g. a home-ownership change that is not a
+    // mortgage transition) — clear any prior banner / arrows and stop.
+    if (activeTargets.length === 0) {
+      showPropagationMessage = false;
+      dismissArrows();
+      return;
     }
+
+    // Keep lastKnownValues in sync so re-expanding a card doesn't refire.
+    Object.entries(computedUpdates).forEach(([name, internalValue]) => {
+      lastKnownValues[name] = internalValue;
+    });
 
     // ── 2. Build + show the sticky message ───────────────────────────────────
     const count = activeTargets.length;
@@ -747,7 +709,7 @@
     const targetNames = activeTargets
       .map(name => DISPLAY_NAMES[name] || name)
       .join(', ');
-    propagationMessage = `Changing ${propagation.displayName} changed ${count} other ${featureWord}: ${targetNames}`;
+    propagationMessage = `Changing ${DISPLAY_NAMES[featureName] || featureName} changed ${count} other ${featureWord}: ${targetNames}`;
     showPropagationMessage = true;
     showArrows = false;
     arrowPaths = [];
@@ -771,34 +733,22 @@
     });
 
     // ── 4. Push computed values into the EBM and move the sliders ───────────
-    if (Object.keys(computedUpdates).length > 0) {
-      Object.entries(computedUpdates).forEach(([name, internalValue]) => {
-        plan.ebmLocal.updateFeature(name, internalValue);
-      });
-      planStore.set(plan);
-      // Signal FeatureCard instances to update their slider positions
-      featureValueOverrideStore.set(computedUpdates);
-      // Clear the override store after a short delay; the coachValue on each
-      // feature object has already been updated (by reference) so collapsed
-      // cards will still initialize at the correct position when expanded.
-      setTimeout(() => featureValueOverrideStore.set({}), 400);
-    }
+    Object.entries(computedUpdates).forEach(([name, internalValue]) => {
+      plan.ebmLocal.updateFeature(name, internalValue);
+    });
+    planStore.set(plan);
+    // Signal FeatureCard instances to update their slider positions
+    featureValueOverrideStore.set(computedUpdates);
+    // Clear the override store after a short delay; the coachValue on each
+    // feature object has already been updated (by reference) so collapsed
+    // cards will still initialize at the correct position when expanded.
+    setTimeout(() => featureValueOverrideStore.set({}), 400);
 
     // ── 5. Draw SVG arrows ────────────────────────────────────────────────────
-    if (activeTargets.length > 0) {
-      lastArrowSource = featureName;
-      lastArrowTargets = activeTargets;
-      showArrows = true;
-      recomputeArrows();
-    } else {
-      showArrows = false;
-      arrowPaths = [];
-      arrowLabels = [];
-      arrowDismissBtn = null;
-      lastArrowSource = null;
-      lastArrowTargets = [];
-    }
-
+    lastArrowSource = featureName;
+    lastArrowTargets = activeTargets;
+    showArrows = true;
+    recomputeArrows();
   };
 
   const maxFeatureNumChanged = () => {
