@@ -8,7 +8,13 @@
 
 import assert from 'assert';
 import { propagate } from '../index.mjs';
-import { creditLimitFromBaseline, masterFico, computeParams } from '../params.mjs';
+import {
+  creditLimitFromBaseline,
+  masterFico,
+  computeParams,
+  loanMonthlyPayment,
+  aprForPurpose
+} from '../params.mjs';
 
 // ── Tiny test harness ──────────────────────────────────────────────────────
 let passed = 0;
@@ -57,15 +63,35 @@ function makeBaseline(overrides = {}) {
 const edit = (base, feature, value) => ({ ...base, [feature]: value });
 const dtiEdge = (log) => log.find((l) => l.dependent === 'dti' && !l.note);
 
+// Independent reference implementation of the full-state DTI, used to assert
+// the engine settles derived DTI from ALL of its inputs (base debt + applied
+// loan payment + 2%-of-revolving-delta) over current income.
+function expectedDti(base, current) {
+  const monthlyIncome = current.annual_inc / 12;
+  const baseDebt = (base.dti * (base.annual_inc / 12)) / 100;
+  const loanPay = loanMonthlyPayment(
+    current.loan_amnt,
+    aprForPurpose(current.purpose) / 12,
+    current.term
+  );
+  const revolDelta = (current.revol_bal - base.revol_bal) * 0.02;
+  return ((baseDebt + loanPay + revolDelta) / monthlyIncome) * 100;
+}
+
 console.log('Causal Propagation Engine — Section 10 tests');
 
-// 1. Loan Amount ↑ → DTI ↑ and FICO −4; CC/Debt-Consolidation DTI = conservative
-test('1a. Loan Amount up -> DTI up and FICO -4', () => {
+// 1. Loan Amount ↑ → DTI ↑ only (FICO is NOT affected by loan amount);
+//    CC/Debt-Consolidation DTI = conservative
+test('1a. Loan Amount up -> DTI up, FICO unchanged (no loan->FICO edge)', () => {
   const base = makeBaseline();
   const next = edit(base, 'loan_amnt', 20000);
   const { state, log } = propagate('loan_amnt', base, next, base);
   assert.ok(state.dti > base.dti, 'DTI should rise');
-  approx(state.fico_score, 696); // 700 - 4 (one application inquiry)
+  approx(state.fico_score, base.fico_score); // FICO must NOT change
+  assert.ok(
+    !log.some((l) => l.dependent === 'fico_score'),
+    'loan amount must not write FICO'
+  );
   assert.strictEqual(dtiEdge(log).tag, 'C', 'loan->dti is conservative');
 });
 
@@ -77,23 +103,38 @@ test('1b. Loan Amount DTI tagged conservative for debt consolidation', () => {
   assert.ok(state.dti > base.dti);
 });
 
-// 2. Revolving Balance ↓ → Utilization ↓ and DTI ↓; ↑ → both ↑
-test('2a. Revolving Balance down -> Utilization down and DTI down', () => {
+test('1d. Loan DTI is path-independent (no stacking across edits)', () => {
+  const base = makeBaseline();
+  const direct = propagate('loan_amnt', base, edit(base, 'loan_amnt', 20000), base)
+    .state.dti;
+  // Compute from a state that already carries a prior (propagated) DTI/loan:
+  // the result must be identical because the base is fixed to the profile.
+  const afterFirst = propagate('loan_amnt', base, edit(base, 'loan_amnt', 50000), base).state;
+  const viaPath = propagate('loan_amnt', base, edit(afterFirst, 'loan_amnt', 20000), base)
+    .state.dti;
+  approx(direct, viaPath);
+});
+
+// 2. Revolving Balance edit -> Utilization tracks; DTI recomputes from the FULL
+//    state (includes the applied loan payment) and moves with the balance.
+test('2a. Revolving Balance down -> Utilization down; DTI includes loan payment', () => {
   const base = makeBaseline();
   const next = edit(base, 'revol_bal', 2000);
   const { state } = propagate('revol_bal', base, next, base);
   const limit = creditLimitFromBaseline(base); // 20000
   approx(state.revol_util, (2000 / limit) * 100); // 10
   assert.ok(state.revol_util < base.revol_util);
-  assert.ok(state.dti < base.dti);
+  // DTI still includes the current loan's payment (loan is always in DTI).
+  approx(state.dti, expectedDti(base, next));
 });
 
-test('2b. Revolving Balance up -> Utilization up and DTI up', () => {
+test('2b. Revolving Balance up -> Utilization up; higher balance -> higher DTI', () => {
   const base = makeBaseline();
-  const next = edit(base, 'revol_bal', 8000);
-  const { state } = propagate('revol_bal', base, next, base);
-  assert.ok(state.revol_util > base.revol_util); // 40 > 25
-  assert.ok(state.dti > base.dti);
+  const down = propagate('revol_bal', base, edit(base, 'revol_bal', 2000), base).state;
+  const up = propagate('revol_bal', base, edit(base, 'revol_bal', 8000), base).state;
+  assert.ok(up.revol_util > base.revol_util); // 40 > 25
+  approx(up.dti, expectedDti(base, edit(base, 'revol_bal', 8000)));
+  assert.ok(up.dti > down.dti); // higher revolving balance -> higher DTI
 });
 
 // 3. Edit Utilization → Revolving Balance (inverse); edit both → last-edit-wins
@@ -197,8 +238,8 @@ test('8. Zero-balance util edit -> no divide-by-zero, fallback holds values', ()
   const { state } = propagate('revol_util', base, next, base);
   assert.ok(Number.isFinite(state.revol_bal), 'revol_bal finite');
   assert.ok(Number.isFinite(state.dti), 'dti finite');
-  assert.strictEqual(state.revol_bal, base.revol_bal); // held (fallback)
-  approx(state.dti, base.dti); // held (fallback)
+  assert.strictEqual(state.revol_bal, base.revol_bal); // held (fallback => zero delta)
+  approx(state.dti, expectedDti(base, next)); // no divide-by-zero; delta is zero
 });
 
 // 9. Total ≥ Open bound holds after any account edit
@@ -241,13 +282,56 @@ test('X3. Mortgage direct edit -> counters up, FICO -4 once (not -8)', () => {
   approx(state.fico_score, 696); // single hard inquiry
 });
 
-test('X4. Annual income up -> DTI down (denominator only)', () => {
+test('X4. Annual income up -> DTI down; numerator still includes loan payment', () => {
   const base = makeBaseline();
   const next = edit(base, 'annual_inc', 120000); // double income
   const { state, log } = propagate('annual_inc', base, next, base);
-  assert.ok(state.dti < base.dti);
-  approx(state.dti, base.dti / 2); // numerator unchanged, denom doubled
+  const atOriginalIncome = propagate('annual_inc', base, base, base).state.dti;
+  assert.ok(state.dti < atOriginalIncome); // higher income -> lower DTI
+  approx(state.dti, expectedDti(base, next)); // full-state numerator over new income
   assert.strictEqual(dtiEdge(log).tag, 'E');
+});
+
+// Design principle: any DTI input edit recomputes DTI from the FULL state.
+test('D1. Editing Revolving Balance still includes the current loan payment', () => {
+  const base = makeBaseline();
+  const next = edit(base, 'revol_bal', 3000);
+  const { state } = propagate('revol_bal', base, next, base);
+  // DTI must reflect base debt + the applied loan's payment + the revolving delta.
+  approx(state.dti, expectedDti(base, next));
+  // ...and it must be strictly above a hypothetical no-loan DTI, proving the
+  // loan payment is present even though we edited a different feature.
+  const monthlyIncome = base.annual_inc / 12;
+  const noLoanDti =
+    (((base.dti * monthlyIncome) / 100 + (3000 - base.revol_bal) * 0.02) / monthlyIncome) * 100;
+  assert.ok(state.dti > noLoanDti);
+});
+
+test('D2. DTI is order-independent (same final state -> same DTI)', () => {
+  const base = makeBaseline();
+  // Same final feature values, reached by editing different inputs last.
+  const finalState = edit(edit(base, 'loan_amnt', 18000), 'revol_bal', 4000);
+  const viaLoan = propagate('loan_amnt', base, finalState, base).state.dti;
+  const viaRevol = propagate('revol_bal', base, finalState, base).state.dti;
+  const viaIncome = propagate('annual_inc', base, finalState, base).state.dti;
+  approx(viaLoan, viaRevol);
+  approx(viaLoan, viaIncome);
+  approx(viaLoan, expectedDti(base, finalState));
+});
+
+test('X6. No baseline inquiry: +1 credit inquiry -> FICO -4 (not -8)', () => {
+  const base = makeBaseline({ inq_last_6mths: 1 });
+  const next = edit(base, 'inq_last_6mths', 2); // net +1
+  const { state } = propagate('inq_last_6mths', base, next, base);
+  approx(state.fico_score, 696); // exactly one channel, no application +1
+});
+
+test('X7. Editing loan amount never animates/writes FICO', () => {
+  const base = makeBaseline();
+  const next = edit(base, 'loan_amnt', 50000);
+  const { state, log } = propagate('loan_amnt', base, next, base);
+  approx(state.fico_score, base.fico_score);
+  assert.ok(!log.some((l) => l.dependent === 'fico_score'));
 });
 
 test('X5. Warnings raised but never block (DTI>36, FICO<670)', () => {

@@ -314,9 +314,24 @@
       const name = f.data.name;
       const raw = getInternal(f);
       if (!f.isCont) {
-        // Categorical: int code -> label string via labelEncoder[code].
-        const label = f.labelEncoder ? f.labelEncoder[raw] : raw;
-        state[name] = name === 'term' ? parseTermMonths(label) : label;
+        // Categorical values arrive in two forms:
+        //   - numeric level code (e.g. the frozen baseline uses feature.originalValue),
+        //     which we decode via labelEncoder[code] -> label string;
+        //   - the level label string itself (ebmLocal.sample keeps the original
+        //     level string), which is already what we want.
+        // Normalise both to the label string.
+        const label =
+          typeof raw === 'number' && f.labelEncoder ? f.labelEncoder[raw] : raw;
+        if (name === 'term') {
+          state[name] = parseTermMonths(label);
+        } else if (name === 'mort_acc') {
+          // Numeric-count categorical: labels are '0'..'7' and '7+'. The engine
+          // needs the integer count; the capped "more than 7" bucket ('7+') is
+          // treated as 8.
+          state[name] = label === '7+' ? 8 : (parseInt(label, 10) || 0);
+        } else {
+          state[name] = label;
+        }
       } else {
         state[name] = f.transform === 'log10' ? Math.pow(10, raw) : raw;
       }
@@ -336,6 +351,15 @@
   const displayToInternal = (featureName, displayValue) => {
     const f = plan?.features.find(ff => ff.data.name === featureName);
     if (!f) return displayValue;
+    // Numeric-count categorical (mort_acc): map the integer count back to its
+    // level label ('0'..'7', capped at '7+'), which is what ebmLocal stores.
+    if (!f.isCont && featureName === 'mort_acc') {
+      const n = Math.round(displayValue);
+      const labels = f.labelEncoder ? Object.values(f.labelEncoder) : [];
+      const exact = String(n);
+      return labels.includes(exact) ? exact : labels[labels.length - 1];
+    }
+    if (!f.isCont) return displayValue; // other categoricals: pass the label through
     let d = displayValue;
     if (f.requiresInt) d = Math.round(d);
     return toInternalValue(d, featureName);
@@ -364,22 +388,29 @@
       };
     }
 
-    if (changedSet.has('dti') && ['loan_amnt', 'term', 'purpose'].includes(editedFeature)) {
-      const currentMonthlyDebt = params.currentMonthlyDebtPayment;
-      const newLoanPayment = params.monthlyLoanPayment;
-      const newMonthlyDebt = currentMonthlyDebt + newLoanPayment;
+    const fmtSigned = (n) => (n < 0 ? '−$' : '+$') + Math.round(Math.abs(n)).toLocaleString();
+
+    if (changedSet.has('dti')) {
+      // DTI reflects the FULL current plan regardless of which input was edited:
+      // fixed base debt + the applied loan's full payment + 2%-of-revolving-delta.
+      const baseDebt = params.currentMonthlyDebtPayment;
+      const loanPayment = params.monthlyLoanPayment;
+      const revolAdj = ((next.revol_bal || 0) - (baseline.revol_bal || 0)) * 0.02;
+      const newMonthlyDebt = baseDebt + loanPayment + revolAdj;
       dtiLinkCalculation = {
         type: 'dti',
-        currentDebt: fmt(currentMonthlyDebt),
-        newLoanPayment: fmt(newLoanPayment),
+        currentDebt: fmt(baseDebt),
+        newLoanPayment: fmt(loanPayment),
+        revolAdj: fmtSigned(revolAdj),
+        showRevolAdj: Math.abs(revolAdj) >= 0.5,
         newMonthlyDebt: fmt(newMonthlyDebt),
         originalDTI: Number(baseline.dti).toFixed(2) + '%',
         newDTI: Number(next.dti).toFixed(2) + '%'
       };
     }
 
-    // Revolving Balance edit -> Credit Utilization popup (New Util = Bal / Limit).
-    if (changedSet.has('revol_util') && editedFeature === 'revol_bal') {
+    // Credit Utilization popup (New Util = current balance / recovered limit).
+    if (changedSet.has('revol_util')) {
       const creditLimit = creditLimitFromBaseline(baseline);
       if (creditLimit) {
         revolUtilLinkCalculation = {
@@ -387,7 +418,7 @@
           creditLimit: fmt(creditLimit),
           currentBalance: fmt(baseline.revol_bal),
           currentUtil: Number(baseline.revol_util).toFixed(2) + '%',
-          newBalance: fmt(current.revol_bal),
+          newBalance: fmt(next.revol_bal),
           originalUtil: Number(baseline.revol_util).toFixed(2) + '%',
           newUtil: Number(next.revol_util).toFixed(2) + '%'
         };

@@ -562,10 +562,13 @@
                 </div>
               {:else if linkCalculation?.type === 'dti'}
                 <div class="link-calculation dti-calc">
-                  <div class="dti-line">Current monthly debt: {linkCalculation.currentDebt}</div>
-                  <div class="dti-line">New loan payment: {linkCalculation.newLoanPayment}</div>
-                  <div class="dti-line">New monthly debt: {linkCalculation.currentDebt} + {linkCalculation.newLoanPayment} = {linkCalculation.newMonthlyDebt}</div>
-                  <div class="dti-line final">As monthly debt rises from {linkCalculation.currentDebt} to {linkCalculation.newMonthlyDebt}, DTI increases from {linkCalculation.originalDTI} to {linkCalculation.newDTI}</div>
+                  <div class="dti-line">Base monthly debt: {linkCalculation.currentDebt}</div>
+                  <div class="dti-line">Applied loan payment: {linkCalculation.newLoanPayment}</div>
+                  {#if linkCalculation.showRevolAdj}
+                    <div class="dti-line">Revolving balance adjustment: {linkCalculation.revolAdj}</div>
+                  {/if}
+                  <div class="dti-line">New monthly debt: {linkCalculation.newMonthlyDebt}</div>
+                  <div class="dti-line final">As monthly debt goes from {linkCalculation.currentDebt} to {linkCalculation.newMonthlyDebt}, DTI changes from {linkCalculation.originalDTI} to {linkCalculation.newDTI}</div>
                 </div>
               {:else if linkCalculation?.type === 'revol_bal'}
                 <div class="link-calculation dti-calc">

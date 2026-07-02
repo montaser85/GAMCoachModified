@@ -111,7 +111,9 @@ export function computeParams(baseline, current) {
     current.term || 0
   );
 
-  // Existing monthly debt payment — uses CURRENT (baseline) income by design.
+  // Existing monthly debt payment — the fixed base, derived once from the
+  // profile DTI and profile (current) income. Never rebuilt from the live DTI,
+  // so repeated loan-based edits never stack.
   const currentMonthlyDebtPayment =
     ((baseline.dti || 0) * currentMonthlyIncome) / 100;
 
@@ -131,22 +133,10 @@ export function computeParams(baseline, current) {
     openAccountsIncrease - mortgagesIncrease
   );
 
-  // The leading "1" of the Section-4 counter is "the application's own
-  // inquiry" — i.e. the hard inquiry created by applying for THIS loan. It is
-  // therefore present only when the loan amount itself has changed from the
-  // applicant's baseline (the act of (re)applying), and absent when the user
-  // edits an unrelated feature. This is what makes the Section-10 tests hold:
-  //   - editing inquiries with a net decrease leaves FICO unchanged (no loan
-  //     application => base 0, and the inquiry channel floors to 0);
-  //   - opening a single account or acquiring a single mortgage is exactly one
-  //     hard inquiry (-4), not two (-8).
-  // In combined scenarios (loan + account/mortgage/inquiry changes) the terms
-  // still sum identically to the Section-4 formula.
-  const loanApplicationInquiry =
-    Math.abs((current.loan_amnt || 0) - (baseline.loan_amnt || 0)) > 1e-9 ? 1 : 0;
-
+  // There is NO baseline "+1" application inquiry. FICO changes only in
+  // response to user edits that add credit inquiries, open accounts, or
+  // mortgages — nothing on load, and nothing from editing the loan amount.
   const hardInquiries =
-    loanApplicationInquiry +
     creditInquiriesIncrease +
     openAccountsIncreaseExMortgage +
     mortgagesIncrease;
@@ -169,7 +159,6 @@ export function computeParams(baseline, current) {
     openAccountsIncrease,
     mortgagesIncrease,
     openAccountsIncreaseExMortgage,
-    loanApplicationInquiry,
     hardInquiries,
     bankruptciesIncrease,
     creditLimit: creditLimitFromBaseline(baseline)

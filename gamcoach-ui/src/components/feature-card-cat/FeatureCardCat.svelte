@@ -6,7 +6,7 @@
   import { onMount, onDestroy, tick, createEventDispatcher } from 'svelte';
   import { fade, fly, scale } from 'svelte/transition';
   import { cubicInOut } from 'svelte/easing';
-  import { tooltipConfigStore, diffPickerConfigStore } from '../../store';
+  import { tooltipConfigStore, diffPickerConfigStore, featureValueOverrideStore } from '../../store';
 
   import {
     initHist,
@@ -227,7 +227,12 @@
       featureName: featureInfo.name,
       descriptionString: featureInfo.description.description,
       originalValue: feature.originalValue,
-      curValue: feature.coachValue,
+      // Re-initialise to the propagated/edited level (stored as a label on the
+      // feature object) when present, so the card keeps its value across remounts.
+      curValue:
+        feature.hypotheticalValue !== undefined
+          ? codeFromLabel(feature.hypotheticalValue, feature.labelEncoder) ?? feature.coachValue
+          : feature.coachValue,
       coachValue: feature.coachValue,
       histEdge: featureInfo.histEdge,
       histCount: featureInfo.histCount,
@@ -503,6 +508,41 @@
   onDestroy(() => {
     unsubscribes.forEach((unsub) => unsub());
   });
+
+  /**
+   * Map a level label (e.g. '1', '7+') back to its numeric level code using a
+   * {code: label} encoder.
+   * @param {string} label
+   * @param {Record<string,string>} enc
+   * @returns {number|null}
+   */
+  const codeFromLabel = (label, enc) => {
+    if (!enc) return null;
+    for (const [code, lbl] of Object.entries(enc)) {
+      if (lbl === label) return parseInt(code, 10);
+    }
+    return null;
+  };
+
+  // When the propagation engine computes a new value for this categorical
+  // feature (e.g. Number of Mortgages after a Home Ownership -> Mortgage
+  // change), featureValueOverrideStore carries its new level LABEL. Update the
+  // selected level and re-highlight the bars so the card reflects the change.
+  $: {
+    const featureName = feature?.data?.name;
+    if (featureName && initialized) {
+      const overrideLabel = $featureValueOverrideStore[featureName];
+      if (overrideLabel !== undefined && overrideLabel !== null) {
+        const newCode = codeFromLabel(overrideLabel, state.feature.labelEncoder);
+        if (newCode !== null && newCode !== state.feature.curValue) {
+          feature.hypotheticalValue = overrideLabel;
+          state.feature.curValue = newCode;
+          syncBars(component, state);
+          state = state; // trigger reactivity so the header value updates
+        }
+      }
+    }
+  }
 
   $: feature && mounted && !initialized && initFeatureCard();
 </script>

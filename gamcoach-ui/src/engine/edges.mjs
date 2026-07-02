@@ -31,48 +31,36 @@ import { masterFico, MORTGAGE_HOME_VALUE } from './params.mjs';
 
 const REVOL_DTI_FACTOR = 0.02; // 2%-of-delta on revolving balance change
 
-// ── DTI — single canonical function (Brief Section 7) ──────────────────────
-// All DTI-writing edges funnel through here. `newMonthlyDebtPayment` is
-// computed per trigger family; the denominator is always New Monthly Income.
+// ── DTI — single full-state function ───────────────────────────────────────
+// DTI ALWAYS recomputes from the full current state of every input, never from
+// only the feature that just changed. Whichever DTI input is edited (loan
+// amount, term, purpose, revolving balance, credit utilization, or income),
+// DTI settles from all of them together:
+//
+//   New Monthly Debt = Base Monthly Debt               (fixed, from profile DTI)
+//                    + Applied Loan Payment            (current loan/term/purpose)
+//                    + (Current Revol Bal − Profile Revol Bal) × 2%
+//   New DTI          = New Monthly Debt / New Monthly Income × 100
+//
+// The applied loan is always part of DTI, so e.g. editing revolving balance
+// still includes the current loan's payment. `state.revol_bal` is the live
+// balance — for a credit-utilization edit it is the balance just derived from
+// the recovered credit limit (set in the structural phase before this runs),
+// which naturally falls back to the profile balance (zero delta) when the
+// limit is indeterminate.
 function dtiFrom(newMonthlyDebtPayment, params) {
   const denom = params.newMonthlyIncome;
   if (!denom) return params.baseline.dti; // indeterminate income => hold
   return (newMonthlyDebtPayment / denom) * 100;
 }
 
-// Loan-based triggers (Loan Amount, Payment Period, Loan Purpose):
-// existing debt + the new loan's monthly payment.
-function dtiFromLoan(state, params) {
+function dtiFull(state, params) {
+  const revolBalDelta = (state.revol_bal || 0) - (params.baseline.revol_bal || 0);
   const newMonthlyDebtPayment =
-    params.currentMonthlyDebtPayment + params.monthlyLoanPayment;
+    params.currentMonthlyDebtPayment +
+    params.monthlyLoanPayment +
+    revolBalDelta * REVOL_DTI_FACTOR;
   return dtiFrom(newMonthlyDebtPayment, params);
-}
-
-// Revolving-balance trigger: 2% of the (signed) balance CHANGE only — the
-// existing balance's payment already lives inside currentMonthlyDebtPayment.
-function dtiFromRevolBal(state, params) {
-  const balChange = (state.revol_bal || 0) - (params.baseline.revol_bal || 0);
-  const newMonthlyDebtPayment =
-    params.currentMonthlyDebtPayment + balChange * REVOL_DTI_FACTOR;
-  return dtiFrom(newMonthlyDebtPayment, params);
-}
-
-// Credit-utilization trigger: 2% of the IMPLIED balance change. If the credit
-// limit is indeterminate (zero baseline balance/util), there is no implied
-// balance change — hold DTI (documented fallback).
-function dtiFromRevolUtil(state, params) {
-  if (params.creditLimit === null) return params.baseline.dti;
-  const impliedNewBal = ((state.revol_util || 0) / 100) * params.creditLimit;
-  const balChange = impliedNewBal - (params.baseline.revol_bal || 0);
-  const newMonthlyDebtPayment =
-    params.currentMonthlyDebtPayment + balChange * REVOL_DTI_FACTOR;
-  return dtiFrom(newMonthlyDebtPayment, params);
-}
-
-// Annual-income trigger: numerator unchanged (existing debt only), denominator
-// becomes New Monthly Income.
-function dtiFromIncome(state, params) {
-  return dtiFrom(params.currentMonthlyDebtPayment, params);
 }
 
 // ── Two-way pair: Revolving Balance <-> Credit Utilization (Brief Sec 5/7) ──
@@ -149,23 +137,22 @@ function ficoMaster(state, params) {
  */
 export const EDGES = {
   loan_amnt: [
-    { dependent: 'dti', tag: 'C', phase: 'value', rule: dtiFromLoan },
-    { dependent: 'fico_score', tag: 'E', phase: 'value', rule: ficoMaster }
+    { dependent: 'dti', tag: 'C', phase: 'value', rule: dtiFull }
   ],
   revol_bal: [
     { dependent: 'revol_util', tag: 'E', phase: 'structural', rule: revolUtilFromBal },
-    { dependent: 'dti', tag: 'A', phase: 'value', rule: dtiFromRevolBal }
+    { dependent: 'dti', tag: 'A', phase: 'value', rule: dtiFull }
   ],
   revol_util: [
     { dependent: 'revol_bal', tag: 'E', phase: 'structural', rule: revolBalFromUtil },
-    { dependent: 'dti', tag: 'A', phase: 'value', rule: dtiFromRevolUtil }
+    { dependent: 'dti', tag: 'A', phase: 'value', rule: dtiFull }
   ],
   open_acc: [
     { dependent: 'total_acc', tag: 'E', phase: 'structural', rule: totalAccFromOpen },
     { dependent: 'fico_score', tag: 'E', phase: 'value', rule: ficoMaster }
   ],
   term: [
-    { dependent: 'dti', tag: 'C', phase: 'value', rule: dtiFromLoan }
+    { dependent: 'dti', tag: 'C', phase: 'value', rule: dtiFull }
   ],
   home_ownership: [
     { dependent: 'mort_acc', tag: 'E', phase: 'structural', rule: mortAccFromHome },
@@ -174,7 +161,7 @@ export const EDGES = {
     { dependent: 'fico_score', tag: 'E', phase: 'value', rule: ficoMaster }
   ],
   purpose: [
-    { dependent: 'dti', tag: 'C', phase: 'value', rule: dtiFromLoan }
+    { dependent: 'dti', tag: 'C', phase: 'value', rule: dtiFull }
   ],
   inq_last_6mths: [
     { dependent: 'fico_score', tag: 'E', phase: 'value', rule: ficoMaster }
@@ -183,7 +170,7 @@ export const EDGES = {
     { dependent: 'fico_score', tag: 'E', phase: 'value', rule: ficoMaster }
   ],
   annual_inc: [
-    { dependent: 'dti', tag: 'E', phase: 'value', rule: dtiFromIncome }
+    { dependent: 'dti', tag: 'E', phase: 'value', rule: dtiFull }
   ],
   mort_acc: [
     { dependent: 'open_acc', tag: 'E', phase: 'structural', rule: openAccFromMort },
