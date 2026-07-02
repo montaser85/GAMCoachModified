@@ -19,6 +19,14 @@
 /** Home-ownership category that represents holding a mortgage. */
 export const MORTGAGE_HOME_VALUE = 'MORTGAGE';
 
+// FICO is clamped to the model's valid bucket range: the EBM scores fico_score
+// with bin edges from 662 to ~847.5, so any value below 662 or above 848 lands
+// in the bottom/top bucket and scores identically. FICO therefore never moves
+// the decision outside this band, and we hold the displayed value there too —
+// no matter how many penalties accumulate.
+export const FICO_FLOOR = 662;
+export const FICO_CEIL = 848;
+
 /**
  * Annual Percentage Rate by loan purpose (Brief Section 4).
  * Anything not explicitly listed is treated as a personal loan.
@@ -177,5 +185,9 @@ export function masterFico(params) {
   const newFico =
     baseFico - params.hardInquiries * 4 - params.bankruptciesIncrease * 200;
   // Never-increase invariant (defensive; penalties are already >= 0).
-  return Math.min(newFico, baseFico);
+  const held = Math.min(newFico, baseFico);
+  // Clamp to the model's valid FICO bucket range: it never drops below 662 no
+  // matter how many accounts/mortgages/inquiries/bankruptcies pile up, and
+  // never exceeds 848.
+  return Math.max(FICO_FLOOR, Math.min(FICO_CEIL, held));
 }

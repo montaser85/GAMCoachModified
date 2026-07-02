@@ -18,7 +18,9 @@ export {
   increase,
   APR_BY_PURPOSE,
   DEFAULT_APR,
-  MORTGAGE_HOME_VALUE
+  MORTGAGE_HOME_VALUE,
+  FICO_FLOOR,
+  FICO_CEIL
 } from './params.mjs';
 
 import { EDGES } from './edges.mjs';

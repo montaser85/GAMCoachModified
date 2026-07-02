@@ -258,11 +258,19 @@ test('9b. Total cannot be set below Open on a direct total edit', () => {
 });
 
 // Extra invariants (Brief Sections 4/8)
-test('X1. Bankruptcy increase -> FICO -200 (floored)', () => {
-  const base = makeBaseline({ pub_rec_bankruptcies: 0 });
+test('X1. Bankruptcy increase drops FICO, clamped to the 662 floor', () => {
+  const base = makeBaseline({ pub_rec_bankruptcies: 0 }); // fico 700
   const next = edit(base, 'pub_rec_bankruptcies', 1);
   const { state } = propagate('pub_rec_bankruptcies', base, next, base);
-  approx(state.fico_score, 500); // 700 - 200
+  approx(state.fico_score, 662); // 700 - 200 = 500, clamped up to the 662 floor
+});
+
+test('D3. FICO never drops below 662, however many accounts open', () => {
+  const base = makeBaseline({ open_acc: 8 }); // fico 700
+  const next = edit(base, 'open_acc', 58); // +50 accounts
+  const { state } = propagate('open_acc', base, next, base);
+  approx(state.fico_score, 662); // 700 - 50*4 = 500, clamped to the floor
+  assert.ok(state.fico_score >= 662);
 });
 
 test('X2. Reducing bankruptcies never raises FICO', () => {
