@@ -19,7 +19,8 @@
     allDependentFeatures,
     featureHasOutgoingEdges,
     computeParams,
-    creditLimitFromBaseline
+    creditLimitFromBaseline,
+    EDGES
   } from '../../engine/index.mjs';
 
   export let windowLoaded = false;
@@ -92,6 +93,13 @@
   // (engine Section 8). Built in initLastKnownValues() once the plan is ready.
   /** @type {Record<string, number|string>|null} */
   let applicantBaselineState = null;
+
+  // RESET_TO_LOAD_STATE: snapshot of the model's sample exactly as it appears on
+  // first load (suggested values on suggested features, profile values on
+  // everything else including dependents). Captured once at init and never
+  // mutated. Reset restores from this snapshot instead of propagating.
+  /** @type {Array<number|string>|null} */
+  let loadTimeSample = null;
   // Display names for all features — used in arrow labels
   const DISPLAY_NAMES = {
     'loan_amnt': 'Loan Amount', 'dti': 'Debt to Income Ratio',
@@ -168,6 +176,14 @@
    * @param {Feature} feature
    */
   const curValueUpdatedHandler = (e, feature) => {
+    // RESET_TO_LOAD_STATE: a reset restores the load-time snapshot for this
+    // feature, its direct sources, and the affected dependents — WITHOUT
+    // running propagation. Edits (no isReset flag) still propagate below.
+    if (e.detail.isReset) {
+      handleFeatureReset(feature.data.name);
+      return;
+    }
+
     let newValue = e.detail.newValue;
 
     // Encode the level if it is a categorical feature
@@ -203,6 +219,68 @@
   };
 
   // ────────────────────────────────────────────────────────────────────────────
+  // RESET_TO_LOAD_STATE — restore load-time values instead of propagating
+  // ────────────────────────────────────────────────────────────────────────────
+
+  /** Direct source features of `name` (one level up): features that write to it. */
+  const sourcesOf = (name) =>
+    Object.entries(EDGES)
+      .filter(([, edges]) => edges.some(e => e.dependent === name))
+      .map(([src]) => src);
+
+  /** Direct dependent features of `name`: features it writes to. */
+  const dependentsOf = (name) => (EDGES[name] || []).map(e => e.dependent);
+
+  /**
+   * The set of features to restore when `name` is reset: the feature itself,
+   * its direct sources (one level up), and every dependent affected by the
+   * feature or those sources (one level down). No further cascade.
+   */
+  const resetSet = (name) => {
+    const sources = sourcesOf(name);
+    const set = new Set([name, ...sources]);
+    [name, ...sources].forEach(n => dependentsOf(n).forEach(d => set.add(d)));
+    return set;
+  };
+
+  /**
+   * Reset handler: restore the affected features to their load-time snapshot
+   * values directly (no propagation). The snapshot value stored in
+   * loadTimeSample is already in the form ebmLocal.updateFeature and the cards
+   * expect (internal number for continuous, level label for categorical).
+   * @param {string} featureName
+   */
+  const handleFeatureReset = (featureName) => {
+    if (!plan || !loadTimeSample) return;
+
+    const names = resetSet(featureName);
+    const overrides = {};
+
+    names.forEach(name => {
+      const f = plan.features.find(ff => ff.data.name === name);
+      if (!f) return;
+      const loadVal = loadTimeSample[f.featureID];
+      if (loadVal === undefined) return;
+
+      // Restore the model value and every place the card/propagation reads from.
+      plan.ebmLocal.updateFeature(name, loadVal);
+      f.hypotheticalValue = loadVal;
+      lastKnownValues[name] = loadVal;
+      overrides[name] = loadVal;
+    });
+
+    // Push the restored values to the store and the cards.
+    planStore.set(plan);
+    featureValueOverrideStore.set(overrides);
+    setTimeout(() => featureValueOverrideStore.set({}), 400);
+
+    // Reset is NOT a propagation — clear any propagation UI it might collide with.
+    propagatedFeaturesStore.set(new Set());
+    showPropagationMessage = false;
+    dismissArrows();
+  };
+
+  // ────────────────────────────────────────────────────────────────────────────
   // Value helpers — read / convert feature values from lastKnownValues or plan
   // ────────────────────────────────────────────────────────────────────────────
 
@@ -233,6 +311,12 @@
     // units). Uses feature.originalValue (the applicant's real starting profile),
     // NOT the coach-suggested values.
     applicantBaselineState = buildEngineState(f => f.originalValue);
+
+    // RESET_TO_LOAD_STATE: capture the load-time snapshot once (the sample here
+    // holds exactly what the cards display on first load, before any edit).
+    if (!loadTimeSample) {
+      loadTimeSample = plan.ebmLocal.sample.slice();
+    }
   };
 
   /**

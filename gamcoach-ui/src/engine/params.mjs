@@ -27,6 +27,22 @@ export const MORTGAGE_HOME_VALUE = 'MORTGAGE';
 export const FICO_FLOOR = 662;
 export const FICO_CEIL = 848;
 
+// Valid display-unit range for every derived feature the engine writes, taken
+// from the model's bin edges. Any value the engine computes outside these
+// bounds lands in the bottom/top bucket and scores identically, so we clamp the
+// written value to keep the displayed number inside the range the model can
+// actually distinguish. (mort_acc is excluded — it is a capped category whose
+// '7+' bucket is handled at the adapter, and its raw count must stay unclamped
+// so a mortgage added at 7+ still registers as a hard inquiry.)
+export const MODEL_BOUNDS = {
+  fico_score: [FICO_FLOOR, FICO_CEIL], // 662 – 848
+  revol_util: [0, 100],
+  dti: [0, 99.9],
+  open_acc: [1, 72],
+  total_acc: [2, 118],
+  revol_bal: [0, 1696796] // 10^0 .. 10^6.229629631710783 dollars
+};
+
 /**
  * Annual Percentage Rate by loan purpose (Brief Section 4).
  * Anything not explicitly listed is treated as a personal loan.
@@ -184,10 +200,8 @@ export function masterFico(params) {
   const baseFico = params.baseline.fico_score || 0;
   const newFico =
     baseFico - params.hardInquiries * 4 - params.bankruptciesIncrease * 200;
-  // Never-increase invariant (defensive; penalties are already >= 0).
-  const held = Math.min(newFico, baseFico);
-  // Clamp to the model's valid FICO bucket range: it never drops below 662 no
-  // matter how many accounts/mortgages/inquiries/bankruptcies pile up, and
-  // never exceeds 848.
-  return Math.max(FICO_FLOOR, Math.min(FICO_CEIL, held));
+  // Never-increase invariant (defensive; penalties are already >= 0). The
+  // valid-range clamp (662–848) is applied centrally in propagate() via
+  // MODEL_BOUNDS, together with every other derived feature.
+  return Math.min(newFico, baseFico);
 }

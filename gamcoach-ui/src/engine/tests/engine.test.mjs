@@ -273,6 +273,29 @@ test('D3. FICO never drops below 662, however many accounts open', () => {
   assert.ok(state.fico_score >= 662);
 });
 
+test('D4. Credit Utilization clamps at 100% when balance exceeds the limit', () => {
+  const base = makeBaseline(); // credit limit = 20000
+  const next = edit(base, 'revol_bal', 30000); // raw util would be 150%
+  const { state } = propagate('revol_bal', base, next, base);
+  approx(state.revol_util, 100);
+  assert.ok(state.revol_util <= 100 && state.revol_util >= 0);
+});
+
+test('D5. DTI clamps at 99.9% for an extreme loan', () => {
+  const base = makeBaseline();
+  const next = edit(base, 'loan_amnt', 400000); // payment blows DTI past 100%
+  const { state } = propagate('loan_amnt', base, next, base);
+  approx(state.dti, 99.9);
+});
+
+test('D6. Open/Total account counters clamp at their caps', () => {
+  const base = makeBaseline({ open_acc: 72, total_acc: 118, mort_acc: 0 });
+  const next = edit(base, 'mort_acc', 3); // would push counters past their caps
+  const { state } = propagate('mort_acc', base, next, base);
+  assert.ok(state.open_acc <= 72, 'open_acc <= 72');
+  assert.ok(state.total_acc <= 118, 'total_acc <= 118');
+});
+
 test('X2. Reducing bankruptcies never raises FICO', () => {
   const base = makeBaseline({ pub_rec_bankruptcies: 2 });
   const next = edit(base, 'pub_rec_bankruptcies', 0); // net -2, floored to 0

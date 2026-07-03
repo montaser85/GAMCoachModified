@@ -20,8 +20,21 @@
  * altered to reconcile a conflict.
  */
 
-import { computeParams, creditLimitFromBaseline } from './params.mjs';
+import { computeParams, creditLimitFromBaseline, MODEL_BOUNDS } from './params.mjs';
 import { EDGES } from './edges.mjs';
+
+/**
+ * Clamp a derived value to its model bin range (MODEL_BOUNDS). Features without
+ * a bounds entry (or non-numeric values) pass through unchanged.
+ * @param {string} feature
+ * @param {number} value
+ * @returns {number}
+ */
+function clampToBounds(feature, value) {
+  const b = MODEL_BOUNDS[feature];
+  if (!b || typeof value !== 'number') return value;
+  return Math.max(b[0], Math.min(b[1], value));
+}
 
 /** Members of the one two-way pair — used only to surface a UI cue. */
 const TWO_WAY_PAIR = { revol_bal: 'revol_util', revol_util: 'revol_bal' };
@@ -62,7 +75,7 @@ export function propagate(editedFeature, oldState, newState, baseline) {
   };
   for (const edge of edges) {
     if (edge.phase !== 'structural') continue;
-    const value = edge.rule(working, structuralCtx);
+    const value = clampToBounds(edge.dependent, edge.rule(working, structuralCtx));
     working[edge.dependent] = value;
     log.push({
       edited: editedFeature,
@@ -78,7 +91,7 @@ export function propagate(editedFeature, oldState, newState, baseline) {
   // ── Phase 3: value writes (FICO / DTI) ───────────────────────────────────
   for (const edge of edges) {
     if (edge.phase !== 'value') continue;
-    const value = edge.rule(working, params);
+    const value = clampToBounds(edge.dependent, edge.rule(working, params));
     working[edge.dependent] = value;
     log.push({
       edited: editedFeature,

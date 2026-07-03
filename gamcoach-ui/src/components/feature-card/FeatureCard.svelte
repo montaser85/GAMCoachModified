@@ -464,14 +464,21 @@
     moveThumb(component, state, rightThumbID, state.feature.valueMax);
     feature.acceptableRange = null;
 
-    // Change the current value to coach value or original value
-    moveThumb(component, state, middleThumbID, state.feature.coachValue);
-
     syncRangeTrack(component, state);
 
     // Change difficulty to default
     feature.difficulty = 'neutral';
     feature.isConstrained = false;
+
+    // RESET_TO_LOAD_STATE: do NOT move the middle thumb here (that would fire
+    // curValueUpdated as an edit and trigger propagation). Dispatch a reset so
+    // FeaturePanel restores this feature and its sources/dependents to their
+    // load-time snapshot values; the restored value comes back via the override
+    // store and repositions the middle thumb.
+    dispatch('curValueUpdated', {
+      newValue: state.feature.coachValue,
+      isReset: true
+    });
 
     // Propagate the change to FeaturePanel
     dispatch('constraintUpdated', {

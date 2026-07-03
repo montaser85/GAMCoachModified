@@ -20,7 +20,8 @@ export {
   DEFAULT_APR,
   MORTGAGE_HOME_VALUE,
   FICO_FLOOR,
-  FICO_CEIL
+  FICO_CEIL,
+  MODEL_BOUNDS
 } from './params.mjs';
 
 import { EDGES } from './edges.mjs';

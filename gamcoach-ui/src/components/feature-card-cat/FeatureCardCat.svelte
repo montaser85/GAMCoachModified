@@ -466,9 +466,11 @@
       elementName: 'reset'
     });
 
-    // Restore the cur value
+    // Restore the clicked feature's own value visually (reactivity only — do
+    // NOT call stateUpdated('value'), which dispatches curValueUpdated as an
+    // edit and would trigger propagation).
     state.feature.curValue = state.feature.coachValue;
-    state.stateUpdated('value');
+    state.stateUpdated();
 
     d3.select(component)
       .select('.svg-hist')
@@ -484,6 +486,14 @@
     // Change difficulty to default
     feature.difficulty = 'neutral';
     feature.isConstrained = false;
+
+    // RESET_TO_LOAD_STATE: dispatch a reset (not an edit) so FeaturePanel
+    // restores this feature and its sources/dependents to their load-time
+    // snapshot values without propagating.
+    dispatch('curValueUpdated', {
+      newValue: state.feature.coachValue,
+      isReset: true
+    });
 
     // Propagate the change to FeaturePanel
     dispatch('constraintUpdated', {
