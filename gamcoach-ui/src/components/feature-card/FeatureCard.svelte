@@ -42,6 +42,10 @@
   /** Whether this feature can be indirectly changed by another feature */
   export let isLinked = false;
 
+  /** Whether the user has modified this feature (and not reset it). Drives the
+   *  blue outline. */
+  export let modified = false;
+
   /** Explanatory text shown in the link popup (empty = default placeholder) */
   export let linkPopupText = '';
 
@@ -531,7 +535,7 @@
   $: feature && mounted && !initialized && initFeatureCard();
 </script>
 
-<div class="feature-card" bind:this={component} class:collapsed={isCollapsed} data-feature-name={feature?.data?.name}>
+<div class="feature-card" bind:this={component} class:collapsed={isCollapsed} class:highlighted={modified} data-feature-name={feature?.data?.name}>
   <div
     class="feature-header"
     class:collapsed={isCollapsed}

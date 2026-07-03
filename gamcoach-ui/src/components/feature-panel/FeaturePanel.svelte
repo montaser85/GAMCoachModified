@@ -100,6 +100,12 @@
   // mutated. Reset restores from this snapshot instead of propagating.
   /** @type {Array<number|string>|null} */
   let loadTimeSample = null;
+
+  // Names of features the user has modified (directly edited, or changed via
+  // propagation from an edit) and NOT since reset. Drives the blue outline.
+  // A feature stays "modified" even if its value coincidentally returns to the
+  // load-time value — only a reset clears it.
+  let modifiedFeatures = new Set();
   // Display names for all features — used in arrow labels
   const DISPLAY_NAMES = {
     'loan_amnt': 'Loan Amount', 'dti': 'Debt to Income Ratio',
@@ -209,6 +215,12 @@
     lastKnownValues[featureName] = newValue;
 
     if (previousValue !== undefined && previousValue !== newValue) {
+      // The user actively edited this feature — mark it modified (drives the
+      // blue outline). Stays set even if the value later returns to the load
+      // value; only a reset clears it.
+      modifiedFeatures.add(featureName);
+      modifiedFeatures = modifiedFeatures;
+
       // Debounce — only fire after user stops dragging (350ms of silence)
       if (propagationDebounceTimer) clearTimeout(propagationDebounceTimer);
       propagationDebounceTimer = setTimeout(() => {
@@ -267,7 +279,12 @@
       f.hypotheticalValue = loadVal;
       lastKnownValues[name] = loadVal;
       overrides[name] = loadVal;
+
+      // Reset is the only action that returns a feature to its unmodified state:
+      // clear the blue outline for every restored feature.
+      modifiedFeatures.delete(name);
     });
+    modifiedFeatures = modifiedFeatures;
 
     // Push the restored values to the store and the cards.
     planStore.set(plan);
@@ -840,12 +857,12 @@
       bannerEl.style.animation = '';
     }
 
-    // ── 3. Blue outlines on source + affected cards ───────────────────────────
-    const allNames = [featureName, ...activeTargets];
-    allNames.forEach(name => {
-      const el = document.querySelector(`[data-feature-name="${name}"]`);
-      if (el) el.classList.add('highlighted');
-    });
+    // ── 3. Blue outline on the edited feature + affected dependents ───────────
+    // Mark them modified (reactive); the outline shows while modified and clears
+    // only on reset — never from value equality.
+    modifiedFeatures.add(featureName);
+    activeTargets.forEach(name => modifiedFeatures.add(name));
+    modifiedFeatures = modifiedFeatures;
 
     // ── 4. Push computed values into the EBM and move the sliders ───────────
     Object.entries(computedUpdates).forEach(([name, internalValue]) => {
@@ -1061,6 +1078,7 @@
               feature={feature}
               logger={logger}
               isLinked={ALL_TARGETS.has(feature.data.name)}
+              modified={modifiedFeatures.has(feature.data.name)}
               linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
               linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation
                              : feature.data.name === 'dti'        ? dtiLinkCalculation
@@ -1076,6 +1094,7 @@
               feature={feature}
               logger={logger}
               isLinked={ALL_TARGETS.has(feature.data.name)}
+              modified={modifiedFeatures.has(feature.data.name)}
               linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
               linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation
                              : feature.data.name === 'dti'        ? dtiLinkCalculation
@@ -1099,6 +1118,7 @@
               feature={feature}
               logger={logger}
               isLinked={ALL_TARGETS.has(feature.data.name)}
+              modified={modifiedFeatures.has(feature.data.name)}
               linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
               linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation
                              : feature.data.name === 'dti'        ? dtiLinkCalculation
@@ -1114,6 +1134,7 @@
               feature={feature}
               logger={logger}
               isLinked={ALL_TARGETS.has(feature.data.name)}
+              modified={modifiedFeatures.has(feature.data.name)}
               linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
               linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation
                              : feature.data.name === 'dti'        ? dtiLinkCalculation
@@ -1137,6 +1158,7 @@
               feature={feature}
               logger={logger}
               isLinked={ALL_TARGETS.has(feature.data.name)}
+              modified={modifiedFeatures.has(feature.data.name)}
               linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
               linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation
                              : feature.data.name === 'dti'        ? dtiLinkCalculation
@@ -1152,6 +1174,7 @@
               feature={feature}
               logger={logger}
               isLinked={ALL_TARGETS.has(feature.data.name)}
+              modified={modifiedFeatures.has(feature.data.name)}
               linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
               linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation
                              : feature.data.name === 'dti'        ? dtiLinkCalculation
@@ -1185,6 +1208,7 @@
               feature={feature}
               logger={logger}
               isLinked={ALL_TARGETS.has(feature.data.name)}
+              modified={modifiedFeatures.has(feature.data.name)}
               linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
               linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation
                              : feature.data.name === 'dti'        ? dtiLinkCalculation
@@ -1200,6 +1224,7 @@
               feature={feature}
               logger={logger}
               isLinked={ALL_TARGETS.has(feature.data.name)}
+              modified={modifiedFeatures.has(feature.data.name)}
               linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
               linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation
                              : feature.data.name === 'dti'        ? dtiLinkCalculation
@@ -1223,6 +1248,7 @@
               feature={feature}
               logger={logger}
               isLinked={ALL_TARGETS.has(feature.data.name)}
+              modified={modifiedFeatures.has(feature.data.name)}
               linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
               linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation
                              : feature.data.name === 'dti'        ? dtiLinkCalculation
@@ -1238,6 +1264,7 @@
               feature={feature}
               logger={logger}
               isLinked={ALL_TARGETS.has(feature.data.name)}
+              modified={modifiedFeatures.has(feature.data.name)}
               linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
               linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation
                              : feature.data.name === 'dti'        ? dtiLinkCalculation
@@ -1261,6 +1288,7 @@
               feature={feature}
               logger={logger}
               isLinked={ALL_TARGETS.has(feature.data.name)}
+              modified={modifiedFeatures.has(feature.data.name)}
               linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
               linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation
                              : feature.data.name === 'dti'        ? dtiLinkCalculation
@@ -1276,6 +1304,7 @@
               feature={feature}
               logger={logger}
               isLinked={ALL_TARGETS.has(feature.data.name)}
+              modified={modifiedFeatures.has(feature.data.name)}
               linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
               linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation
                              : feature.data.name === 'dti'        ? dtiLinkCalculation
@@ -1309,6 +1338,7 @@
               feature={feature}
               logger={logger}
               isLinked={ALL_TARGETS.has(feature.data.name)}
+              modified={modifiedFeatures.has(feature.data.name)}
               linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
               linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation
                              : feature.data.name === 'dti'        ? dtiLinkCalculation
@@ -1324,6 +1354,7 @@
               feature={feature}
               logger={logger}
               isLinked={ALL_TARGETS.has(feature.data.name)}
+              modified={modifiedFeatures.has(feature.data.name)}
               linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
               linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation
                              : feature.data.name === 'dti'        ? dtiLinkCalculation
@@ -1347,6 +1378,7 @@
               feature={feature}
               logger={logger}
               isLinked={ALL_TARGETS.has(feature.data.name)}
+              modified={modifiedFeatures.has(feature.data.name)}
               linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
               linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation
                              : feature.data.name === 'dti'        ? dtiLinkCalculation
@@ -1362,6 +1394,7 @@
               feature={feature}
               logger={logger}
               isLinked={ALL_TARGETS.has(feature.data.name)}
+              modified={modifiedFeatures.has(feature.data.name)}
               linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
               linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation
                              : feature.data.name === 'dti'        ? dtiLinkCalculation
@@ -1385,6 +1418,7 @@
               feature={feature}
               logger={logger}
               isLinked={ALL_TARGETS.has(feature.data.name)}
+              modified={modifiedFeatures.has(feature.data.name)}
               linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
               linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation
                              : feature.data.name === 'dti'        ? dtiLinkCalculation
@@ -1400,6 +1434,7 @@
               feature={feature}
               logger={logger}
               isLinked={ALL_TARGETS.has(feature.data.name)}
+              modified={modifiedFeatures.has(feature.data.name)}
               linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
               linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation
                              : feature.data.name === 'dti'        ? dtiLinkCalculation
