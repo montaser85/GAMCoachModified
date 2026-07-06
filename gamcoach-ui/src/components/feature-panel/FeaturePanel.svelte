@@ -279,15 +279,22 @@
     modifiedFeatures = modifiedFeatures;
 
     // ── 2. Recompute affected dependents from the remaining modified state ────
+    // Restoring a SOURCE (e.g. Open Accounts / Mortgages) changes that source's
+    // OTHER dependents (e.g. FICO, Number of Accounts). So recompute the
+    // dependents of every restored feature — the reset feature AND its sources —
+    // not just the reset feature (which may itself be a leaf, e.g. total_acc).
     const baseline = applicantBaselineState;
     const current = buildCurrentEngineState();
-    const { state: next, log } = propagate(
-      featureName, baseline, current, baseline, modifiedFeatures
-    );
-    const deps = [...new Set(log.filter(l => !l.note).map(l => l.dependent))];
-    deps.forEach(dep => {
-      if (unmodify.has(dep)) return; // already restored to load-time
-      const internal = displayToInternal(dep, next[dep]);
+    const recomputed = {};
+    unmodify.forEach(src => {
+      const { state: next, log } = propagate(src, baseline, current, baseline, modifiedFeatures);
+      log.filter(l => !l.note).forEach(l => {
+        if (!unmodify.has(l.dependent)) recomputed[l.dependent] = next[l.dependent];
+      });
+    });
+
+    Object.entries(recomputed).forEach(([dep, val]) => {
+      const internal = displayToInternal(dep, val);
       plan.ebmLocal.updateFeature(dep, internal);
       const f = plan.features.find(ff => ff.data.name === dep);
       if (f) f.hypotheticalValue = internal;
