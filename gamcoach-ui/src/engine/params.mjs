@@ -117,9 +117,13 @@ export function loanMonthlyPayment(loanAmount, monthlyInterestRate, termMonths) 
  *
  * @param {object} baseline  Applicant's ORIGINAL input profile (frozen).
  * @param {object} current   Full feature vector AFTER the user's direct edit.
+ * @param {Set<string>} [modifiedFeatures]  Names of features the user has
+ *   actively edited. Consumed only by the DTI_USER_EDITS_ONLY gate (see
+ *   edges.mjs). When omitted, the gate treats every input as engaged (the prior
+ *   "all current values" behavior).
  * @returns {object} params consumed by the rule functions.
  */
-export function computeParams(baseline, current) {
+export function computeParams(baseline, current, modifiedFeatures = null) {
   // Income denominators — one shared "New Monthly Income" everywhere. If income
   // was not edited, current.annual_inc === baseline.annual_inc and the two
   // collapse to the same value (Brief Section 8: New-Monthly-Income discipline).
@@ -173,6 +177,7 @@ export function computeParams(baseline, current) {
   return {
     baseline,
     current,
+    modifiedFeatures,
     apr,
     monthlyInterestRate: mir,
     currentMonthlyIncome,

@@ -8,7 +8,7 @@
  */
 
 export { propagate, DTI_WARN_THRESHOLD, FICO_WARN_THRESHOLD } from './engine.mjs';
-export { EDGES, LEAF_FEATURES } from './edges.mjs';
+export { EDGES, LEAF_FEATURES, computeDtiParts, DTI_USER_EDITS_ONLY } from './edges.mjs';
 export {
   computeParams,
   masterFico,

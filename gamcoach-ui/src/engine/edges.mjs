@@ -27,9 +27,26 @@
  * amount edit never touches revolving balance).
  */
 
-import { masterFico, MORTGAGE_HOME_VALUE } from './params.mjs';
+import {
+  masterFico,
+  MORTGAGE_HOME_VALUE,
+  loanMonthlyPayment,
+  aprForPurpose
+} from './params.mjs';
 
 const REVOL_DTI_FACTOR = 0.02; // 2%-of-delta on revolving balance change
+
+// ── DTI_USER_EDITS_ONLY — single gate ──────────────────────────────────────
+// Determines which inputs feed the DTI recompute:
+//   true  -> a feature contributes to DTI only if the user actively edited it
+//            (its name is in params.modifiedFeatures). Unedited features — even
+//            when they display a suggested value — use their profile baseline,
+//            so an untouched suggested loan is NOT folded into DTI.
+//   false -> every current value feeds DTI (the prior "all current values"
+//            behavior).
+// Flip this ONE constant to revert. When params.modifiedFeatures is absent the
+// gate also falls back to "all current values" (used by the engine tests).
+export const DTI_USER_EDITS_ONLY = true;
 
 // ── DTI — single full-state function ───────────────────────────────────────
 // DTI ALWAYS recomputes from the full current state of every input, never from
@@ -48,19 +65,55 @@ const REVOL_DTI_FACTOR = 0.02; // 2%-of-delta on revolving balance change
 // the recovered credit limit (set in the structural phase before this runs),
 // which naturally falls back to the profile balance (zero delta) when the
 // limit is indeterminate.
-function dtiFrom(newMonthlyDebtPayment, params) {
-  const denom = params.newMonthlyIncome;
-  if (!denom) return params.baseline.dti; // indeterminate income => hold
-  return (newMonthlyDebtPayment / denom) * 100;
+/**
+ * Decompose DTI into its parts, honoring the DTI_USER_EDITS_ONLY gate. Every DTI
+ * path (the `dti` edge below and the UI breakdown popup) goes through here, so
+ * the gate lives in exactly one place.
+ *
+ * @param {object} state   current feature vector (post-edit / post-structural)
+ * @param {object} params  from computeParams (carries baseline, modifiedFeatures)
+ * @returns {{baseDebt:number, loanPayment:number, revolDelta:number,
+ *            monthlyIncome:number, newMonthlyDebt:number, newDti:number}}
+ */
+export function computeDtiParts(state, params) {
+  const base = params.baseline;
+  const mod = params.modifiedFeatures;
+  // Gate: with the flag on, a feature is "engaged" only if the user edited it;
+  // otherwise (flag off, or no modified set supplied) every feature is engaged.
+  const isEdited = (f) => !DTI_USER_EDITS_ONLY || !mod || mod.has(f);
+  const eff = (f) => (isEdited(f) ? state[f] : base[f]);
+
+  // Base debt is always reconstructed once from profile DTI and profile income.
+  const baseDebt = params.currentMonthlyDebtPayment;
+
+  // Loan payment enters only if Loan Amount was edited; it then uses the
+  // effective loan / term / purpose (edited -> current, else profile).
+  const loanPayment = isEdited('loan_amnt')
+    ? loanMonthlyPayment(
+        eff('loan_amnt') || 0,
+        aprForPurpose(eff('purpose')) / 12,
+        eff('term') || 0
+      )
+    : 0;
+
+  // Revolving 2%-of-delta enters only if Revolving Balance or Credit Utilization
+  // was edited (utilization drives the balance).
+  const revolEngaged = isEdited('revol_bal') || isEdited('revol_util');
+  const revolBal = revolEngaged ? (state.revol_bal || 0) : (base.revol_bal || 0);
+  const revolDelta = (revolBal - (base.revol_bal || 0)) * REVOL_DTI_FACTOR;
+
+  // Income affects the denominator only if Income was edited.
+  const monthlyIncome =
+    ((isEdited('annual_inc') ? state.annual_inc : base.annual_inc) || 0) / 12;
+
+  const newMonthlyDebt = baseDebt + loanPayment + revolDelta;
+  const newDti = monthlyIncome ? (newMonthlyDebt / monthlyIncome) * 100 : base.dti;
+
+  return { baseDebt, loanPayment, revolDelta, monthlyIncome, newMonthlyDebt, newDti };
 }
 
 function dtiFull(state, params) {
-  const revolBalDelta = (state.revol_bal || 0) - (params.baseline.revol_bal || 0);
-  const newMonthlyDebtPayment =
-    params.currentMonthlyDebtPayment +
-    params.monthlyLoanPayment +
-    revolBalDelta * REVOL_DTI_FACTOR;
-  return dtiFrom(newMonthlyDebtPayment, params);
+  return computeDtiParts(state, params).newDti;
 }
 
 // ── Two-way pair: Revolving Balance <-> Credit Utilization (Brief Sec 5/7) ──

@@ -19,6 +19,7 @@
     allDependentFeatures,
     featureHasOutgoingEdges,
     computeParams,
+    computeDtiParts,
     creditLimitFromBaseline,
     EDGES
   } from '../../engine/index.mjs';
@@ -240,58 +241,76 @@
       .filter(([, edges]) => edges.some(e => e.dependent === name))
       .map(([src]) => src);
 
-  /** Direct dependent features of `name`: features it writes to. */
-  const dependentsOf = (name) => (EDGES[name] || []).map(e => e.dependent);
-
   /**
-   * The set of features to restore when `name` is reset: the feature itself,
-   * its direct sources (one level up), and every dependent affected by the
-   * feature or those sources (one level down). No further cascade.
+   * Restore a single feature to its load-time snapshot value (model + card +
+   * bookkeeping) and clear its modified flag. Returns true if applied.
    */
-  const resetSet = (name) => {
-    const sources = sourcesOf(name);
-    const set = new Set([name, ...sources]);
-    [name, ...sources].forEach(n => dependentsOf(n).forEach(d => set.add(d)));
-    return set;
+  const restoreToLoadTime = (name, overrides) => {
+    const f = plan.features.find(ff => ff.data.name === name);
+    if (!f) return false;
+    const loadVal = loadTimeSample[f.featureID];
+    if (loadVal === undefined) return false;
+    plan.ebmLocal.updateFeature(name, loadVal);
+    f.hypotheticalValue = loadVal;
+    lastKnownValues[name] = loadVal;
+    overrides[name] = loadVal;
+    modifiedFeatures.delete(name);
+    return true;
   };
 
   /**
-   * Reset handler: restore the affected features to their load-time snapshot
-   * values directly (no propagation). The snapshot value stored in
-   * loadTimeSample is already in the form ebmLocal.updateFeature and the cards
-   * expect (internal number for continuous, level label for categorical).
+   * Reset handler.
+   * 1. Restore the reset feature and its direct sources (one level up) to their
+   *    load-time values and clear their modified flags.
+   * 2. Recompute the affected dependents from the STILL-modified sources
+   *    (respecting DTI_USER_EDITS_ONLY) — so a dependent keeps the contributions
+   *    of sources the user hasn't reset, and only falls back to its profile
+   *    value when all of its sources are unmodified.
    * @param {string} featureName
    */
   const handleFeatureReset = (featureName) => {
     if (!plan || !loadTimeSample) return;
 
-    const names = resetSet(featureName);
     const overrides = {};
 
-    names.forEach(name => {
-      const f = plan.features.find(ff => ff.data.name === name);
-      if (!f) return;
-      const loadVal = loadTimeSample[f.featureID];
-      if (loadVal === undefined) return;
+    // ── 1. Un-modify: reset feature + its direct sources -> load-time ─────────
+    const unmodify = new Set([featureName, ...sourcesOf(featureName)]);
+    unmodify.forEach(name => restoreToLoadTime(name, overrides));
+    modifiedFeatures = modifiedFeatures;
 
-      // Restore the model value and every place the card/propagation reads from.
-      plan.ebmLocal.updateFeature(name, loadVal);
-      f.hypotheticalValue = loadVal;
-      lastKnownValues[name] = loadVal;
-      overrides[name] = loadVal;
+    // ── 2. Recompute affected dependents from the remaining modified state ────
+    const baseline = applicantBaselineState;
+    const current = buildCurrentEngineState();
+    const { state: next, log } = propagate(
+      featureName, baseline, current, baseline, modifiedFeatures
+    );
+    const deps = [...new Set(log.filter(l => !l.note).map(l => l.dependent))];
+    deps.forEach(dep => {
+      if (unmodify.has(dep)) return; // already restored to load-time
+      const internal = displayToInternal(dep, next[dep]);
+      plan.ebmLocal.updateFeature(dep, internal);
+      const f = plan.features.find(ff => ff.data.name === dep);
+      if (f) f.hypotheticalValue = internal;
+      lastKnownValues[dep] = internal;
+      overrides[dep] = internal;
 
-      // Reset is the only action that returns a feature to its unmodified state:
-      // clear the blue outline for every restored feature.
-      modifiedFeatures.delete(name);
+      // A recomputed dependent stays modified (outline stays) only while at
+      // least one of its sources is still modified; otherwise it is back to its
+      // profile value and un-modifies.
+      if (sourcesOf(dep).some(s => modifiedFeatures.has(s))) {
+        modifiedFeatures.add(dep);
+      } else {
+        modifiedFeatures.delete(dep);
+      }
     });
     modifiedFeatures = modifiedFeatures;
 
-    // Push the restored values to the store and the cards.
+    // Push all restored/recomputed values to the store and the cards.
     planStore.set(plan);
     featureValueOverrideStore.set(overrides);
     setTimeout(() => featureValueOverrideStore.set({}), 400);
 
-    // Reset is NOT a propagation — clear any propagation UI it might collide with.
+    // Reset is NOT a user propagation — clear any propagation UI it might collide with.
     propagatedFeaturesStore.set(new Set());
     showPropagationMessage = false;
     dismissArrows();
@@ -478,7 +497,7 @@
     revolBalLinkCalculation = null;
     revolUtilLinkCalculation = null;
 
-    const params = computeParams(baseline, current);
+    const params = computeParams(baseline, current, modifiedFeatures);
     const fmt = (n) => '$' + Math.round(n).toLocaleString();
 
     if (changedSet.has('fico_score')) {
@@ -492,19 +511,17 @@
     const fmtSigned = (n) => (n < 0 ? '−$' : '+$') + Math.round(Math.abs(n)).toLocaleString();
 
     if (changedSet.has('dti')) {
-      // DTI reflects the FULL current plan regardless of which input was edited:
-      // fixed base debt + the applied loan's full payment + 2%-of-revolving-delta.
-      const baseDebt = params.currentMonthlyDebtPayment;
-      const loanPayment = params.monthlyLoanPayment;
-      const revolAdj = ((next.revol_bal || 0) - (baseline.revol_bal || 0)) * 0.02;
-      const newMonthlyDebt = baseDebt + loanPayment + revolAdj;
+      // Breakdown from the SAME gated DTI computation the engine used, so the
+      // popup only shows contributions from features the user actually edited
+      // (DTI_USER_EDITS_ONLY) — an untouched suggested loan is not shown.
+      const parts = computeDtiParts(next, params);
       dtiLinkCalculation = {
         type: 'dti',
-        currentDebt: fmt(baseDebt),
-        newLoanPayment: fmt(loanPayment),
-        revolAdj: fmtSigned(revolAdj),
-        showRevolAdj: Math.abs(revolAdj) >= 0.5,
-        newMonthlyDebt: fmt(newMonthlyDebt),
+        currentDebt: fmt(parts.baseDebt),
+        newLoanPayment: fmt(parts.loanPayment),
+        revolAdj: fmtSigned(parts.revolDelta),
+        showRevolAdj: Math.abs(parts.revolDelta) >= 0.5,
+        newMonthlyDebt: fmt(parts.newMonthlyDebt),
         originalDTI: Number(baseline.dti).toFixed(2) + '%',
         newDTI: Number(next.dti).toFixed(2) + '%'
       };
@@ -797,7 +814,9 @@
     // ── 1. Run the engine against the frozen applicant baseline ──────────────
     const baseline = applicantBaselineState;
     const current  = buildCurrentEngineState();
-    const { state: next, log } = propagate(featureName, baseline, current, baseline);
+    // DTI_USER_EDITS_ONLY: pass the set of user-edited features so DTI counts
+    // only touched inputs (unedited suggested values fall back to profile).
+    const { state: next, log } = propagate(featureName, baseline, current, baseline, modifiedFeatures);
 
     // Dependents that actually changed vs. the current state.
     const computedUpdates = {}; // internal feature name → internal value

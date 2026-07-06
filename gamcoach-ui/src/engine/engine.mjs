@@ -56,9 +56,13 @@ export const FICO_WARN_THRESHOLD = 670;
  *                                 The single reference for every net-change
  *                                 computation (Brief Section 8). Falls back to
  *                                 `oldState` only if omitted.
+ * @param {Set<string>} [modifiedFeatures]  Names of features the user has
+ *                                 actively edited — consumed only by the
+ *                                 DTI_USER_EDITS_ONLY gate. Omit for the prior
+ *                                 "all current values" behavior.
  * @returns {{ state: object, warnings: Array, log: Array }}
  */
-export function propagate(editedFeature, oldState, newState, baseline) {
+export function propagate(editedFeature, oldState, newState, baseline, modifiedFeatures) {
   const base = baseline || oldState;
   const working = { ...newState };
   const log = [];
@@ -86,7 +90,7 @@ export function propagate(editedFeature, oldState, newState, baseline) {
   }
 
   // ── Phase 2: compute Section-4 parameters ONCE per pass ──────────────────
-  const params = computeParams(base, working);
+  const params = computeParams(base, working, modifiedFeatures);
 
   // ── Phase 3: value writes (FICO / DTI) ───────────────────────────────────
   for (const edge of edges) {

@@ -296,6 +296,55 @@ test('D6. Open/Total account counters clamp at their caps', () => {
   assert.ok(state.total_acc <= 118, 'total_acc <= 118');
 });
 
+// DTI_USER_EDITS_ONLY — DTI counts only inputs the user actually edited.
+test('G1. Editing revolving balance ignores an untouched suggested loan', () => {
+  const base = makeBaseline(); // profile loan 10000
+  // Current shows a SUGGESTED loan (13212) the user has NOT touched, plus the
+  // user's edited revolving balance (3000).
+  const current = { ...base, loan_amnt: 13212, revol_bal: 3000 };
+  const modified = new Set(['revol_bal']); // only revolving balance edited
+  const { state } = propagate('revol_bal', base, current, base, modified);
+  const income = base.annual_inc / 12;
+  const baseDebt = (base.dti * income) / 100;
+  const expected = ((baseDebt + (3000 - base.revol_bal) * 0.02) / income) * 100;
+  approx(state.dti, expected); // base debt + revol delta only; NO loan payment
+  // ...and strictly less than the all-current DTI (which would fold the loan in).
+  const full = propagate('revol_bal', base, current, base).state.dti; // no modified => all current
+  assert.ok(state.dti < full);
+});
+
+test('G2. Editing loan includes the entered loan payment', () => {
+  const base = makeBaseline();
+  const current = { ...base, loan_amnt: 20000 };
+  const modified = new Set(['loan_amnt']);
+  const { state } = propagate('loan_amnt', base, current, base, modified);
+  const income = base.annual_inc / 12;
+  const baseDebt = (base.dti * income) / 100;
+  const pay = loanMonthlyPayment(20000, aprForPurpose(base.purpose) / 12, base.term);
+  approx(state.dti, ((baseDebt + pay) / income) * 100);
+  assert.ok(state.dti > base.dti);
+});
+
+test('G3. Editing both loan and revolving balance includes both', () => {
+  const base = makeBaseline();
+  const current = { ...base, loan_amnt: 20000, revol_bal: 8000 };
+  const modified = new Set(['loan_amnt', 'revol_bal']);
+  const { state } = propagate('revol_bal', base, current, base, modified);
+  const income = base.annual_inc / 12;
+  const baseDebt = (base.dti * income) / 100;
+  const pay = loanMonthlyPayment(20000, aprForPurpose(base.purpose) / 12, base.term);
+  const revolDelta = (8000 - base.revol_bal) * 0.02;
+  approx(state.dti, ((baseDebt + pay + revolDelta) / income) * 100);
+});
+
+test('G4. No user edits -> DTI holds the profile value despite a suggested loan', () => {
+  const base = makeBaseline();
+  const current = { ...base, loan_amnt: 13212 }; // suggested loan, untouched
+  const modified = new Set(); // nothing edited
+  const { state } = propagate('loan_amnt', base, current, base, modified);
+  approx(state.dti, base.dti); // 20.47-equivalent profile DTI, loan excluded
+});
+
 test('X2. Reducing bankruptcies never raises FICO', () => {
   const base = makeBaseline({ pub_rec_bankruptcies: 2 });
   const next = edit(base, 'pub_rec_bankruptcies', 0); // net -2, floored to 0
