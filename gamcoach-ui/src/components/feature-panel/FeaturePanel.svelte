@@ -143,6 +143,11 @@
   // calculations so that repeated changes don't stack on top of each other.
   let originalValues = {};
 
+  // Two-way pair direction: true when Credit Utilization was the most recently
+  // edited side (so Revolving Balance is the DERIVED side). Drives whether the
+  // Revolving Balance hover shows the utilization→balance derivation lines.
+  let revolUtilIsInput = false;
+
   // Set up the GAM Coach feature cards
   const initFeatureCards = () => {
     initialized = true;
@@ -222,6 +227,12 @@
       modifiedFeatures.add(featureName);
       modifiedFeatures = modifiedFeatures;
 
+      // Track which side of the two-way pair is the input (last edited), so the
+      // Revolving Balance hover knows whether its value was derived from a
+      // Credit Utilization edit.
+      if (featureName === 'revol_util') revolUtilIsInput = true;
+      else if (featureName === 'revol_bal') revolUtilIsInput = false;
+
       // Debounce — only fire after user stops dragging (350ms of silence)
       if (propagationDebounceTimer) clearTimeout(propagationDebounceTimer);
       propagationDebounceTimer = setTimeout(() => {
@@ -277,6 +288,11 @@
     const unmodify = new Set([featureName, ...sourcesOf(featureName)]);
     unmodify.forEach(name => restoreToLoadTime(name, overrides));
     modifiedFeatures = modifiedFeatures;
+
+    // Clear the two-way-pair input flag when the pair itself is reset.
+    if (unmodify.has('revol_util') || unmodify.has('revol_bal')) {
+      revolUtilIsInput = false;
+    }
 
     // ── 2. Recompute affected dependents from the remaining modified state ────
     // Restoring a SOURCE (e.g. Open Accounts / Mortgages) changes that source's
@@ -576,20 +592,17 @@
     const creditLimit = creditLimitFromBaseline(baseline); // null when indeterminate
     const parts = computeDtiParts(state, params);
     const revolDelta = parts.revolDelta; // signed monthly payment change (2% of balance change)
-    let dtiVerb = 'kept';
-    if (revolDelta > 1e-9) dtiVerb = 'raised';
-    else if (revolDelta < -1e-9) dtiVerb = 'lowered';
     return {
       type: 'revol_bal',
-      hasLimit: creditLimit !== null,
+      // Show the utilization→balance derivation only when Credit Utilization was
+      // the edited input (balance is derived) and the credit limit is recoverable.
+      showDerivation: creditLimit !== null && revolUtilIsInput,
       creditLimit: creditLimit !== null ? money(creditLimit) : null,
+      currentBalance: money(baseline.revol_bal || 0),
       currentUtilization: pct(Number(baseline.revol_util) || 0),
       newUtilization: pct(Number(state.revol_util) || 0),
       paymentSign: revolDelta < 0 ? '−' : '+',
       revolvingDelta: money(Math.abs(revolDelta)),
-      showDtiLine: parts.revolEngaged,
-      dtiVerb,
-      newDTI: pct(parts.newDti),
       newBalance: money(state.revol_bal || 0)
     };
   };

@@ -588,14 +588,13 @@
                 </div>
               {:else if linkCalculation?.type === 'revol_bal'}
                 <div class="link-calculation dti-calc">
-                  <div class="dti-subhead">What this changes</div>
-                  {#if linkCalculation.hasLimit}
-                    <div class="dti-row">Credit utilization: {linkCalculation.currentUtilization}% &rarr; <b>{linkCalculation.newUtilization}%</b> (revolving balance &divide; your estimated credit limit {linkCalculation.creditLimit})</div>
+                  {#if linkCalculation.showDerivation}
+                    <div class="dti-subhead">Calculation breakdown</div>
+                    <div class="dti-row">Estimated credit limit {linkCalculation.creditLimit} = current balance {linkCalculation.currentBalance} &divide; current utilization {linkCalculation.currentUtilization}%</div>
+                    <div class="dti-row">Revolving balance {linkCalculation.newBalance} = new utilization {linkCalculation.newUtilization}% &times; estimated credit limit {linkCalculation.creditLimit}</div>
                   {/if}
-                  <div class="dti-row">Estimated monthly payment change: <b>{linkCalculation.paymentSign}{linkCalculation.revolvingDelta}/mo</b> (about 2% of the balance change)</div>
-                  {#if linkCalculation.showDtiLine}
-                    <div class="dti-line final">This {linkCalculation.dtiVerb} your DTI to <b>{linkCalculation.newDTI}%</b>, i.e., you owe {linkCalculation.newBalance} on revolving credit.</div>
-                  {/if}
+                  <!-- <div class="dti-row">Estimated monthly payment change: <b>{linkCalculation.paymentSign}{linkCalculation.revolvingDelta}/mo</b> (about 2% of the revolving balance change as minimum payment)</div> -->
+                  <div class="dti-line final">You owe <b>{linkCalculation.newBalance}</b> on revolving credit.</div>
                 </div>
               {:else if linkCalculation?.type === 'revol_util'}
                 <div class="link-calculation dti-calc">
