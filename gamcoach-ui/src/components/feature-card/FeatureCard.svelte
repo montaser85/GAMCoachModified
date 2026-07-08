@@ -610,6 +610,14 @@
                     <div class="dti-line final">Your credit utilization {linkCalculation.changeVerb} from <b>{linkCalculation.currentUtilization}%</b> to <b>{linkCalculation.newUtilization}%</b>, i.e., you&rsquo;re using {linkCalculation.newUtilization}% of your available credit.</div>
                   {/if}
                 </div>
+              {:else if linkCalculation?.type === 'open_acc'}
+                <div class="link-calculation dti-calc">
+                  {#if linkCalculation.plural}
+                    <div class="dti-line">Your mortgages account for <b>{linkCalculation.mortgageCount}</b> of them, raising your total to <b>{linkCalculation.newOpenAccounts}</b>.</div>
+                  {:else}
+                    <div class="dti-line">Your mortgage accounts for <b>{linkCalculation.mortgageCount}</b> of them, raising your total to <b>{linkCalculation.newOpenAccounts}</b>.</div>
+                  {/if}
+                </div>
               {/if}
             {:else}
               The mechanism behind the change will appear here
