@@ -159,22 +159,32 @@ function totalAccFromOpen(state, params) {
 }
 
 // ── Home Ownership -> Mortgage transition (Brief Section 5) ────────────────
-// Only on a transition INTO mortgage: +1 to mortgages and to both account
-// counters. Any other home-ownership change propagates to nothing.
+// Home Ownership contributes exactly +1 to mortgages and to both account
+// counters while it is set to "Mortgage" (relative to a non-mortgage profile).
+// Crucially it ADDS or REMOVES only its own single contribution against the
+// LIVE count — it never resets the counter to the profile — so the user's
+// manual edits to the count persist across Home Ownership changes.
+//   params.appliedHomeMortgage = the +1 the home currently has baked into the
+//   live count (0 or 1). We swap it for the new contribution.
 function isMortgageTransition(state, params) {
   return (
     state.home_ownership === MORTGAGE_HOME_VALUE &&
     params.baseline.home_ownership !== MORTGAGE_HOME_VALUE
   );
 }
+function homeCountAfterTransition(currentValue, state, params) {
+  const prior = params.appliedHomeMortgage || 0;          // home's current +1
+  const contribution = isMortgageTransition(state, params) ? 1 : 0; // new +1
+  return Math.max(0, (currentValue || 0) - prior + contribution);   // floor at 0
+}
 function mortAccFromHome(state, params) {
-  return (params.baseline.mort_acc || 0) + (isMortgageTransition(state, params) ? 1 : 0);
+  return homeCountAfterTransition(state.mort_acc, state, params);
 }
 function openAccFromHome(state, params) {
-  return (params.baseline.open_acc || 0) + (isMortgageTransition(state, params) ? 1 : 0);
+  return homeCountAfterTransition(state.open_acc, state, params);
 }
 function totalAccFromHome(state, params) {
-  return (params.baseline.total_acc || 0) + (isMortgageTransition(state, params) ? 1 : 0);
+  return homeCountAfterTransition(state.total_acc, state, params);
 }
 
 // ── Number of Mortgages -> account counters (Brief Section 5) ──────────────

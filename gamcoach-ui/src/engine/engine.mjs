@@ -60,9 +60,14 @@ export const FICO_WARN_THRESHOLD = 670;
  *                                 actively edited — consumed only by the
  *                                 DTI_USER_EDITS_ONLY gate. Omit for the prior
  *                                 "all current values" behavior.
+ * @param {number} [appliedHomeMortgage]  The +1 (0 or 1) Home Ownership
+ *                                 currently contributes to the account counters
+ *                                 (baked into the live count). Lets a Home
+ *                                 Ownership change add/remove only its own +1
+ *                                 instead of resetting the counters.
  * @returns {{ state: object, warnings: Array, log: Array }}
  */
-export function propagate(editedFeature, oldState, newState, baseline, modifiedFeatures) {
+export function propagate(editedFeature, oldState, newState, baseline, modifiedFeatures, appliedHomeMortgage = 0) {
   const base = baseline || oldState;
   const working = { ...newState };
   const log = [];
@@ -75,7 +80,8 @@ export function propagate(editedFeature, oldState, newState, baseline, modifiedF
   // account counts in Phase 2.
   const structuralCtx = {
     baseline: base,
-    creditLimit: creditLimitFromBaseline(base)
+    creditLimit: creditLimitFromBaseline(base),
+    appliedHomeMortgage
   };
   for (const edge of edges) {
     if (edge.phase !== 'structural') continue;

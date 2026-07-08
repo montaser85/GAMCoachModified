@@ -21,6 +21,7 @@
     computeParams,
     computeDtiParts,
     creditLimitFromBaseline,
+    MORTGAGE_HOME_VALUE,
     EDGES
   } from '../../engine/index.mjs';
 
@@ -72,7 +73,8 @@
     'fico_score': "A new loan requires a hard credit inquiry — a formal review process that lenders use to assess applicant's creditworthiness. One hard inquiry will typically reduce credit score by fewer than five points.",
     'dti': "Your Debt-to-Income ratio (DTI) is how much of your monthly income goes toward paying debts. A lower DTI looks better to lenders.",
     'revol_bal':  "Revolving balance is the unpaid amount left on your credit cards. Changing it affects two things: your credit utilization and your debt-to-income ratio.",
-    'revol_util': "Credit utilization is how much of your available revolving credit you're using. It moves with your revolving balance — as the balance goes up or down, so does your utilization."
+    'revol_util': "Credit utilization is how much of your available revolving credit you're using. It moves with your revolving balance — as the balance goes up or down, so does your utilization.",
+    'mort_acc': "Number of mortgages is how many mortgage accounts you have."
   };
 
   // Reactive calculations displayed in popup once propagation has been applied.
@@ -81,6 +83,7 @@
   let dtiLinkCalculation      = null;
   let revolBalLinkCalculation = null;
   let revolUtilLinkCalculation = null;
+  let mortAccLinkCalculation  = null;
 
   // ── Causal Propagation Engine wiring ────────────────────────────────────────
   // The engine (src/engine) is the single source of truth for every
@@ -136,6 +139,9 @@
   let scrollRafId = null;
   let cardAnimRafId = null;   // rAF handle for the card-expand/collapse loop
   let cardAnimEndTime = 0;    // timestamp after which the loop should stop
+  /** @type {ResizeObserver} */
+  let arrowResizeObserver = null; // recomputes arrows on any panel geometry change
+  let resizeRafId = null;         // rAF handle for the ResizeObserver callback
   // Track last known values to avoid triggering on card expansion (not real user changes)
   let lastKnownValues = {};
   // Snapshot of every feature's value at page-load time (coach suggestions).
@@ -147,6 +153,20 @@
   // edited side (so Revolving Balance is the DERIVED side). Drives whether the
   // Revolving Balance hover shows the utilization→balance derivation lines.
   let revolUtilIsInput = false;
+
+  // The +1 (0 or 1) Home Ownership currently contributes to the account counters
+  // (Number of Mortgages / Open / Total). Tracked so a Home Ownership change
+  // adds or removes only its own contribution, preserving the user's manual
+  // edits to those counts instead of resetting them.
+  let appliedHomeMortgage = 0;
+
+  /** True iff the given engine state has Home Ownership contributing a +1. */
+  const homeMortgageContribution = (stateHome) =>
+    stateHome === MORTGAGE_HOME_VALUE &&
+    applicantBaselineState &&
+    applicantBaselineState.home_ownership !== MORTGAGE_HOME_VALUE
+      ? 1
+      : 0;
 
   // Set up the GAM Coach feature cards
   const initFeatureCards = () => {
@@ -303,11 +323,15 @@
     const current = buildCurrentEngineState();
     const recomputed = {};
     unmodify.forEach(src => {
-      const { state: next, log } = propagate(src, baseline, current, baseline, modifiedFeatures);
+      const { state: next, log } = propagate(
+        src, baseline, current, baseline, modifiedFeatures, appliedHomeMortgage
+      );
       log.filter(l => !l.note).forEach(l => {
         if (!unmodify.has(l.dependent)) recomputed[l.dependent] = next[l.dependent];
       });
     });
+    // Home Ownership may have been restored — record its now-applied contribution.
+    appliedHomeMortgage = homeMortgageContribution(current.home_ownership);
 
     Object.entries(recomputed).forEach(([dep, val]) => {
       const internal = displayToInternal(dep, val);
@@ -608,9 +632,23 @@
   };
 
   /**
-   * Refresh the DTI, Credit-Utilization and Revolving-Balance breakdowns from
-   * the authoritative current model state (used at load and after a reset, when
-   * ebmLocal already holds the settled values).
+   * Build the Number of Mortgages hover extra. Explains the CURRENT STATE, not
+   * the last event: show the Home Ownership note whenever Home Ownership is
+   * currently set to "Mortgage" (that mortgage persists regardless of later
+   * manual edits to the count). '7+' cap: if the profile bucket is already
+   * capped at '7+', the home mortgage isn't a distinguishable addition, so show
+   * only the plain definition. Otherwise returns null (plain definition only).
+   */
+  const buildMortAccBreakdown = (baseline, state) => {
+    if (state.home_ownership !== MORTGAGE_HOME_VALUE) return null;
+    if (displayToInternal('mort_acc', baseline.mort_acc) === '7+') return null;
+    return { type: 'mort_acc' };
+  };
+
+  /**
+   * Refresh the DTI, Credit-Utilization, Revolving-Balance and Number-of-
+   * Mortgages breakdowns from the authoritative current model state (used at
+   * load and after a reset, when ebmLocal already holds the settled values).
    */
   const refreshDtiBreakdown = () => {
     if (!plan || !applicantBaselineState) return;
@@ -619,6 +657,7 @@
     dtiLinkCalculation = formatDtiBreakdown(computeDtiParts(current, params));
     revolUtilLinkCalculation = buildRevolUtilBreakdown(applicantBaselineState, current);
     revolBalLinkCalculation = buildRevolBalBreakdown(applicantBaselineState, current, params);
+    mortAccLinkCalculation = buildMortAccBreakdown(applicantBaselineState, current);
   };
 
   /**
@@ -646,6 +685,9 @@
     // the live post-propagation state (`next`); credit limit from the profile.
     revolUtilLinkCalculation = buildRevolUtilBreakdown(baseline, next);
     revolBalLinkCalculation = buildRevolBalBreakdown(baseline, next, params);
+    // Number of Mortgages extra (extended text only when driven by a
+    // Home Ownership → Mortgage transition; the flag is set in triggerPropagation).
+    mortAccLinkCalculation = buildMortAccBreakdown(baseline, next);
   };
 
   /**
@@ -918,7 +960,15 @@
     const current  = buildCurrentEngineState();
     // DTI_USER_EDITS_ONLY: pass the set of user-edited features so DTI counts
     // only touched inputs (unedited suggested values fall back to profile).
-    const { state: next, log } = propagate(featureName, baseline, current, baseline, modifiedFeatures);
+    // appliedHomeMortgage lets a Home Ownership change add/remove only its own
+    // +1 to the account counters (preserving manual edits to those counts).
+    const { state: next, log } = propagate(
+      featureName, baseline, current, baseline, modifiedFeatures, appliedHomeMortgage
+    );
+
+    // Record the home's now-applied contribution so the NEXT Home Ownership
+    // change removes exactly this +1 (rather than resetting the counters).
+    appliedHomeMortgage = homeMortgageContribution(current.home_ownership);
 
     // Dependents that actually changed vs. the current state.
     const computedUpdates = {}; // internal feature name → internal value
@@ -1125,6 +1175,18 @@
 
   };
 
+  /**
+   * (Re)attach the ResizeObserver to every card column. Columns reflow whenever
+   * a card inside them expands/collapses (or the window resizes), so observing
+   * them recomputes the arrows from the settled layout — regardless of which
+   * card type toggled or which section it lives in.
+   */
+  const observePanels = () => {
+    if (!arrowResizeObserver || !component) return;
+    arrowResizeObserver.disconnect();
+    component.querySelectorAll('.card-column').forEach(el => arrowResizeObserver.observe(el));
+  };
+
   onMount(() => {
     mounted = true;
     const iconList = [];
@@ -1140,6 +1202,22 @@
       if (n > 0) onCardToggle();
     });
     unsubscribes.push(unsubCardToggle);
+
+    // Recompute arrows on ANY panel geometry change — expand/collapse, content
+    // reflow, or window resize. The panel is a fixed-height scroll container, so
+    // its own size never changes; instead we observe the card columns, which
+    // reflow when a card inside them changes height. The rAF wrapper lets the
+    // layout settle before reading positions.
+    if (typeof ResizeObserver !== 'undefined') {
+      arrowResizeObserver = new ResizeObserver(() => {
+        if (resizeRafId) cancelAnimationFrame(resizeRafId);
+        resizeRafId = requestAnimationFrame(() => {
+          resizeRafId = null;
+          recomputeArrows();
+        });
+      });
+      observePanels();
+    }
   });
 
   onDestroy(() => {
@@ -1148,7 +1226,12 @@
     window.removeEventListener('scroll', onScroll, { capture: true });
     if (scrollRafId) cancelAnimationFrame(scrollRafId);
     if (cardAnimRafId) cancelAnimationFrame(cardAnimRafId);
+    if (resizeRafId) cancelAnimationFrame(resizeRafId);
+    if (arrowResizeObserver) arrowResizeObserver.disconnect();
   });
+
+  // Re-attach the observer when the feature grid (re)renders new columns/cards.
+  $: featureGrid && arrowResizeObserver && observePanels();
 
   $: windowLoaded && planStore && !initialized && initFeatureCards();
   $: mounted && maxFeatureNum && maxFeatureNumChanged();
@@ -1205,6 +1288,7 @@
                              : feature.data.name === 'dti'        ? dtiLinkCalculation
                              : feature.data.name === 'revol_bal'  ? revolBalLinkCalculation
                              : feature.data.name === 'revol_util' ? revolUtilLinkCalculation
+                             : feature.data.name === 'mort_acc'   ? mortAccLinkCalculation
                              : null}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}
@@ -1221,6 +1305,7 @@
                              : feature.data.name === 'dti'        ? dtiLinkCalculation
                              : feature.data.name === 'revol_bal'  ? revolBalLinkCalculation
                              : feature.data.name === 'revol_util' ? revolUtilLinkCalculation
+                             : feature.data.name === 'mort_acc'   ? mortAccLinkCalculation
                              : null}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}
@@ -1245,6 +1330,7 @@
                              : feature.data.name === 'dti'        ? dtiLinkCalculation
                              : feature.data.name === 'revol_bal'  ? revolBalLinkCalculation
                              : feature.data.name === 'revol_util' ? revolUtilLinkCalculation
+                             : feature.data.name === 'mort_acc'   ? mortAccLinkCalculation
                              : null}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}
@@ -1261,6 +1347,7 @@
                              : feature.data.name === 'dti'        ? dtiLinkCalculation
                              : feature.data.name === 'revol_bal'  ? revolBalLinkCalculation
                              : feature.data.name === 'revol_util' ? revolUtilLinkCalculation
+                             : feature.data.name === 'mort_acc'   ? mortAccLinkCalculation
                              : null}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}
@@ -1285,6 +1372,7 @@
                              : feature.data.name === 'dti'        ? dtiLinkCalculation
                              : feature.data.name === 'revol_bal'  ? revolBalLinkCalculation
                              : feature.data.name === 'revol_util' ? revolUtilLinkCalculation
+                             : feature.data.name === 'mort_acc'   ? mortAccLinkCalculation
                              : null}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}
@@ -1301,6 +1389,7 @@
                              : feature.data.name === 'dti'        ? dtiLinkCalculation
                              : feature.data.name === 'revol_bal'  ? revolBalLinkCalculation
                              : feature.data.name === 'revol_util' ? revolUtilLinkCalculation
+                             : feature.data.name === 'mort_acc'   ? mortAccLinkCalculation
                              : null}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}
@@ -1335,6 +1424,7 @@
                              : feature.data.name === 'dti'        ? dtiLinkCalculation
                              : feature.data.name === 'revol_bal'  ? revolBalLinkCalculation
                              : feature.data.name === 'revol_util' ? revolUtilLinkCalculation
+                             : feature.data.name === 'mort_acc'   ? mortAccLinkCalculation
                              : null}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}
@@ -1351,6 +1441,7 @@
                              : feature.data.name === 'dti'        ? dtiLinkCalculation
                              : feature.data.name === 'revol_bal'  ? revolBalLinkCalculation
                              : feature.data.name === 'revol_util' ? revolUtilLinkCalculation
+                             : feature.data.name === 'mort_acc'   ? mortAccLinkCalculation
                              : null}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}
@@ -1375,6 +1466,7 @@
                              : feature.data.name === 'dti'        ? dtiLinkCalculation
                              : feature.data.name === 'revol_bal'  ? revolBalLinkCalculation
                              : feature.data.name === 'revol_util' ? revolUtilLinkCalculation
+                             : feature.data.name === 'mort_acc'   ? mortAccLinkCalculation
                              : null}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}
@@ -1391,6 +1483,7 @@
                              : feature.data.name === 'dti'        ? dtiLinkCalculation
                              : feature.data.name === 'revol_bal'  ? revolBalLinkCalculation
                              : feature.data.name === 'revol_util' ? revolUtilLinkCalculation
+                             : feature.data.name === 'mort_acc'   ? mortAccLinkCalculation
                              : null}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}
@@ -1415,6 +1508,7 @@
                              : feature.data.name === 'dti'        ? dtiLinkCalculation
                              : feature.data.name === 'revol_bal'  ? revolBalLinkCalculation
                              : feature.data.name === 'revol_util' ? revolUtilLinkCalculation
+                             : feature.data.name === 'mort_acc'   ? mortAccLinkCalculation
                              : null}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}
@@ -1431,6 +1525,7 @@
                              : feature.data.name === 'dti'        ? dtiLinkCalculation
                              : feature.data.name === 'revol_bal'  ? revolBalLinkCalculation
                              : feature.data.name === 'revol_util' ? revolUtilLinkCalculation
+                             : feature.data.name === 'mort_acc'   ? mortAccLinkCalculation
                              : null}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}
@@ -1465,6 +1560,7 @@
                              : feature.data.name === 'dti'        ? dtiLinkCalculation
                              : feature.data.name === 'revol_bal'  ? revolBalLinkCalculation
                              : feature.data.name === 'revol_util' ? revolUtilLinkCalculation
+                             : feature.data.name === 'mort_acc'   ? mortAccLinkCalculation
                              : null}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}
@@ -1481,6 +1577,7 @@
                              : feature.data.name === 'dti'        ? dtiLinkCalculation
                              : feature.data.name === 'revol_bal'  ? revolBalLinkCalculation
                              : feature.data.name === 'revol_util' ? revolUtilLinkCalculation
+                             : feature.data.name === 'mort_acc'   ? mortAccLinkCalculation
                              : null}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}
@@ -1505,6 +1602,7 @@
                              : feature.data.name === 'dti'        ? dtiLinkCalculation
                              : feature.data.name === 'revol_bal'  ? revolBalLinkCalculation
                              : feature.data.name === 'revol_util' ? revolUtilLinkCalculation
+                             : feature.data.name === 'mort_acc'   ? mortAccLinkCalculation
                              : null}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}
@@ -1521,6 +1619,7 @@
                              : feature.data.name === 'dti'        ? dtiLinkCalculation
                              : feature.data.name === 'revol_bal'  ? revolBalLinkCalculation
                              : feature.data.name === 'revol_util' ? revolUtilLinkCalculation
+                             : feature.data.name === 'mort_acc'   ? mortAccLinkCalculation
                              : null}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}
@@ -1545,6 +1644,7 @@
                              : feature.data.name === 'dti'        ? dtiLinkCalculation
                              : feature.data.name === 'revol_bal'  ? revolBalLinkCalculation
                              : feature.data.name === 'revol_util' ? revolUtilLinkCalculation
+                             : feature.data.name === 'mort_acc'   ? mortAccLinkCalculation
                              : null}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}
@@ -1561,6 +1661,7 @@
                              : feature.data.name === 'dti'        ? dtiLinkCalculation
                              : feature.data.name === 'revol_bal'  ? revolBalLinkCalculation
                              : feature.data.name === 'revol_util' ? revolUtilLinkCalculation
+                             : feature.data.name === 'mort_acc'   ? mortAccLinkCalculation
                              : null}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}

@@ -622,6 +622,10 @@
                   <div class="dti-line">New credit utilization: {linkCalculation.newBalance} ÷ {linkCalculation.creditLimit} × 100 = {linkCalculation.newUtil}</div>
                   <div class="dti-line final">Credit utilization decreases from {linkCalculation.originalUtil} to {linkCalculation.newUtil}</div>
                 </div>
+              {:else if linkCalculation?.type === 'mort_acc'}
+                <div class="link-calculation dti-calc">
+                  <div class="dti-line">Your home ownership is set to &ldquo;Mortgage,&rdquo; which accounts for one mortgage.</div>
+                </div>
               {/if}
             {:else}
               The mechanism behind the change will appear here

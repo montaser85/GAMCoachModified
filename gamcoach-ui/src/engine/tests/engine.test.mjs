@@ -345,6 +345,47 @@ test('G4. No user edits -> DTI holds the profile value despite a suggested loan'
   approx(state.dti, base.dti); // 20.47-equivalent profile DTI, loan excluded
 });
 
+// Home Ownership adds/removes only its own +1 to Number of Mortgages, keeping
+// the user's manual edits intact (6th arg = home's currently-applied +1).
+test('M1. Home away from Mortgage subtracts only its +1, keeping a manual edit', () => {
+  const base = makeBaseline({ home_ownership: 'RENT', mort_acc: 0 });
+  const afterMort = propagate('home_ownership', base,
+    edit(base, 'home_ownership', 'MORTGAGE'), base, new Set(['home_ownership']), 0).state;
+  assert.strictEqual(afterMort.mort_acc, 1); // 0 + 1
+  const manual = { ...afterMort, mort_acc: 2 }; // user sets 2 (home's 1 is part of it)
+  const afterRent = propagate('home_ownership', base,
+    edit(manual, 'home_ownership', 'RENT'), base, new Set(['home_ownership', 'mort_acc']), 1).state;
+  assert.strictEqual(afterRent.mort_acc, 1); // 2 − 1, NOT reset to 0
+});
+
+test('M2. Home Mortgage then Rent with no manual edit returns to profile', () => {
+  const base = makeBaseline({ home_ownership: 'RENT', mort_acc: 0 });
+  const afterMort = propagate('home_ownership', base,
+    edit(base, 'home_ownership', 'MORTGAGE'), base, new Set(['home_ownership']), 0).state;
+  assert.strictEqual(afterMort.mort_acc, 1);
+  const afterRent = propagate('home_ownership', base,
+    edit(afterMort, 'home_ownership', 'RENT'), base, new Set(['home_ownership']), 1).state;
+  assert.strictEqual(afterRent.mort_acc, 0);
+});
+
+test('M3. Manual edits above a nonzero profile persist across Home Ownership', () => {
+  const base = makeBaseline({ home_ownership: 'RENT', mort_acc: 2 });
+  const afterMort = propagate('home_ownership', base,
+    edit(base, 'home_ownership', 'MORTGAGE'), base, new Set(['home_ownership']), 0).state;
+  assert.strictEqual(afterMort.mort_acc, 3); // 2 + 1
+  const manual = { ...afterMort, mort_acc: 5 };
+  const afterRent = propagate('home_ownership', base,
+    edit(manual, 'home_ownership', 'RENT'), base, new Set(['home_ownership', 'mort_acc']), 1).state;
+  assert.strictEqual(afterRent.mort_acc, 4); // 5 − 1
+});
+
+test('M4. Mortgage count never goes below 0', () => {
+  const base = makeBaseline({ home_ownership: 'RENT', mort_acc: 0 });
+  const afterRent = propagate('home_ownership', base,
+    edit(base, 'home_ownership', 'RENT'), base, new Set(['home_ownership']), 1).state;
+  assert.strictEqual(afterRent.mort_acc, 0); // max(0, 0 − 1)
+});
+
 test('X2. Reducing bankruptcies never raises FICO', () => {
   const base = makeBaseline({ pub_rec_bankruptcies: 2 });
   const next = edit(base, 'pub_rec_bankruptcies', 0); // net -2, floored to 0
