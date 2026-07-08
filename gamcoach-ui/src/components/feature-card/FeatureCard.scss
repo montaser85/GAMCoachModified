@@ -144,6 +144,19 @@ $card-h-padding: 16px;
         flex-direction: column;
         gap: 3px;
 
+        .dti-title {
+          font-weight: 700;
+          color: $blue-700;
+          font-size: 0.82rem;
+          margin-bottom: 1px;
+        }
+
+        .dti-subhead {
+          font-weight: 700;
+          color: $gray-700;
+          margin-top: 3px;
+        }
+
         .dti-line {
           line-height: 1.4;
           color: $gray-700;
@@ -155,6 +168,29 @@ $card-h-padding: 16px;
             font-weight: 700;
             color: $blue-700;
           }
+        }
+
+        // Itemized contributor rows (base / loan / revolving)
+        .dti-row {
+          line-height: 1.35;
+          color: $gray-700;
+          padding-left: 8px;
+          position: relative;
+
+          &::before {
+            content: '•';
+            position: absolute;
+            left: 0;
+            color: $blue-400;
+          }
+        }
+
+        .dti-footnote {
+          margin-top: 2px;
+          font-size: 0.7rem;
+          font-style: italic;
+          color: $gray-500;
+          line-height: 1.3;
         }
       }
     }

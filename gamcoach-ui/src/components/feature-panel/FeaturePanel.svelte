@@ -70,9 +70,9 @@
   // popup shows an informative message instead of the default placeholder.
   const LINK_POPUP_TEXT = {
     'fico_score': "A new loan requires a hard credit inquiry — a formal review process that lenders use to assess applicant's creditworthiness. One hard inquiry will typically reduce credit score by fewer than five points.",
-    'dti': "A new loan adds to your monthly debt obligations, increasing your Debt-to-Income ratio. A higher DTI signals greater financial risk to lenders, as a larger share of your income is committed to debt repayment.",
-    'revol_bal':  "When a loan is taken for credit card payoff or debt consolidation, the proceeds are used to pay down your revolving balance — the total outstanding amount owed on revolving credit accounts such as credit cards.",
-    'revol_util': "Reducing revolving balance reduces credit utilization and generally improves credit profile."
+    'dti': "Your Debt-to-Income ratio (DTI) is how much of your monthly income goes toward paying debts. A lower DTI looks better to lenders.",
+    'revol_bal':  "Revolving balance is the unpaid amount left on your credit cards. Changing it affects two things: your credit utilization and your debt-to-income ratio.",
+    'revol_util': "Credit utilization is how much of your available revolving credit you're using. It moves with your revolving balance — as the balance goes up or down, so does your utilization."
   };
 
   // Reactive calculations displayed in popup once propagation has been applied.
@@ -317,6 +317,9 @@
     featureValueOverrideStore.set(overrides);
     setTimeout(() => featureValueOverrideStore.set({}), 400);
 
+    // Keep the DTI hover breakdown in sync with the post-reset state.
+    refreshDtiBreakdown();
+
     // Reset is NOT a user propagation — clear any propagation UI it might collide with.
     propagatedFeaturesStore.set(new Set());
     showPropagationMessage = false;
@@ -360,6 +363,9 @@
     if (!loadTimeSample) {
       loadTimeSample = plan.ebmLocal.sample.slice();
     }
+
+    // Make the DTI breakdown available on hover before any edit (base row only).
+    refreshDtiBreakdown();
   };
 
   /**
@@ -493,19 +499,123 @@
   };
 
   /**
+   * Format the engine's DTI parts into the itemized hover-breakdown object.
+   * Row visibility flags come straight from the gated engine computation, so the
+   * shown rows sum exactly to the displayed DTI (DTI_USER_EDITS_ONLY).
+   */
+  const formatDtiBreakdown = (parts) => {
+    const money = (n) => '$' + Math.round(n).toLocaleString();
+    const pct = (n) => Number(n).toFixed(2);
+    const signed = (n) =>
+      (n < 0 ? '−$' : '+$') + Math.round(Math.abs(n)).toLocaleString();
+
+    // Build the total as an addition of the active contributors, e.g.
+    // "$1,041 + $571 + $434" (or "− $434" for a revolving paydown).
+    const pieces = [money(parts.baseDebt)];
+    if (parts.loanEngaged) pieces.push('+ ' + money(parts.loanPayment));
+    if (parts.revolEngaged) {
+      pieces.push((parts.revolDelta < 0 ? '− ' : '+ ') + money(Math.abs(parts.revolDelta)));
+    }
+
+    return {
+      type: 'dti',
+      monthlyIncome: money(parts.monthlyIncome),
+      baseDebt: money(parts.baseDebt),
+      showLoanRow: parts.loanEngaged,
+      loanAmount: money(parts.loanAmount),
+      loanPurpose: String(parts.loanPurpose || '').replace(/_/g, ' '),
+      paymentPeriod: parts.paymentPeriod,
+      loanPayment: money(parts.loanPayment),
+      showRevolRow: parts.revolEngaged,
+      revolvingBalance: money(parts.revolvingBalance),
+      creditUtilization: pct(parts.creditUtilization),
+      revolvingDelta: signed(parts.revolDelta),
+      hasContributors: parts.loanEngaged || parts.revolEngaged,
+      debtSumExpr: pieces.join(' '),
+      totalDebt: money(parts.newMonthlyDebt),
+      newDTI: pct(parts.newDti)
+    };
+  };
+
+  /**
+   * Build the Credit Utilization hover breakdown. `state` carries the live
+   * revolving balance / utilization; the credit limit is recovered from the
+   * profile (baseline) balance ÷ utilization. Zero-guard: when the limit can't
+   * be recovered (baseline balance or utilization is 0), hasLimit is false and
+   * the recovery rows are hidden.
+   */
+  const buildRevolUtilBreakdown = (baseline, state) => {
+    const money = (n) => '$' + Math.round(n).toLocaleString();
+    const pct = (n) => Number(n).toFixed(2);
+    const creditLimit = creditLimitFromBaseline(baseline); // null when indeterminate
+    const currentUtil = Number(baseline.revol_util) || 0;
+    const newUtil = Number(state.revol_util) || 0;
+    let changeVerb = 'stayed at';
+    if (newUtil > currentUtil + 1e-9) changeVerb = 'increased';
+    else if (newUtil < currentUtil - 1e-9) changeVerb = 'decreased';
+    return {
+      type: 'revol_util',
+      hasLimit: creditLimit !== null,
+      creditLimit: creditLimit !== null ? money(creditLimit) : null,
+      currentBalance: money(baseline.revol_bal || 0),
+      currentUtilization: pct(currentUtil),
+      newBalance: money(state.revol_bal || 0),
+      newUtilization: pct(newUtil),
+      changeVerb
+    };
+  };
+
+  /**
+   * Build the Revolving Balance hover breakdown — Revolving Balance is edited
+   * directly, so the note explains what it AFFECTS (credit utilization + DTI).
+   * `params` carries the modified set so the DTI effect matches DTI_USER_EDITS_ONLY.
+   */
+  const buildRevolBalBreakdown = (baseline, state, params) => {
+    const money = (n) => '$' + Math.round(n).toLocaleString();
+    const pct = (n) => Number(n).toFixed(2);
+    const creditLimit = creditLimitFromBaseline(baseline); // null when indeterminate
+    const parts = computeDtiParts(state, params);
+    const revolDelta = parts.revolDelta; // signed monthly payment change (2% of balance change)
+    let dtiVerb = 'kept';
+    if (revolDelta > 1e-9) dtiVerb = 'raised';
+    else if (revolDelta < -1e-9) dtiVerb = 'lowered';
+    return {
+      type: 'revol_bal',
+      hasLimit: creditLimit !== null,
+      creditLimit: creditLimit !== null ? money(creditLimit) : null,
+      currentUtilization: pct(Number(baseline.revol_util) || 0),
+      newUtilization: pct(Number(state.revol_util) || 0),
+      paymentSign: revolDelta < 0 ? '−' : '+',
+      revolvingDelta: money(Math.abs(revolDelta)),
+      showDtiLine: parts.revolEngaged,
+      dtiVerb,
+      newDTI: pct(parts.newDti),
+      newBalance: money(state.revol_bal || 0)
+    };
+  };
+
+  /**
+   * Refresh the DTI, Credit-Utilization and Revolving-Balance breakdowns from
+   * the authoritative current model state (used at load and after a reset, when
+   * ebmLocal already holds the settled values).
+   */
+  const refreshDtiBreakdown = () => {
+    if (!plan || !applicantBaselineState) return;
+    const current = buildCurrentEngineState();
+    const params = computeParams(applicantBaselineState, current, modifiedFeatures);
+    dtiLinkCalculation = formatDtiBreakdown(computeDtiParts(current, params));
+    revolUtilLinkCalculation = buildRevolUtilBreakdown(applicantBaselineState, current);
+    revolBalLinkCalculation = buildRevolBalBreakdown(applicantBaselineState, current, params);
+  };
+
+  /**
    * Populate the FICO / DTI / revolving link-popup calculation blocks from the
    * engine's own parameters so the explanation matches the applied values.
-   * Blocks whose shape doesn't fit a given trigger are left null (the popup then
-   * shows just its generic explanatory text).
    */
   const populateLinkCalculations = (editedFeature, baseline, current, next, changedSet) => {
     ficoLinkCalculation = null;
-    dtiLinkCalculation = null;
-    revolBalLinkCalculation = null;
-    revolUtilLinkCalculation = null;
 
     const params = computeParams(baseline, current, modifiedFeatures);
-    const fmt = (n) => '$' + Math.round(n).toLocaleString();
 
     if (changedSet.has('fico_score')) {
       ficoLinkCalculation = {
@@ -515,40 +625,14 @@
       };
     }
 
-    const fmtSigned = (n) => (n < 0 ? '−$' : '+$') + Math.round(Math.abs(n)).toLocaleString();
+    // DTI breakdown — always refreshed from the engine's post-propagation state
+    // (base row + whichever contributor rows are engaged).
+    dtiLinkCalculation = formatDtiBreakdown(computeDtiParts(next, params));
 
-    if (changedSet.has('dti')) {
-      // Breakdown from the SAME gated DTI computation the engine used, so the
-      // popup only shows contributions from features the user actually edited
-      // (DTI_USER_EDITS_ONLY) — an untouched suggested loan is not shown.
-      const parts = computeDtiParts(next, params);
-      dtiLinkCalculation = {
-        type: 'dti',
-        currentDebt: fmt(parts.baseDebt),
-        newLoanPayment: fmt(parts.loanPayment),
-        revolAdj: fmtSigned(parts.revolDelta),
-        showRevolAdj: Math.abs(parts.revolDelta) >= 0.5,
-        newMonthlyDebt: fmt(parts.newMonthlyDebt),
-        originalDTI: Number(baseline.dti).toFixed(2) + '%',
-        newDTI: Number(next.dti).toFixed(2) + '%'
-      };
-    }
-
-    // Credit Utilization popup (New Util = current balance / recovered limit).
-    if (changedSet.has('revol_util')) {
-      const creditLimit = creditLimitFromBaseline(baseline);
-      if (creditLimit) {
-        revolUtilLinkCalculation = {
-          type: 'revol_util',
-          creditLimit: fmt(creditLimit),
-          currentBalance: fmt(baseline.revol_bal),
-          currentUtil: Number(baseline.revol_util).toFixed(2) + '%',
-          newBalance: fmt(next.revol_bal),
-          originalUtil: Number(baseline.revol_util).toFixed(2) + '%',
-          newUtil: Number(next.revol_util).toFixed(2) + '%'
-        };
-      }
-    }
+    // Credit Utilization + Revolving Balance breakdowns — always refreshed from
+    // the live post-propagation state (`next`); credit limit from the profile.
+    revolUtilLinkCalculation = buildRevolUtilBreakdown(baseline, next);
+    revolBalLinkCalculation = buildRevolBalBreakdown(baseline, next, params);
   };
 
   /**
@@ -715,20 +799,12 @@
       x: d.labelX, y: d.labelY, text: d.labelText
     })));
 
-    // ── Step 4: dismiss button beside the last arrowhead ─────────────────
-    // Start from the last (bottom-most) arrowhead tip and try candidate
-    // positions in order until one doesn't overlap any feature card.
-    const last   = targetData[targetData.length - 1];
-    const adxL   = last.endX - bundleX;
-    const adyL   = last.endY - bundleY;
-    const alenL  = Math.sqrt(adxL * adxL + adyL * adyL);
-    // Unit vectors: perpendicular (clockwise) and reverse-arrow direction
-    const pUx    = alenL > 0 ?  adyL / alenL : 1;
-    const pUy    = alenL > 0 ? -adxL / alenL : 0;
-    const rUx    = alenL > 0 ? -adxL / alenL : 0;   // back along arrow
-    const rUy    = alenL > 0 ? -adyL / alenL : -1;
-
-    // Collect all feature-card bounding rects for overlap testing.
+    // ── Step 4: dismiss button close to the SOURCE (arrow origin) ─────────
+    // Anchor the × at the bundle origin — the point on the SOURCE card's edge
+    // where the arrows start — so it stays next to the feature the arrows
+    // originate from, not the arrowheads. Because recomputeArrows re-runs on
+    // every card expand/collapse and scroll, the × tracks the source whether
+    // any cards (source or dependent) are expanded or not.
     const btnR = 14;
     const cardRects = Array.from(
       document.querySelectorAll('[data-feature-name]')
@@ -739,21 +815,27 @@
       by + btnR > r.top  && by - btnR < r.bottom
     );
 
-    // Candidate positions: perp both sides at increasing distances,
-    // then pull back along the arrow (between tip and source).
+    // Perpendicular to the dominant outward (source→targets) direction.
+    const pUx = domUy, pUy = -domUx;
+    // Start just outside the source-card edge at the bundle origin.
+    const baseX = bundleX + domUx * 16;
+    const baseY = bundleY + domUy * 16;
+
+    // Try positions near the origin (perpendicular to both sides, then a little
+    // further out along the arrows) until one clears every feature card.
     const candidates = [
-      [ pUx,  pUy, 26], [ -pUx, -pUy, 26],
-      [ pUx,  pUy, 40], [ -pUx, -pUy, 40],
-      [ pUx,  pUy, 56], [ -pUx, -pUy, 56],
-      [ rUx,  rUy, 30], [ rUx,   rUy, 50],
+      [ pUx,  pUy, 22], [ -pUx, -pUy, 22],
+      [ pUx,  pUy, 36], [ -pUx, -pUy, 36],
+      [ domUx, domUy, 10 ], [ domUx, domUy, 26 ],
+      [ pUx,  pUy, 52], [ -pUx, -pUy, 52],
     ];
 
-    let btnX = last.endX + pUx * 26;
-    let btnY = last.endY + pUy * 26;
+    let btnX = baseX + pUx * 22;
+    let btnY = baseY + pUy * 22;
 
     for (const [ux, uy, dist] of candidates) {
-      const cx = last.endX + ux * dist;
-      const cy = last.endY + uy * dist;
+      const cx = baseX + ux * dist;
+      const cy = baseY + uy * dist;
       if (!overlapsCard(cx, cy)) { btnX = cx; btnY = cy; break; }
     }
 

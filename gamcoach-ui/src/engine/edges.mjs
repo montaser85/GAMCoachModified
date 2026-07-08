@@ -73,7 +73,10 @@ export const DTI_USER_EDITS_ONLY = true;
  * @param {object} state   current feature vector (post-edit / post-structural)
  * @param {object} params  from computeParams (carries baseline, modifiedFeatures)
  * @returns {{baseDebt:number, loanPayment:number, revolDelta:number,
- *            monthlyIncome:number, newMonthlyDebt:number, newDti:number}}
+ *            monthlyIncome:number, newMonthlyDebt:number, newDti:number,
+ *            loanEngaged:boolean, revolEngaged:boolean, loanAmount:number,
+ *            loanPurpose:string, paymentPeriod:number, revolvingBalance:number,
+ *            creditUtilization:number}}
  */
 export function computeDtiParts(state, params) {
   const base = params.baseline;
@@ -81,26 +84,27 @@ export function computeDtiParts(state, params) {
   // Gate: with the flag on, a feature is "engaged" only if the user edited it;
   // otherwise (flag off, or no modified set supplied) every feature is engaged.
   const isEdited = (f) => !DTI_USER_EDITS_ONLY || !mod || mod.has(f);
-  const eff = (f) => (isEdited(f) ? state[f] : base[f]);
 
   // Base debt is always reconstructed once from profile DTI and profile income.
   const baseDebt = params.currentMonthlyDebtPayment;
 
-  // Loan payment enters only if Loan Amount was edited; it then uses the
-  // effective loan / term / purpose (edited -> current, else profile).
-  const loanPayment = isEdited('loan_amnt')
-    ? loanMonthlyPayment(
-        eff('loan_amnt') || 0,
-        aprForPurpose(eff('purpose')) / 12,
-        eff('term') || 0
-      )
+  // Loan row: engaged when the user edited the Loan Amount, Loan Purpose, or
+  // Payment Period (any of the three sets the loan's monthly payment). When
+  // engaged, the payment uses the loan's current terms (what the cards show).
+  const loanEngaged =
+    isEdited('loan_amnt') || isEdited('purpose') || isEdited('term');
+  const loanAmount = state.loan_amnt || 0;
+  const loanPurpose = state.purpose;
+  const paymentPeriod = state.term || 0;
+  const loanPayment = loanEngaged
+    ? loanMonthlyPayment(loanAmount, aprForPurpose(loanPurpose) / 12, paymentPeriod)
     : 0;
 
-  // Revolving 2%-of-delta enters only if Revolving Balance or Credit Utilization
-  // was edited (utilization drives the balance).
+  // Revolving row: engaged when the user edited Revolving Balance or Credit
+  // Utilization (utilization drives the balance).
   const revolEngaged = isEdited('revol_bal') || isEdited('revol_util');
-  const revolBal = revolEngaged ? (state.revol_bal || 0) : (base.revol_bal || 0);
-  const revolDelta = (revolBal - (base.revol_bal || 0)) * REVOL_DTI_FACTOR;
+  const revolvingBalance = revolEngaged ? (state.revol_bal || 0) : (base.revol_bal || 0);
+  const revolDelta = (revolvingBalance - (base.revol_bal || 0)) * REVOL_DTI_FACTOR;
 
   // Income affects the denominator only if Income was edited.
   const monthlyIncome =
@@ -109,7 +113,21 @@ export function computeDtiParts(state, params) {
   const newMonthlyDebt = baseDebt + loanPayment + revolDelta;
   const newDti = monthlyIncome ? (newMonthlyDebt / monthlyIncome) * 100 : base.dti;
 
-  return { baseDebt, loanPayment, revolDelta, monthlyIncome, newMonthlyDebt, newDti };
+  return {
+    baseDebt,
+    loanPayment,
+    revolDelta,
+    monthlyIncome,
+    newMonthlyDebt,
+    newDti,
+    loanEngaged,
+    revolEngaged,
+    loanAmount,
+    loanPurpose,
+    paymentPeriod,
+    revolvingBalance,
+    creditUtilization: revolEngaged ? (state.revol_util || 0) : (base.revol_util || 0)
+  };
 }
 
 function dtiFull(state, params) {
