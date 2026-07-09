@@ -178,12 +178,12 @@ test('5a. Open account opening -> both counters +1 and FICO -4', () => {
   approx(state.fico_score, 696); // one hard inquiry
 });
 
-test('5b. Open account closing -> open -1, total unchanged, FICO unchanged', () => {
+test('5b. Open account closing -> open -1, total -1 (signed), FICO unchanged', () => {
   const base = makeBaseline();
   const next = edit(base, 'open_acc', 7);
   const { state } = propagate('open_acc', base, next, base);
   assert.strictEqual(state.open_acc, 7);
-  assert.strictEqual(state.total_acc, 15); // unchanged
+  assert.strictEqual(state.total_acc, 14); // signed open delta (−1) lowers the total
   approx(state.fico_score, 700); // no increase => no penalty
 });
 
@@ -438,6 +438,36 @@ test('S3. Open +2 then Home -> Mortgage (Open 14, Accounts 24)', () => {
     new Set(['open_acc', 'home_ownership']), 0, 2).state; // keep open delta 2
   assert.strictEqual(afterHome.open_acc, 14);  // 11 + 2 + 1
   assert.strictEqual(afterHome.total_acc, 24); // 21 + 2 + 1
+});
+
+// Manual deltas are SIGNED — a downward manual edit lowers the total (they are
+// no longer floored at 0). Only source deltas (mortgage) stay floored.
+test('S6. Manual Number of Accounts reduction lowers the total (signed delta)', () => {
+  const base = makeBaseline({ home_ownership: 'RENT', total_acc: 21, open_acc: 11, mort_acc: 0 });
+  // Open +5 (delta 5) and Mortgages +2 give total 28 at accountsManualDelta 0.
+  // User sets Accounts to 27 -> accountsManualDelta = 27 - 21 - 5 - 2 = -1.
+  // A later source recompute must settle at 27, not floor back up to 28.
+  const afterMort = propagate('mort_acc', base, edit(base, 'mort_acc', 2), base,
+    new Set(['open_acc', 'total_acc', 'mort_acc']), 0, 5, -1).state;
+  assert.strictEqual(afterMort.open_acc, 18);  // 11 + 5 + 2
+  assert.strictEqual(afterMort.total_acc, 27); // 21 + 5 + 2 − 1
+});
+
+test('S7. Closing open accounts (negative open delta) lowers Open and the total', () => {
+  const base = makeBaseline({ home_ownership: 'RENT', total_acc: 21, open_acc: 11, mort_acc: 0 });
+  const after = propagate('open_acc', base, edit(base, 'open_acc', 8), base,
+    new Set(['open_acc']), 0, 0).state; // edit derives open delta = 8 − 11 = −3
+  assert.strictEqual(after.open_acc, 8);   // 11 − 3
+  assert.strictEqual(after.total_acc, 18); // 21 − 3 (signed open delta lowers total)
+});
+
+test('S8. Number of Accounts is clamped to be >= Open Accounts (bound holds)', () => {
+  const base = makeBaseline({ home_ownership: 'RENT', total_acc: 21, open_acc: 11, mort_acc: 0 });
+  // Open +5 -> open 16; a large negative Accounts delta would push total to 6.
+  const after = propagate('mort_acc', base, edit(base, 'mort_acc', 0), base,
+    new Set(['open_acc', 'total_acc', 'mort_acc']), 0, 5, -20).state;
+  assert.strictEqual(after.open_acc, 16);              // 11 + 5
+  assert.strictEqual(after.total_acc, after.open_acc); // clamped up to the bound (16)
 });
 
 test('X2. Reducing bankruptcies never raises FICO', () => {

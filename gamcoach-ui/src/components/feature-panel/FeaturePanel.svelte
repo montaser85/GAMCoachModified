@@ -297,6 +297,13 @@
       // leaf, so triggerPropagation returns early for it and can't do this).
       if (featureName === 'open_acc' || featureName === 'total_acc') {
         updateAccountManualDeltas(featureName);
+        // Rebuild the account hovers from the just-updated deltas. For a Number
+        // of Accounts (leaf) edit triggerPropagation returns early and never
+        // refreshes them, so without this the breakdown would ignore the manual
+        // change. (Harmless/redundant for open_acc, which also refreshes below.)
+        const cur = buildCurrentEngineState();
+        openAccLinkCalculation = buildOpenAccBreakdown(applicantBaselineState, cur);
+        totalAccLinkCalculation = buildTotalAccBreakdown(applicantBaselineState, cur);
       }
 
       // Debounce — only fire after user stops dragging (350ms of silence)
