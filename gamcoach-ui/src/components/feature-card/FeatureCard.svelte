@@ -568,9 +568,19 @@
             {#if linkPopupText}
               <p class="link-popup-text">{linkPopupText}</p>
               {#if linkCalculation?.type === 'fico'}
-                <div class="link-calculation">
-                  {linkCalculation.before} &minus; 4 = {linkCalculation.after}
-                </div>
+                {#if linkCalculation.engaged}
+                  <div class="link-calculation dti-calc">
+                    <div class="dti-subhead">Your score breakdown</div>
+                    <div class="dti-row">Your profile score: <b>{linkCalculation.profileFICO}</b></div>
+                    {#if linkCalculation.isClamped}
+                      <div class="dti-row">Credit checks from new accounts, mortgages, and inquiries: <b>{linkCalculation.hardInquiries} total</b></div>
+                      <div class="dti-line final">New score: <b>662</b> &mdash; the lowest score possible. More accounts or inquiries won&rsquo;t lower it further.</div>
+                    {:else}
+                      <div class="dti-row">Credit checks from new accounts, mortgages, and inquiries: <b>{linkCalculation.hardInquiries} total</b>, accounts for a {linkCalculation.rawPenalty} point decrease</div>
+                      <div class="dti-line final">New score: <b>{linkCalculation.newFICO}</b></div>
+                    {/if}
+                  </div>
+                {/if}
               {:else if linkCalculation?.type === 'dti'}
                 <div class="link-calculation dti-calc">
                   <!-- <div class="dti-title">What makes up your DTI?</div> -->
@@ -597,19 +607,21 @@
                   <div class="dti-line final">You owe <b>{linkCalculation.newBalance}</b> on revolving credit.</div>
                 </div>
               {:else if linkCalculation?.type === 'revol_util'}
-                <div class="link-calculation dti-calc">
-                  {#if linkCalculation.hasLimit}
-                    <div class="dti-subhead">Your utilization breakdown</div>
-                    <div class="dti-row">Your credit limit: <b>{linkCalculation.creditLimit}</b> (estimated from your revolving balance {linkCalculation.currentBalance} &divide; current utilization {linkCalculation.currentUtilization}%)</div>
-                    <div class="dti-row">New revolving balance: <b>{linkCalculation.newBalance}</b></div>
-                    <div class="dti-row">New utilization: {linkCalculation.newBalance} &divide; {linkCalculation.creditLimit} &times; 100 = <b>{linkCalculation.newUtilization}%</b></div>
-                  {/if}
-                  {#if linkCalculation.changeVerb === 'stayed at'}
-                    <div class="dti-line final">Your credit utilization stayed at <b>{linkCalculation.newUtilization}%</b>, i.e., you&rsquo;re using {linkCalculation.newUtilization}% of your available credit.</div>
-                  {:else}
-                    <div class="dti-line final">Your credit utilization {linkCalculation.changeVerb} from <b>{linkCalculation.currentUtilization}%</b> to <b>{linkCalculation.newUtilization}%</b>, i.e., you&rsquo;re using {linkCalculation.newUtilization}% of your available credit.</div>
-                  {/if}
-                </div>
+                {#if linkCalculation.engaged}
+                  <div class="link-calculation dti-calc">
+                    {#if linkCalculation.hasLimit}
+                      <div class="dti-subhead">Your utilization breakdown</div>
+                      <div class="dti-row">Your credit limit: <b>{linkCalculation.creditLimit}</b> (estimated from your revolving balance {linkCalculation.currentBalance} &divide; current utilization {linkCalculation.currentUtilization}%)</div>
+                      <div class="dti-row">New revolving balance: <b>{linkCalculation.newBalance}</b></div>
+                      <div class="dti-row">New utilization: {linkCalculation.newBalance} &divide; {linkCalculation.creditLimit} &times; 100 = <b>{linkCalculation.newUtilization}%</b></div>
+                    {/if}
+                    {#if linkCalculation.changeVerb === 'stayed at'}
+                      <div class="dti-line final">Your credit utilization stayed at <b>{linkCalculation.newUtilization}%</b>, i.e., you&rsquo;re using {linkCalculation.newUtilization}% of your available credit.</div>
+                    {:else}
+                      <div class="dti-line final">Your credit utilization {linkCalculation.changeVerb} from <b>{linkCalculation.currentUtilization}%</b> to <b>{linkCalculation.newUtilization}%</b>, i.e., you&rsquo;re using {linkCalculation.newUtilization}% of your available credit.</div>
+                    {/if}
+                  </div>
+                {/if}
               {:else if linkCalculation?.type === 'open_acc'}
                 <div class="link-calculation dti-calc">
                   <div class="dti-subhead">Your open accounts breakdown</div>

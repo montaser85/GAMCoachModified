@@ -169,11 +169,6 @@ export function computeParams(baseline, current, modifiedFeatures = null) {
     openAccountsIncreaseExMortgage +
     mortgagesIncrease;
 
-  const bankruptciesIncrease = increase(
-    current.pub_rec_bankruptcies,
-    baseline.pub_rec_bankruptcies
-  );
-
   return {
     baseline,
     current,
@@ -189,23 +184,23 @@ export function computeParams(baseline, current, modifiedFeatures = null) {
     mortgagesIncrease,
     openAccountsIncreaseExMortgage,
     hardInquiries,
-    bankruptciesIncrease,
     creditLimit: creditLimitFromBaseline(baseline)
   };
 }
 
 /**
  * Master FICO formula (Brief Section 4). FICO is primitive-with-deltas: start
- * from the baseline score and subtract exactly two penalty channels. FICO can
- * only hold or fall — never increase (Brief Section 8).
+ * from the baseline score and subtract the SINGLE penalty channel — the shared
+ * hard-inquiry counter (−4 per inquiry: opened accounts, mortgages, and direct
+ * credit-inquiry edits all feed it). The bankruptcy → FICO channel has been
+ * removed. FICO can only hold or fall — never increase (Brief Section 8).
  * @param {object} params
  * @returns {number}
  */
 export function masterFico(params) {
   const baseFico = params.baseline.fico_score || 0;
-  const newFico =
-    baseFico - params.hardInquiries * 4 - params.bankruptciesIncrease * 200;
-  // Never-increase invariant (defensive; penalties are already >= 0). The
+  const newFico = baseFico - params.hardInquiries * 4;
+  // Never-increase invariant (defensive; the penalty is already >= 0). The
   // valid-range clamp (662–848) is applied centrally in propagate() via
   // MODEL_BOUNDS, together with every other derived feature.
   return Math.min(newFico, baseFico);

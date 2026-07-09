@@ -22,6 +22,7 @@
     computeDtiParts,
     creditLimitFromBaseline,
     MORTGAGE_HOME_VALUE,
+    FICO_FLOOR,
     EDGES
   } from '../../engine/index.mjs';
 
@@ -70,7 +71,7 @@
   // Add an entry here whenever a feature gets real calculation mechanics so the
   // popup shows an informative message instead of the default placeholder.
   const LINK_POPUP_TEXT = {
-    'fico_score': "A new loan requires a hard credit inquiry — a formal review process that lenders use to assess applicant's creditworthiness. One hard inquiry will typically reduce credit score by fewer than five points.",
+    'fico_score': "FICO score is your credit score, which lenders use to judge how likely you are to repay.",
     'dti': "Your Debt-to-Income ratio (DTI) is how much of your monthly income goes toward paying debts. A lower DTI looks better to lenders.",
     'revol_bal':  "Revolving balance is the unpaid amount left on your credit cards. Changing it affects two things: your credit utilization and your debt-to-income ratio.",
     'revol_util': "Credit utilization is how much of your available revolving credit you're using. It moves with your revolving balance — as the balance goes up or down, so does your utilization.",
@@ -557,8 +558,13 @@
         } else if (name === 'mort_acc') {
           // Numeric-count categorical: labels are '0'..'7' and '7+'. The engine
           // needs the integer count; the capped "more than 7" bucket ('7+') is
-          // treated as 8.
+          // treated as 8 (N+1, the floor of the "more than 7" range).
           state[name] = label === '7+' ? 8 : (parseInt(label, 10) || 0);
+        } else if (name === 'inq_last_6mths') {
+          // Numeric-count categorical: labels are '0'..'3' and '3+'. The engine
+          // needs the integer count; the capped "more than 3" bucket ('3+') is
+          // treated as 4 (N+1, the floor of the "more than 3" range).
+          state[name] = label === '3+' ? 4 : (parseInt(label, 10) || 0);
         } else {
           state[name] = label;
         }
@@ -635,6 +641,54 @@
   };
 
   /**
+   * Build the FICO Score hover breakdown. FICO has a SINGLE channel — the shared
+   * hard-inquiry counter (−4 per inquiry). Opened accounts, mortgages, and direct
+   * Number of Credit Inquiries edits all feed ONE counter (one row, never split),
+   * with the mortgage counted once even though it also bumps the account counters.
+   *
+   * No-propagation-on-load rule (same as DTI_USER_EDITS_ONLY / Credit
+   * Utilization): the counter is computed only from features the USER has edited,
+   * so the coach's suggested values never fabricate a change at load. When the
+   * gated hard-inquiry count is 0, the hover shows the definition line only.
+   * Contributions are floored at 0 — FICO only ever falls.
+   */
+  const buildFicoBreakdown = (baseline, state) => {
+    // Gate each FICO-source feature: use the live value only if the user edited
+    // it (a Home Ownership → Mortgage edit marks mort_acc/open_acc modified via
+    // propagation), otherwise fall back to the profile so nothing is counted.
+    const gated = (name) =>
+      modifiedFeatures.has(name) ? (state[name] || 0) : (baseline[name] || 0);
+    const inqIncrease = Math.max(0, gated('inq_last_6mths') - (baseline.inq_last_6mths || 0));
+    const mortIncrease = Math.max(0, gated('mort_acc') - (baseline.mort_acc || 0));
+    const openIncrease = Math.max(0, gated('open_acc') - (baseline.open_acc || 0));
+    // Mortgage single-count: exclude the mortgage-driven open bump from the open
+    // term so a mortgage adds exactly one inquiry.
+    const openExMort = Math.max(0, openIncrease - mortIncrease);
+    const hardInquiries = inqIncrease + openExMort + mortIncrease;
+
+    if (hardInquiries === 0) return { type: 'fico', engaged: false };
+
+    const profileFICO = Math.round(baseline.fico_score || 0);
+    const rawPenalty = hardInquiries * 4;
+    const raw = profileFICO - rawPenalty;
+    // 662 is the lowest FICO the model bins; the score can never go below it.
+    // When the raw penalty would push below the floor, we clamp and switch the
+    // hover to the floor explanation (never show a deduction that doesn't
+    // reconcile with the displayed score).
+    const isClamped = raw < FICO_FLOOR;
+    const newFICO = Math.max(FICO_FLOOR, raw);
+    return {
+      type: 'fico',
+      engaged: true,
+      isClamped,
+      profileFICO: String(profileFICO),
+      hardInquiries: String(hardInquiries),
+      rawPenalty: String(rawPenalty),
+      newFICO: String(newFICO)
+    };
+  };
+
+  /**
    * Build the Credit Utilization hover breakdown. `state` carries the live
    * revolving balance / utilization; the credit limit is recovered from the
    * profile (baseline) balance ÷ utilization. Zero-guard: when the limit can't
@@ -642,6 +696,16 @@
    * the recovery rows are hidden.
    */
   const buildRevolUtilBreakdown = (baseline, state) => {
+    // No-propagation-on-load rule (consistent with DTI_USER_EDITS_ONLY): the
+    // breakdown may only compute from live values the user has ENGAGED. Until the
+    // user edits Credit Utilization or Revolving Balance, `state` still holds the
+    // (unreconciled) suggested balance, so computing a "new utilization" from it
+    // would be inconsistent with the profile utilization the card shows. Show the
+    // definition line only in that case.
+    const engaged =
+      modifiedFeatures.has('revol_util') || modifiedFeatures.has('revol_bal');
+    if (!engaged) return { type: 'revol_util', engaged: false };
+
     const money = (n) => '$' + Math.round(n).toLocaleString();
     const pct = (n) => Number(n).toFixed(2);
     const creditLimit = creditLimitFromBaseline(baseline); // null when indeterminate
@@ -652,6 +716,7 @@
     else if (newUtil < currentUtil - 1e-9) changeVerb = 'decreased';
     return {
       type: 'revol_util',
+      engaged: true,
       hasLimit: creditLimit !== null,
       creditLimit: creditLimit !== null ? money(creditLimit) : null,
       currentBalance: money(baseline.revol_bal || 0),
@@ -771,6 +836,7 @@
     const current = buildCurrentEngineState();
     const params = computeParams(applicantBaselineState, current, modifiedFeatures);
     dtiLinkCalculation = formatDtiBreakdown(computeDtiParts(current, params));
+    ficoLinkCalculation = buildFicoBreakdown(applicantBaselineState, current);
     revolUtilLinkCalculation = buildRevolUtilBreakdown(applicantBaselineState, current);
     revolBalLinkCalculation = buildRevolBalBreakdown(applicantBaselineState, current, params);
     mortAccLinkCalculation = buildMortAccBreakdown(applicantBaselineState, current);
@@ -783,17 +849,12 @@
    * engine's own parameters so the explanation matches the applied values.
    */
   const populateLinkCalculations = (editedFeature, baseline, current, next, changedSet) => {
-    ficoLinkCalculation = null;
-
     const params = computeParams(baseline, current, modifiedFeatures);
 
-    if (changedSet.has('fico_score')) {
-      ficoLinkCalculation = {
-        type: 'fico',
-        before: Math.round(baseline.fico_score),
-        after: Math.round(next.fico_score)
-      };
-    }
+    // FICO breakdown — the single hard-inquiry channel, gated to user edits.
+    // Built from the post-propagation state (`next`), which carries the
+    // reconciled account/mortgage counts driving the counter.
+    ficoLinkCalculation = buildFicoBreakdown(baseline, next);
 
     // DTI breakdown — always refreshed from the engine's post-propagation state
     // (base row + whichever contributor rows are engaged).

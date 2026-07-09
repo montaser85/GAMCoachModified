@@ -258,11 +258,12 @@ test('9b. Total cannot be set below Open on a direct total edit', () => {
 });
 
 // Extra invariants (Brief Sections 4/8)
-test('X1. Bankruptcy increase drops FICO, clamped to the 662 floor', () => {
+test('X1. Bankruptcy edit no longer affects FICO (channel removed)', () => {
   const base = makeBaseline({ pub_rec_bankruptcies: 0 }); // fico 700
   const next = edit(base, 'pub_rec_bankruptcies', 1);
-  const { state } = propagate('pub_rec_bankruptcies', base, next, base);
-  approx(state.fico_score, 662); // 700 - 200 = 500, clamped up to the 662 floor
+  const { state, log } = propagate('pub_rec_bankruptcies', base, next, base);
+  approx(state.fico_score, 700); // no bankruptcy → FICO edge; FICO unchanged
+  assert.strictEqual(log.length, 0); // pub_rec_bankruptcies has no outgoing edges
 });
 
 test('D3. FICO never drops below 662, however many accounts open', () => {
@@ -472,10 +473,10 @@ test('S8. Number of Accounts is clamped to be >= Open Accounts (bound holds)', (
 
 test('X2. Reducing bankruptcies never raises FICO', () => {
   const base = makeBaseline({ pub_rec_bankruptcies: 2 });
-  const next = edit(base, 'pub_rec_bankruptcies', 0); // net -2, floored to 0
+  const next = edit(base, 'pub_rec_bankruptcies', 0); // channel removed anyway
   const { state } = propagate('pub_rec_bankruptcies', base, next, base);
   assert.ok(state.fico_score <= base.fico_score);
-  approx(state.fico_score, 700); // floored, no change from this channel
+  approx(state.fico_score, 700); // no bankruptcy → FICO channel; FICO unchanged
 });
 
 test('X3. Mortgage direct edit -> counters up, FICO -4 once (not -8)', () => {

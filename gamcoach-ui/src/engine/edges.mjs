@@ -259,9 +259,8 @@ export const EDGES = {
   inq_last_6mths: [
     { dependent: 'fico_score', tag: 'E', phase: 'value', rule: ficoMaster }
   ],
-  pub_rec_bankruptcies: [
-    { dependent: 'fico_score', tag: 'E', phase: 'value', rule: ficoMaster }
-  ],
+  // pub_rec_bankruptcies has NO outgoing edge: the bankruptcy → FICO channel was
+  // removed. FICO's only channel is the shared hard-inquiry counter.
   annual_inc: [
     { dependent: 'dti', tag: 'E', phase: 'value', rule: dtiFull }
   ],
@@ -280,6 +279,7 @@ export const EDGES = {
 export const LEAF_FEATURES = [
   'dti',
   'fico_score',
+  'pub_rec_bankruptcies',
   'earliest_cr_line',
   'total_acc',
   'emp_length',
