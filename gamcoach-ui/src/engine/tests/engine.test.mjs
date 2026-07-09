@@ -488,6 +488,31 @@ test('X3. Mortgage direct edit -> counters up, FICO -4 once (not -8)', () => {
   approx(state.fico_score, 696); // single hard inquiry
 });
 
+// Manual FICO edit is a signed base adjustment that survives a source change.
+// 9th positional arg to propagate = userFicoDelta (user-set − profile).
+test('F1. Manual FICO edit persists when a source feature changes', () => {
+  const base = makeBaseline({ fico_score: 690, open_acc: 8, total_acc: 15 });
+  // User set FICO 690 -> 720 (delta +30). Then opens 1 account (delta carried).
+  const { state } = propagate('open_acc', base, edit(base, 'open_acc', 9), base,
+    new Set(['fico_score', 'open_acc']), 0, 0, 0, 30);
+  approx(state.fico_score, 716); // 690 + 30 − 4, not 686
+});
+
+test('F2. Manual FICO raise is not clipped by the never-increase invariant', () => {
+  const base = makeBaseline({ fico_score: 690 });
+  // Pure manual raise (no source penalty). Trigger via inq edit that adds 0.
+  const { state } = propagate('inq_last_6mths', base, edit(base, 'inq_last_6mths', 1), base,
+    new Set(['fico_score']), 0, 0, 0, 30);
+  approx(state.fico_score, 720); // 690 + 30, raised above profile
+});
+
+test('F3. Manual FICO edit + heavy penalty still clamps to the 662 floor', () => {
+  const base = makeBaseline({ fico_score: 690, open_acc: 8 });
+  const { state } = propagate('open_acc', base, edit(base, 'open_acc', 28), base,
+    new Set(['fico_score', 'open_acc']), 0, 0, 0, 30); // +20 accounts -> −80
+  approx(state.fico_score, 662); // 690 + 30 − 80 = 640, clamped up to floor
+});
+
 test('X4. Annual income up -> DTI down; numerator still includes loan payment', () => {
   const base = makeBaseline();
   const next = edit(base, 'annual_inc', 120000); // double income

@@ -123,7 +123,7 @@ export function loanMonthlyPayment(loanAmount, monthlyInterestRate, termMonths) 
  *   "all current values" behavior).
  * @returns {object} params consumed by the rule functions.
  */
-export function computeParams(baseline, current, modifiedFeatures = null) {
+export function computeParams(baseline, current, modifiedFeatures = null, ficoManualDelta = 0) {
   // Income denominators — one shared "New Monthly Income" everywhere. If income
   // was not edited, current.annual_inc === baseline.annual_inc and the two
   // collapse to the same value (Brief Section 8: New-Monthly-Income discipline).
@@ -184,24 +184,31 @@ export function computeParams(baseline, current, modifiedFeatures = null) {
     mortgagesIncrease,
     openAccountsIncreaseExMortgage,
     hardInquiries,
+    ficoManualDelta,
     creditLimit: creditLimitFromBaseline(baseline)
   };
 }
 
 /**
  * Master FICO formula (Brief Section 4). FICO is primitive-with-deltas: start
- * from the baseline score and subtract the SINGLE penalty channel — the shared
- * hard-inquiry counter (−4 per inquiry: opened accounts, mortgages, and direct
- * credit-inquiry edits all feed it). The bankruptcy → FICO channel has been
- * removed. FICO can only hold or fall — never increase (Brief Section 8).
+ * from the baseline score, add the user's SIGNED manual edit (ficoManualDelta —
+ * the user may raise or lower their own score), then subtract the SINGLE penalty
+ * channel — the shared hard-inquiry counter (−4 per inquiry: opened accounts,
+ * mortgages, and direct credit-inquiry edits all feed it). The bankruptcy → FICO
+ * channel has been removed.
+ *
+ * Source penalties can only hold or lower the score — they never raise it above
+ * the user's own set point (the adjusted base). Only the manual edit may raise
+ * FICO above the profile value.
  * @param {object} params
  * @returns {number}
  */
 export function masterFico(params) {
   const baseFico = params.baseline.fico_score || 0;
-  const newFico = baseFico - params.hardInquiries * 4;
-  // Never-increase invariant (defensive; the penalty is already >= 0). The
-  // valid-range clamp (662–848) is applied centrally in propagate() via
-  // MODEL_BOUNDS, together with every other derived feature.
-  return Math.min(newFico, baseFico);
+  const adjustedBase = baseFico + (params.ficoManualDelta || 0);
+  const newFico = adjustedBase - params.hardInquiries * 4;
+  // Never-increase-from-penalties invariant (defensive; the penalty is already
+  // >= 0). The valid-range clamp (662–848) is applied centrally in propagate()
+  // via MODEL_BOUNDS, together with every other derived feature.
+  return Math.min(newFico, adjustedBase);
 }

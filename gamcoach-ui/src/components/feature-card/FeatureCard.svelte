@@ -572,12 +572,19 @@
                   <div class="link-calculation dti-calc">
                     <div class="dti-subhead">Your score breakdown</div>
                     <div class="dti-row">Your profile score: <b>{linkCalculation.profileFICO}</b></div>
+                    {#if linkCalculation.showManualRow}
+                      <div class="dti-row">Adjusted by you: <b>{linkCalculation.ficoManualDelta}</b></div>
+                    {/if}
                     {#if linkCalculation.isClamped}
-                      <div class="dti-row">Credit checks from new accounts, mortgages, and inquiries: <b>{linkCalculation.hardInquiries} total</b></div>
+                      {#if linkCalculation.showPenaltyRow}
+                        <div class="dti-row">Credit checks from new accounts, mortgages, and inquiries: <b>{linkCalculation.hardInquiries} total</b> (4 points each) &mdash; enough to reach the minimum score</div>
+                      {/if}
                       <div class="dti-line final">New score: <b>662</b> &mdash; the lowest score possible. More accounts or inquiries won&rsquo;t lower it further.</div>
                     {:else}
-                      <div class="dti-row">Credit checks from new accounts, mortgages, and inquiries: <b>{linkCalculation.hardInquiries} total</b>, accounts for a {linkCalculation.rawPenalty} point decrease</div>
-                      <div class="dti-line final">New score: <b>{linkCalculation.newFICO}</b></div>
+                      {#if linkCalculation.showPenaltyRow}
+                        <div class="dti-row">Credit checks from new accounts, mortgages, and inquiries: <b>{linkCalculation.hardInquiries} total</b> (4 points each), accounts for <b>&minus;{linkCalculation.rawPenalty} points</b></div>
+                      {/if}
+                      <div class="dti-line final">New score: <b>{linkCalculation.newScoreExpr}</b></div>
                     {/if}
                   </div>
                 {/if}

@@ -21,8 +21,10 @@
     computeParams,
     computeDtiParts,
     creditLimitFromBaseline,
+    masterFico,
     MORTGAGE_HOME_VALUE,
     FICO_FLOOR,
+    FICO_CEIL,
     EDGES
   } from '../../engine/index.mjs';
 
@@ -179,6 +181,11 @@
   // edit to Number of Open Accounts / Number of Accounts respectively.
   let userOpenDelta = 0;
   let userTotalDelta = 0;
+  // The user's manual edit to FICO Score, tracked as a SIGNED delta vs. the
+  // profile score (may raise or lower it). Applied as a base adjustment before
+  // the hard-inquiry penalty, so a later source change (open account / mortgage /
+  // inquiry) no longer discards the manual edit. Cleared only on a FICO reset.
+  let userFicoDelta = 0;
 
   /**
    * Recompute the tracked manual account deltas from the current model state
@@ -195,6 +202,45 @@
       userTotalDelta =
         (cur.total_acc || 0) - (applicantBaselineState.total_acc || 0) - userOpenDelta - mortDelta;
     }
+  };
+
+  /**
+   * Settle FICO from the current full state and the given manual delta, honoring
+   * the same master formula + 662/848 clamp the engine applies. Returns the
+   * display-unit FICO value.
+   */
+  const settleFico = (ficoManualDelta) => {
+    const current = buildCurrentEngineState();
+    const params = computeParams(
+      applicantBaselineState, current, modifiedFeatures, ficoManualDelta
+    );
+    return Math.max(FICO_FLOOR, Math.min(FICO_CEIL, masterFico(params)));
+  };
+
+  /**
+   * Capture a direct FICO edit as a signed delta vs. the profile score, then
+   * re-settle the displayed score so any active hard-inquiry penalty applies on
+   * top of the manual edit (FICO is a leaf, so triggerPropagation can't do this).
+   */
+  const applyManualFicoEdit = () => {
+    if (!applicantBaselineState || !plan) return;
+    const cur = buildCurrentEngineState();
+    userFicoDelta = (cur.fico_score || 0) - (applicantBaselineState.fico_score || 0);
+    // Re-settle: profile + delta − active penalty, clamped. Write it back so the
+    // card reflects the reconciled value (e.g. 720 typed with a −4 penalty → 716).
+    const settled = settleFico(userFicoDelta);
+    plan.ebmLocal.updateFeature('fico_score', settled);
+    const f = plan.features.find(ff => ff.data.name === 'fico_score');
+    if (f) f.hypotheticalValue = settled;
+    lastKnownValues['fico_score'] = settled;
+    planStore.set(plan);
+    // Snap the slider to the settled value when an active penalty pulled it below
+    // what the user typed (e.g. typed 720 with a −4 penalty → 716).
+    if (Math.round(settled) !== Math.round(cur.fico_score || 0)) {
+      featureValueOverrideStore.set({ fico_score: settled });
+      setTimeout(() => featureValueOverrideStore.set({}), 400);
+    }
+    ficoLinkCalculation = buildFicoBreakdown(applicantBaselineState, buildCurrentEngineState());
   };
 
   // Set up the GAM Coach feature cards
@@ -307,6 +353,13 @@
         totalAccLinkCalculation = buildTotalAccBreakdown(applicantBaselineState, cur);
       }
 
+      // FICO Score is a leaf too — capture the signed manual delta and re-settle
+      // the score (profile + delta − active penalty) so any existing source
+      // penalty applies on top of the manual edit, then refresh its hover.
+      if (featureName === 'fico_score') {
+        applyManualFicoEdit();
+      }
+
       // Debounce — only fire after user stops dragging (350ms of silence)
       if (propagationDebounceTimer) clearTimeout(propagationDebounceTimer);
       propagationDebounceTimer = setTimeout(() => {
@@ -356,6 +409,31 @@
   const handleFeatureReset = (featureName) => {
     if (!plan || !loadTimeSample) return;
 
+    // ── FICO Score reset — special case ──────────────────────────────────────
+    // FICO's "sources" are real user edits (opened accounts / mortgages /
+    // inquiries) whose penalties must PERSIST. Resetting FICO clears ONLY the
+    // user's manual FICO delta and re-settles the score from the remaining
+    // penalties (never touches the source cards).
+    if (featureName === 'fico_score') {
+      userFicoDelta = 0;
+      const settled = settleFico(0); // profile − active penalty, clamped
+      const profileFico = applicantBaselineState.fico_score || 0;
+      plan.ebmLocal.updateFeature('fico_score', settled);
+      const f = plan.features.find(ff => ff.data.name === 'fico_score');
+      if (f) f.hypotheticalValue = settled;
+      lastKnownValues['fico_score'] = settled;
+      // Stays modified (outline) only while a penalty still moves it off profile.
+      if (Math.round(settled) !== Math.round(profileFico)) modifiedFeatures.add('fico_score');
+      else modifiedFeatures.delete('fico_score');
+      modifiedFeatures = modifiedFeatures;
+      planStore.set(plan);
+      featureValueOverrideStore.set({ fico_score: settled });
+      setTimeout(() => featureValueOverrideStore.set({}), 400);
+      ficoLinkCalculation = buildFicoBreakdown(applicantBaselineState, buildCurrentEngineState());
+      dismissArrows();
+      return;
+    }
+
     const overrides = {};
 
     // ── 1. Un-modify: reset feature + its direct sources -> load-time ─────────
@@ -382,7 +460,7 @@
     unmodify.forEach(src => {
       const { state: next, log } = propagate(
         src, baseline, current, baseline,
-        modifiedFeatures, appliedHomeMortgage, userOpenDelta, userTotalDelta
+        modifiedFeatures, appliedHomeMortgage, userOpenDelta, userTotalDelta, userFicoDelta
       );
       log.filter(l => !l.note).forEach(l => {
         if (!unmodify.has(l.dependent)) recomputed[l.dependent] = next[l.dependent];
@@ -666,25 +744,45 @@
     const openExMort = Math.max(0, openIncrease - mortIncrease);
     const hardInquiries = inqIncrease + openExMort + mortIncrease;
 
-    if (hardInquiries === 0) return { type: 'fico', engaged: false };
+    // The user's own manual FICO edit is a SIGNED contribution, gated to when the
+    // user actually edited FICO (so a suggested value never fabricates a change).
+    const ficoManualDelta = modifiedFeatures.has('fico_score') ? Math.round(userFicoDelta) : 0;
+
+    // Definition-only when nothing applies (no penalty AND no manual edit).
+    if (hardInquiries === 0 && ficoManualDelta === 0) return { type: 'fico', engaged: false };
 
     const profileFICO = Math.round(baseline.fico_score || 0);
     const rawPenalty = hardInquiries * 4;
-    const raw = profileFICO - rawPenalty;
+    const raw = profileFICO + ficoManualDelta - rawPenalty;
     // 662 is the lowest FICO the model bins; the score can never go below it.
-    // When the raw penalty would push below the floor, we clamp and switch the
+    // When the raw value would push below the floor, we clamp and switch the
     // hover to the floor explanation (never show a deduction that doesn't
     // reconcile with the displayed score).
     const isClamped = raw < FICO_FLOOR;
     const newFICO = Math.max(FICO_FLOOR, raw);
+
+    // Assembled arithmetic for the not-clamped final line, e.g.
+    // "677 + 34 − 20 = 691". The manual term appears only when non-zero (signed)
+    // and the penalty term only when there is a penalty; the pieces sum exactly
+    // to newFICO.
+    let newScoreExpr = String(profileFICO);
+    if (ficoManualDelta !== 0)
+      newScoreExpr += (ficoManualDelta < 0 ? ' − ' : ' + ') + Math.abs(ficoManualDelta);
+    if (rawPenalty > 0) newScoreExpr += ' − ' + rawPenalty;
+    newScoreExpr += ' = ' + newFICO;
+
     return {
       type: 'fico',
       engaged: true,
       isClamped,
       profileFICO: String(profileFICO),
+      showManualRow: ficoManualDelta !== 0,
+      ficoManualDelta: (ficoManualDelta < 0 ? '−' : '+') + Math.abs(ficoManualDelta),
+      showPenaltyRow: hardInquiries > 0,
       hardInquiries: String(hardInquiries),
       rawPenalty: String(rawPenalty),
-      newFICO: String(newFICO)
+      newFICO: String(newFICO),
+      newScoreExpr
     };
   };
 
@@ -1147,7 +1245,7 @@
     // counters sum ALL sources (profile + each manual delta + mortgage delta).
     const { state: next, log } = propagate(
       featureName, baseline, current, baseline,
-      modifiedFeatures, appliedHomeMortgage, userOpenDelta, userTotalDelta
+      modifiedFeatures, appliedHomeMortgage, userOpenDelta, userTotalDelta, userFicoDelta
     );
 
     // Record the home's now-applied contribution so the NEXT Home Ownership
