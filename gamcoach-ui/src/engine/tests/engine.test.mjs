@@ -386,6 +386,60 @@ test('M4. Mortgage count never goes below 0', () => {
   assert.strictEqual(afterRent.mort_acc, 0); // max(0, 0 − 1)
 });
 
+// Account counters sum ALL contributions (profile + manual open + mortgage),
+// not just the last source that changed. 7th arg = the user's manual open delta.
+test('S1. Open +5 then Mortgages +2 sums both (Accounts 28, Open 18)', () => {
+  const base = makeBaseline({ home_ownership: 'RENT', total_acc: 21, open_acc: 11, mort_acc: 0 });
+  // Open Accounts +5 (manual delta 5)
+  const afterOpen = propagate('open_acc', base, edit(base, 'open_acc', 16), base,
+    new Set(['open_acc']), 0, 0).state; // open edit derives its own delta
+  assert.strictEqual(afterOpen.total_acc, 26); // 21 + 5
+  // Mortgages +2 — must keep the +5 open contribution (pass userOpenDelta = 5)
+  const afterMort = propagate('mort_acc', base, edit(afterOpen, 'mort_acc', 2), base,
+    new Set(['open_acc', 'mort_acc']), 0, 5).state;
+  assert.strictEqual(afterMort.open_acc, 18);  // 11 + 5 + 2
+  assert.strictEqual(afterMort.total_acc, 28); // 21 + 5 + 2
+});
+
+test('S2. Mortgages +2 then Open +5 is identical (order-independent)', () => {
+  const base = makeBaseline({ home_ownership: 'RENT', total_acc: 21, open_acc: 11, mort_acc: 0 });
+  const afterMort = propagate('mort_acc', base, edit(base, 'mort_acc', 2), base,
+    new Set(['mort_acc']), 0, 0).state;
+  assert.strictEqual(afterMort.open_acc, 13);  // 11 + 0 + 2
+  assert.strictEqual(afterMort.total_acc, 23); // 21 + 0 + 2
+  // Open Accounts +5 on top: card shows 13, user sets 18 (edit derives delta = 18-11-2 = 5)
+  const afterOpen = propagate('open_acc', base, edit(afterMort, 'open_acc', 18), base,
+    new Set(['open_acc', 'mort_acc']), 0, 0).state;
+  assert.strictEqual(afterOpen.total_acc, 28); // 21 + 5 + 2, same as S1
+});
+
+test('S4. Manual Number of Accounts persists when Open Accounts changes', () => {
+  const base = makeBaseline({ home_ownership: 'RENT', total_acc: 21, open_acc: 11, mort_acc: 0 });
+  // Manual Accounts -> 27 (accountsManualDelta 6), then Open -> 13.
+  const afterOpen = propagate('open_acc', base, edit(base, 'open_acc', 13), base,
+    new Set(['total_acc', 'open_acc']), 0, 0, 6).state;
+  assert.strictEqual(afterOpen.total_acc, 29); // 21 + 6 + 2 + 0
+});
+
+test('S5. Manual Open then Mortgages +2 keeps open manual and adds mortgage', () => {
+  const base = makeBaseline({ home_ownership: 'RENT', total_acc: 21, open_acc: 11, mort_acc: 0 });
+  const afterMort = propagate('mort_acc', base, edit(base, 'mort_acc', 2), base,
+    new Set(['open_acc', 'mort_acc']), 0, 2, 0).state;
+  assert.strictEqual(afterMort.open_acc, 15);  // 11 + 2 + 2
+  assert.strictEqual(afterMort.total_acc, 25); // 21 + 0 + 2 + 2
+});
+
+test('S3. Open +2 then Home -> Mortgage (Open 14, Accounts 24)', () => {
+  const base = makeBaseline({ home_ownership: 'RENT', total_acc: 21, open_acc: 11, mort_acc: 0 });
+  const afterOpen = propagate('open_acc', base, edit(base, 'open_acc', 13), base,
+    new Set(['open_acc']), 0, 0).state; // manual delta 2
+  const afterHome = propagate('home_ownership', base,
+    edit(afterOpen, 'home_ownership', 'MORTGAGE'), base,
+    new Set(['open_acc', 'home_ownership']), 0, 2).state; // keep open delta 2
+  assert.strictEqual(afterHome.open_acc, 14);  // 11 + 2 + 1
+  assert.strictEqual(afterHome.total_acc, 24); // 21 + 2 + 1
+});
+
 test('X2. Reducing bankruptcies never raises FICO', () => {
   const base = makeBaseline({ pub_rec_bankruptcies: 2 });
   const next = edit(base, 'pub_rec_bankruptcies', 0); // net -2, floored to 0

@@ -147,15 +147,46 @@ function revolBalFromUtil(state, params) {
   return ((state.revol_util || 0) / 100) * params.creditLimit;
 }
 
-// ── Account counters (Brief Section 5) ─────────────────────────────────────
-// Open Accounts -> Number of Accounts. Opening: total rises with the net open
-// increase. Closing: total is unchanged (open falls, total holds).
-function totalAccFromOpen(state, params) {
-  const openIncrease = Math.max(
+// ── Account counters — sum ALL contributions ───────────────────────────────
+// Number of Open Accounts and Number of Accounts are BOTH recomputed as
+//   profile + the user's manual Open-Accounts delta + the mortgage delta
+// on every source change, so no single source overwrites the others.
+//   openDelta = the user's manual change to Open Accounts (excluding the
+//     mortgage-driven part). For a direct Open Accounts edit it is read from
+//     the edited value; otherwise it is the tracked value the caller supplies
+//     (params.userOpenDelta).
+//   mortDelta = current mortgage count − profile mortgage count (already
+//     reflects both Home Ownership → Mortgage and direct mortgage edits).
+function mortgageDeltaOf(state, params) {
+  return Math.max(0, (state.mort_acc || 0) - (params.baseline.mort_acc || 0));
+}
+function manualOpenDelta(state, params) {
+  if (params.editedFeature === 'open_acc') {
+    // The just-edited Open Accounts value minus the mortgage-driven part.
+    return (state.open_acc || 0) - (params.baseline.open_acc || 0) - mortgageDeltaOf(state, params);
+  }
+  return params.userOpenDelta || 0;
+}
+function openAccountsValue(state, params) {
+  return Math.max(
     0,
-    (state.open_acc || 0) - (params.baseline.open_acc || 0)
+    (params.baseline.open_acc || 0) + manualOpenDelta(state, params) + mortgageDeltaOf(state, params)
   );
-  return (params.baseline.total_acc || 0) + openIncrease;
+}
+function totalAccountsValue(state, params) {
+  // Number of Accounts sums ALL contributions, and manual deltas are SIGNED —
+  // both the user's OWN direct edit (params.userTotalDelta) and the manual open
+  // delta may be negative, so a downward edit on either lowers the total. Only
+  // the mortgage (source) delta is floored at 0. The Total >= Open bound is
+  // enforced by the engine guard, not here.
+  const accountsManual = params.userTotalDelta || 0;
+  return Math.max(
+    0,
+    (params.baseline.total_acc || 0) +
+      accountsManual +
+      manualOpenDelta(state, params) +
+      mortgageDeltaOf(state, params)
+  );
 }
 
 // ── Home Ownership -> Mortgage transition (Brief Section 5) ────────────────
@@ -177,31 +208,12 @@ function homeCountAfterTransition(currentValue, state, params) {
   const contribution = isMortgageTransition(state, params) ? 1 : 0; // new +1
   return Math.max(0, (currentValue || 0) - prior + contribution);   // floor at 0
 }
+// Number of Mortgages is the one counter that tracks the home's single +1
+// against the LIVE count (preserving manual mortgage edits). The account
+// counters (open/total) then derive from the resulting mortgage count via
+// openAccountsValue / totalAccountsValue above.
 function mortAccFromHome(state, params) {
   return homeCountAfterTransition(state.mort_acc, state, params);
-}
-function openAccFromHome(state, params) {
-  return homeCountAfterTransition(state.open_acc, state, params);
-}
-function totalAccFromHome(state, params) {
-  return homeCountAfterTransition(state.total_acc, state, params);
-}
-
-// ── Number of Mortgages -> account counters (Brief Section 5) ──────────────
-// A direct mortgage increase bumps both counters by the (floored) increase.
-function openAccFromMort(state, params) {
-  const mortIncrease = Math.max(
-    0,
-    (state.mort_acc || 0) - (params.baseline.mort_acc || 0)
-  );
-  return (params.baseline.open_acc || 0) + mortIncrease;
-}
-function totalAccFromMort(state, params) {
-  const mortIncrease = Math.max(
-    0,
-    (state.mort_acc || 0) - (params.baseline.mort_acc || 0)
-  );
-  return (params.baseline.total_acc || 0) + mortIncrease;
 }
 
 // FICO — every FICO-writing edge recomputes the score from baseline via the
@@ -229,7 +241,7 @@ export const EDGES = {
     { dependent: 'dti', tag: 'A', phase: 'value', rule: dtiFull }
   ],
   open_acc: [
-    { dependent: 'total_acc', tag: 'E', phase: 'structural', rule: totalAccFromOpen },
+    { dependent: 'total_acc', tag: 'E', phase: 'structural', rule: totalAccountsValue },
     { dependent: 'fico_score', tag: 'E', phase: 'value', rule: ficoMaster }
   ],
   term: [
@@ -237,8 +249,8 @@ export const EDGES = {
   ],
   home_ownership: [
     { dependent: 'mort_acc', tag: 'E', phase: 'structural', rule: mortAccFromHome },
-    { dependent: 'open_acc', tag: 'E', phase: 'structural', rule: openAccFromHome },
-    { dependent: 'total_acc', tag: 'E', phase: 'structural', rule: totalAccFromHome },
+    { dependent: 'open_acc', tag: 'E', phase: 'structural', rule: openAccountsValue },
+    { dependent: 'total_acc', tag: 'E', phase: 'structural', rule: totalAccountsValue },
     { dependent: 'fico_score', tag: 'E', phase: 'value', rule: ficoMaster }
   ],
   purpose: [
@@ -254,8 +266,8 @@ export const EDGES = {
     { dependent: 'dti', tag: 'E', phase: 'value', rule: dtiFull }
   ],
   mort_acc: [
-    { dependent: 'open_acc', tag: 'E', phase: 'structural', rule: openAccFromMort },
-    { dependent: 'total_acc', tag: 'E', phase: 'structural', rule: totalAccFromMort },
+    { dependent: 'open_acc', tag: 'E', phase: 'structural', rule: openAccountsValue },
+    { dependent: 'total_acc', tag: 'E', phase: 'structural', rule: totalAccountsValue },
     { dependent: 'fico_score', tag: 'E', phase: 'value', rule: ficoMaster }
   ]
 };

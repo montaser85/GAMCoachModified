@@ -612,11 +612,30 @@
                 </div>
               {:else if linkCalculation?.type === 'open_acc'}
                 <div class="link-calculation dti-calc">
-                  {#if linkCalculation.plural}
-                    <div class="dti-line">Your mortgages account for <b>{linkCalculation.mortgageCount}</b> of them, raising your total to <b>{linkCalculation.newOpenAccounts}</b>.</div>
-                  {:else}
-                    <div class="dti-line">Your mortgage accounts for <b>{linkCalculation.mortgageCount}</b> of them, raising your total to <b>{linkCalculation.newOpenAccounts}</b>.</div>
+                  <div class="dti-subhead">Your open accounts breakdown</div>
+                  <div class="dti-row">Open accounts in your profile: <b>{linkCalculation.profileOpen}</b></div>
+                  {#if linkCalculation.showOpenRow}
+                    <div class="dti-row">Open accounts you added directly: <b>{linkCalculation.openManualDelta}</b></div>
                   {/if}
+                  {#if linkCalculation.showMortgageRow}
+                    <div class="dti-row">{linkCalculation.mortgagePlural ? 'Mortgages you added' : 'Mortgage you added'}: <b>+{linkCalculation.mortgageDelta}</b></div>
+                  {/if}
+                  <div class="dti-line final">Total open accounts: <b>{linkCalculation.newOpenAccounts}</b></div>
+                </div>
+              {:else if linkCalculation?.type === 'total_acc'}
+                <div class="link-calculation dti-calc">
+                  <div class="dti-subhead">Your account breakdown</div>
+                  <div class="dti-row">Accounts in your profile: <b>{linkCalculation.profileAccounts}</b></div>
+                  {#if linkCalculation.showOpenRow}
+                    <div class="dti-row">{linkCalculation.openPlural ? 'Open accounts you added' : 'Open account you added'}: <b>{linkCalculation.openAccountsDelta}</b></div>
+                  {/if}
+                  {#if linkCalculation.showMortgageRow}
+                    <div class="dti-row">{linkCalculation.mortgagePlural ? 'Mortgages you added' : 'Mortgage you added'}: <b>+{linkCalculation.mortgageDelta}</b></div>
+                  {/if}
+                  {#if linkCalculation.showAccountsRow}
+                    <div class="dti-row">Adjusted by you: <b>{linkCalculation.accountsManualDelta}</b></div>
+                  {/if}
+                  <div class="dti-line final">Total accounts: <b>{linkCalculation.newTotalAccounts}</b></div>
                 </div>
               {/if}
             {:else}

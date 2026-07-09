@@ -65,9 +65,14 @@ export const FICO_WARN_THRESHOLD = 670;
  *                                 (baked into the live count). Lets a Home
  *                                 Ownership change add/remove only its own +1
  *                                 instead of resetting the counters.
+ * @param {number} [userOpenDelta]  The user's manual change to Number of Open
+ *                                 Accounts (excluding the mortgage-driven part).
+ *                                 Lets the account counters sum all sources.
+ * @param {number} [userTotalDelta]  The user's manual change to Number of
+ *                                 Accounts (excluding open/mortgage parts).
  * @returns {{ state: object, warnings: Array, log: Array }}
  */
-export function propagate(editedFeature, oldState, newState, baseline, modifiedFeatures, appliedHomeMortgage = 0) {
+export function propagate(editedFeature, oldState, newState, baseline, modifiedFeatures, appliedHomeMortgage = 0, userOpenDelta = 0, userTotalDelta = 0) {
   const base = baseline || oldState;
   const working = { ...newState };
   const log = [];
@@ -81,7 +86,10 @@ export function propagate(editedFeature, oldState, newState, baseline, modifiedF
   const structuralCtx = {
     baseline: base,
     creditLimit: creditLimitFromBaseline(base),
-    appliedHomeMortgage
+    appliedHomeMortgage,
+    userOpenDelta,
+    userTotalDelta,
+    editedFeature
   };
   for (const edge of edges) {
     if (edge.phase !== 'structural') continue;

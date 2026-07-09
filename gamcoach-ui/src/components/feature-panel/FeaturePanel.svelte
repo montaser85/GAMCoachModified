@@ -75,7 +75,8 @@
     'revol_bal':  "Revolving balance is the unpaid amount left on your credit cards. Changing it affects two things: your credit utilization and your debt-to-income ratio.",
     'revol_util': "Credit utilization is how much of your available revolving credit you're using. It moves with your revolving balance — as the balance goes up or down, so does your utilization.",
     'mort_acc': "Number of mortgages is how many mortgage accounts you have.",
-    'open_acc': "Number of open accounts is how many credit lines you currently have open, like credit cards and loans."
+    'open_acc': "Number of open accounts is how many credit lines you currently have open, like credit cards and loans.",
+    'total_acc': "Number of accounts is the total number of credit lines currently in your credit file."
   };
 
   // Reactive calculations displayed in popup once propagation has been applied.
@@ -86,6 +87,7 @@
   let revolUtilLinkCalculation = null;
   let mortAccLinkCalculation  = null;
   let openAccLinkCalculation  = null;
+  let totalAccLinkCalculation = null;
 
   // ── Causal Propagation Engine wiring ────────────────────────────────────────
   // The engine (src/engine) is the single source of truth for every
@@ -170,6 +172,30 @@
       ? 1
       : 0;
 
+  // The user's manual deltas to the account counters (excluding the mortgage /
+  // open contributions), tracked so each counter sums ALL its inputs instead of
+  // being overwritten by whichever source changed last. Updated on a direct
+  // edit to Number of Open Accounts / Number of Accounts respectively.
+  let userOpenDelta = 0;
+  let userTotalDelta = 0;
+
+  /**
+   * Recompute the tracked manual account deltas from the current model state
+   * after a direct edit to Number of Open Accounts or Number of Accounts.
+   */
+  const updateAccountManualDeltas = (featureName) => {
+    if (!applicantBaselineState || !plan) return;
+    const cur = buildCurrentEngineState();
+    const mortDelta = Math.max(0, (cur.mort_acc || 0) - (applicantBaselineState.mort_acc || 0));
+    if (featureName === 'open_acc') {
+      userOpenDelta = (cur.open_acc || 0) - (applicantBaselineState.open_acc || 0) - mortDelta;
+    } else if (featureName === 'total_acc') {
+      // Isolate the user's Number-of-Accounts edit from the open/mortgage parts.
+      userTotalDelta =
+        (cur.total_acc || 0) - (applicantBaselineState.total_acc || 0) - userOpenDelta - mortDelta;
+    }
+  };
+
   // Set up the GAM Coach feature cards
   const initFeatureCards = () => {
     initialized = true;
@@ -225,6 +251,18 @@
       newValue = feature.labelEncoder[newValue];
     }
 
+    // Total Accounts >= Open Accounts bound. A direct Number of Accounts edit is
+    // a leaf (no propagation), so the engine's guard never runs for it — enforce
+    // the bound here so a manual reduction can't drop below the current Number of
+    // Open Accounts. (Downward edits above the bound are honored — signed.)
+    if (feature.data.name === 'total_acc') {
+      const openFeat = plan.features.find(ff => ff.data.name === 'open_acc');
+      if (openFeat) {
+        const openNow = Math.round(plan.ebmLocal.sample[openFeat.featureID] || 0);
+        if (newValue < openNow) newValue = openNow;
+      }
+    }
+
     // Update the local EBM
     plan.ebmLocal.updateFeature(feature.data.name, newValue);
 
@@ -254,6 +292,12 @@
       // Credit Utilization edit.
       if (featureName === 'revol_util') revolUtilIsInput = true;
       else if (featureName === 'revol_bal') revolUtilIsInput = false;
+
+      // Capture manual account-counter deltas here (Number of Accounts is a
+      // leaf, so triggerPropagation returns early for it and can't do this).
+      if (featureName === 'open_acc' || featureName === 'total_acc') {
+        updateAccountManualDeltas(featureName);
+      }
 
       // Debounce — only fire after user stops dragging (350ms of silence)
       if (propagationDebounceTimer) clearTimeout(propagationDebounceTimer);
@@ -315,6 +359,9 @@
     if (unmodify.has('revol_util') || unmodify.has('revol_bal')) {
       revolUtilIsInput = false;
     }
+    // Reset each counter's manual delta when that counter is restored.
+    if (unmodify.has('open_acc')) userOpenDelta = 0;
+    if (unmodify.has('total_acc')) userTotalDelta = 0;
 
     // ── 2. Recompute affected dependents from the remaining modified state ────
     // Restoring a SOURCE (e.g. Open Accounts / Mortgages) changes that source's
@@ -326,7 +373,8 @@
     const recomputed = {};
     unmodify.forEach(src => {
       const { state: next, log } = propagate(
-        src, baseline, current, baseline, modifiedFeatures, appliedHomeMortgage
+        src, baseline, current, baseline,
+        modifiedFeatures, appliedHomeMortgage, userOpenDelta, userTotalDelta
       );
       log.filter(l => !l.note).forEach(l => {
         if (!unmodify.has(l.dependent)) recomputed[l.dependent] = next[l.dependent];
@@ -647,23 +695,62 @@
     return { type: 'mort_acc' };
   };
 
+  // Mortgage delta for the account hovers, honoring the '7+' cap (a profile
+  // already at '7+' can't increase, so it contributes no mortgage row).
+  const hoverMortgageDelta = (baseline, state) => {
+    if (displayToInternal('mort_acc', baseline.mort_acc) === '7+') return 0;
+    return Math.max(0, Math.round((state.mort_acc || 0) - (baseline.mort_acc || 0)));
+  };
+
   /**
-   * Build the Number of Open Accounts hover extra. Explains the CURRENT STATE:
-   * show the mortgage sentence whenever the current mortgage count exceeds the
-   * profile count (regardless of how they were added). '7+' cap: if the profile
-   * bucket is already '7+', no effective increase is possible — plain only.
-   * Otherwise returns null (plain definition only).
+   * Build the Number of Open Accounts itemized breakdown. Uses the SAME live
+   * deltas the counter uses (userOpenDelta + mortgage delta), so the rows always
+   * sum to the value on the card. Rows shown only when their delta ≠ 0.
    */
   const buildOpenAccBreakdown = (baseline, state) => {
-    const currentMort = state.mort_acc || 0;
-    const profileMort = baseline.mort_acc || 0;
-    if (displayToInternal('mort_acc', profileMort) === '7+') return null; // capped
-    if (currentMort <= profileMort) return null; // no mortgage increase
+    const profileOpen = Math.round(baseline.open_acc || 0);
+    const mortDelta = hoverMortgageDelta(baseline, state);
+    const openDelta = Math.round(userOpenDelta); // signed: closures are negative
+    if (openDelta === 0 && mortDelta === 0) return null; // definition only
     return {
       type: 'open_acc',
-      mortgageCount: displayToInternal('mort_acc', currentMort),
-      newOpenAccounts: String(Math.round(state.open_acc || 0)),
-      plural: currentMort !== 1
+      profileOpen: String(profileOpen),
+      showOpenRow: openDelta !== 0,
+      openManualDelta: (openDelta < 0 ? '−' : '+') + Math.abs(openDelta),
+      showMortgageRow: mortDelta > 0,
+      mortgageDelta: String(mortDelta),
+      mortgagePlural: mortDelta !== 1,
+      newOpenAccounts: String(profileOpen + openDelta + mortDelta)
+    };
+  };
+
+  /**
+   * Build the Number of Accounts itemized breakdown. Uses the SAME live deltas
+   * the counter uses — the manual open delta (userOpenDelta, SIGNED), the
+   * mortgage delta (floored: a source contribution), and the user's OWN direct
+   * Number-of-Accounts edit (userTotalDelta, SIGNED, shown last as "Adjusted by
+   * you") — so the rows always sum to the value on the card. Manual deltas may be
+   * negative; a downward edit shows a "−" row and lowers the total. Rows shown
+   * only when their delta ≠ 0.
+   */
+  const buildTotalAccBreakdown = (baseline, state) => {
+    const profileTotal = Math.round(baseline.total_acc || 0);
+    const mortDelta = hoverMortgageDelta(baseline, state);
+    const accountsDelta = Math.round(userTotalDelta); // direct edit (signed)
+    const openDelta = Math.round(userOpenDelta);      // manual open delta (signed)
+    if (accountsDelta === 0 && openDelta === 0 && mortDelta === 0) return null; // definition only
+    return {
+      type: 'total_acc',
+      profileAccounts: String(profileTotal),
+      showOpenRow: openDelta !== 0,
+      openAccountsDelta: (openDelta < 0 ? '−' : '+') + Math.abs(openDelta),
+      openPlural: Math.abs(openDelta) !== 1,
+      showMortgageRow: mortDelta > 0,
+      mortgageDelta: String(mortDelta),
+      mortgagePlural: mortDelta !== 1,
+      showAccountsRow: accountsDelta !== 0,
+      accountsManualDelta: (accountsDelta < 0 ? '−' : '+') + Math.abs(accountsDelta),
+      newTotalAccounts: String(profileTotal + openDelta + mortDelta + accountsDelta)
     };
   };
 
@@ -681,6 +768,7 @@
     revolBalLinkCalculation = buildRevolBalBreakdown(applicantBaselineState, current, params);
     mortAccLinkCalculation = buildMortAccBreakdown(applicantBaselineState, current);
     openAccLinkCalculation = buildOpenAccBreakdown(applicantBaselineState, current);
+    totalAccLinkCalculation = buildTotalAccBreakdown(applicantBaselineState, current);
   };
 
   /**
@@ -712,6 +800,8 @@
     mortAccLinkCalculation = buildMortAccBreakdown(baseline, next);
     // Number of Open Accounts extra (shown when mortgages exceed the profile).
     openAccLinkCalculation = buildOpenAccBreakdown(baseline, next);
+    // Number of Accounts itemized breakdown.
+    totalAccLinkCalculation = buildTotalAccBreakdown(baseline, next);
   };
 
   /**
@@ -982,12 +1072,14 @@
     // ── 1. Run the engine against the frozen applicant baseline ──────────────
     const baseline = applicantBaselineState;
     const current  = buildCurrentEngineState();
+
     // DTI_USER_EDITS_ONLY: pass the set of user-edited features so DTI counts
     // only touched inputs (unedited suggested values fall back to profile).
-    // appliedHomeMortgage lets a Home Ownership change add/remove only its own
-    // +1 to the account counters (preserving manual edits to those counts).
+    // appliedHomeMortgage / userOpenDelta / userTotalDelta let the account
+    // counters sum ALL sources (profile + each manual delta + mortgage delta).
     const { state: next, log } = propagate(
-      featureName, baseline, current, baseline, modifiedFeatures, appliedHomeMortgage
+      featureName, baseline, current, baseline,
+      modifiedFeatures, appliedHomeMortgage, userOpenDelta, userTotalDelta
     );
 
     // Record the home's now-applied contribution so the NEXT Home Ownership
@@ -1314,6 +1406,7 @@
                              : feature.data.name === 'revol_util' ? revolUtilLinkCalculation
                              : feature.data.name === 'mort_acc'   ? mortAccLinkCalculation
                              : feature.data.name === 'open_acc'   ? openAccLinkCalculation
+                             : feature.data.name === 'total_acc'  ? totalAccLinkCalculation
                              : null}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}
@@ -1332,6 +1425,7 @@
                              : feature.data.name === 'revol_util' ? revolUtilLinkCalculation
                              : feature.data.name === 'mort_acc'   ? mortAccLinkCalculation
                              : feature.data.name === 'open_acc'   ? openAccLinkCalculation
+                             : feature.data.name === 'total_acc'  ? totalAccLinkCalculation
                              : null}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}
@@ -1358,6 +1452,7 @@
                              : feature.data.name === 'revol_util' ? revolUtilLinkCalculation
                              : feature.data.name === 'mort_acc'   ? mortAccLinkCalculation
                              : feature.data.name === 'open_acc'   ? openAccLinkCalculation
+                             : feature.data.name === 'total_acc'  ? totalAccLinkCalculation
                              : null}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}
@@ -1376,6 +1471,7 @@
                              : feature.data.name === 'revol_util' ? revolUtilLinkCalculation
                              : feature.data.name === 'mort_acc'   ? mortAccLinkCalculation
                              : feature.data.name === 'open_acc'   ? openAccLinkCalculation
+                             : feature.data.name === 'total_acc'  ? totalAccLinkCalculation
                              : null}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}
@@ -1402,6 +1498,7 @@
                              : feature.data.name === 'revol_util' ? revolUtilLinkCalculation
                              : feature.data.name === 'mort_acc'   ? mortAccLinkCalculation
                              : feature.data.name === 'open_acc'   ? openAccLinkCalculation
+                             : feature.data.name === 'total_acc'  ? totalAccLinkCalculation
                              : null}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}
@@ -1420,6 +1517,7 @@
                              : feature.data.name === 'revol_util' ? revolUtilLinkCalculation
                              : feature.data.name === 'mort_acc'   ? mortAccLinkCalculation
                              : feature.data.name === 'open_acc'   ? openAccLinkCalculation
+                             : feature.data.name === 'total_acc'  ? totalAccLinkCalculation
                              : null}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}
@@ -1456,6 +1554,7 @@
                              : feature.data.name === 'revol_util' ? revolUtilLinkCalculation
                              : feature.data.name === 'mort_acc'   ? mortAccLinkCalculation
                              : feature.data.name === 'open_acc'   ? openAccLinkCalculation
+                             : feature.data.name === 'total_acc'  ? totalAccLinkCalculation
                              : null}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}
@@ -1474,6 +1573,7 @@
                              : feature.data.name === 'revol_util' ? revolUtilLinkCalculation
                              : feature.data.name === 'mort_acc'   ? mortAccLinkCalculation
                              : feature.data.name === 'open_acc'   ? openAccLinkCalculation
+                             : feature.data.name === 'total_acc'  ? totalAccLinkCalculation
                              : null}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}
@@ -1500,6 +1600,7 @@
                              : feature.data.name === 'revol_util' ? revolUtilLinkCalculation
                              : feature.data.name === 'mort_acc'   ? mortAccLinkCalculation
                              : feature.data.name === 'open_acc'   ? openAccLinkCalculation
+                             : feature.data.name === 'total_acc'  ? totalAccLinkCalculation
                              : null}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}
@@ -1518,6 +1619,7 @@
                              : feature.data.name === 'revol_util' ? revolUtilLinkCalculation
                              : feature.data.name === 'mort_acc'   ? mortAccLinkCalculation
                              : feature.data.name === 'open_acc'   ? openAccLinkCalculation
+                             : feature.data.name === 'total_acc'  ? totalAccLinkCalculation
                              : null}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}
@@ -1544,6 +1646,7 @@
                              : feature.data.name === 'revol_util' ? revolUtilLinkCalculation
                              : feature.data.name === 'mort_acc'   ? mortAccLinkCalculation
                              : feature.data.name === 'open_acc'   ? openAccLinkCalculation
+                             : feature.data.name === 'total_acc'  ? totalAccLinkCalculation
                              : null}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}
@@ -1562,6 +1665,7 @@
                              : feature.data.name === 'revol_util' ? revolUtilLinkCalculation
                              : feature.data.name === 'mort_acc'   ? mortAccLinkCalculation
                              : feature.data.name === 'open_acc'   ? openAccLinkCalculation
+                             : feature.data.name === 'total_acc'  ? totalAccLinkCalculation
                              : null}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}
@@ -1598,6 +1702,7 @@
                              : feature.data.name === 'revol_util' ? revolUtilLinkCalculation
                              : feature.data.name === 'mort_acc'   ? mortAccLinkCalculation
                              : feature.data.name === 'open_acc'   ? openAccLinkCalculation
+                             : feature.data.name === 'total_acc'  ? totalAccLinkCalculation
                              : null}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}
@@ -1616,6 +1721,7 @@
                              : feature.data.name === 'revol_util' ? revolUtilLinkCalculation
                              : feature.data.name === 'mort_acc'   ? mortAccLinkCalculation
                              : feature.data.name === 'open_acc'   ? openAccLinkCalculation
+                             : feature.data.name === 'total_acc'  ? totalAccLinkCalculation
                              : null}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}
@@ -1642,6 +1748,7 @@
                              : feature.data.name === 'revol_util' ? revolUtilLinkCalculation
                              : feature.data.name === 'mort_acc'   ? mortAccLinkCalculation
                              : feature.data.name === 'open_acc'   ? openAccLinkCalculation
+                             : feature.data.name === 'total_acc'  ? totalAccLinkCalculation
                              : null}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}
@@ -1660,6 +1767,7 @@
                              : feature.data.name === 'revol_util' ? revolUtilLinkCalculation
                              : feature.data.name === 'mort_acc'   ? mortAccLinkCalculation
                              : feature.data.name === 'open_acc'   ? openAccLinkCalculation
+                             : feature.data.name === 'total_acc'  ? totalAccLinkCalculation
                              : null}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}
@@ -1686,6 +1794,7 @@
                              : feature.data.name === 'revol_util' ? revolUtilLinkCalculation
                              : feature.data.name === 'mort_acc'   ? mortAccLinkCalculation
                              : feature.data.name === 'open_acc'   ? openAccLinkCalculation
+                             : feature.data.name === 'total_acc'  ? totalAccLinkCalculation
                              : null}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}
@@ -1704,6 +1813,7 @@
                              : feature.data.name === 'revol_util' ? revolUtilLinkCalculation
                              : feature.data.name === 'mort_acc'   ? mortAccLinkCalculation
                              : feature.data.name === 'open_acc'   ? openAccLinkCalculation
+                             : feature.data.name === 'total_acc'  ? totalAccLinkCalculation
                              : null}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}
