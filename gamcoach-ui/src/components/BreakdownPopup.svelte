@@ -239,7 +239,7 @@
     border-radius: 8px;
     box-shadow: 0 4px 20px hsla(0, 0%, 0%, 0.14);
     padding: 12px 14px;
-    font-size: 0.8rem;
+    font-size: 0.95rem;
     color: $gray-800;
     pointer-events: all;
 
@@ -265,7 +265,7 @@
   }
 
   .bd-label {
-    font-size: 0.8rem;
+    font-size: 0.9rem;
     font-weight: 600;
     color: $gray-700;
   }
@@ -307,7 +307,7 @@
   /* ── 2. Verdict sentence ──────────────────────────────────────── */
   .bd-verdict {
     margin: 6px 0 12px;
-    font-size: 14px;
+    font-size: 0.95rem;
     line-height: 1.35;
     color: $gray-600;
   }
@@ -317,7 +317,7 @@
     display: flex;
     justify-content: space-between;
     margin-bottom: 8px;
-    font-size: 0.78rem;
+    font-size: 0.9rem;
     font-weight: 600;
   }
 
@@ -351,7 +351,7 @@
 
   .bd-val {
     font-weight: 700;
-    font-size: 0.85rem;
+    font-size: 0.95rem;
     white-space: nowrap;
     flex-shrink: 0;
     /* Positive (increase) values sit on the right, matching the right-pointing
@@ -394,7 +394,7 @@
   }
 
   .bd-sub {
-    font-size: 0.76rem;
+    font-size: 0.85rem;
     color: $gray-500;
     white-space: nowrap;
   }
@@ -411,7 +411,7 @@
     border: none;
     border-top: 1px solid $gray-200;
     cursor: pointer;
-    font-size: 0.8rem;
+    font-size: 0.92rem;
     color: $gray-700;
     text-align: left;
 
@@ -436,7 +436,7 @@
       align-items: baseline;
       justify-content: space-between;
       gap: 8px;
-      font-size: 0.78rem;
+      font-size: 0.9rem;
     }
   }
 </style>
