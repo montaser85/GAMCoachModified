@@ -75,9 +75,17 @@ export const FICO_WARN_THRESHOLD = 670;
  *                                 a base adjustment before the hard-inquiry
  *                                 penalty, so a source change no longer discards
  *                                 the manual edit.
+ * @param {number} [userDtiDelta]  The user's manual change to DTI (signed:
+ *                                 profile → user-set value). Folded onto the
+ *                                 computed DTI so a source change (loan/income/
+ *                                 revolving) no longer discards the manual edit.
+ * @param {number} [userRevolDelta]  The user's manual change to Revolving Balance
+ *                                 (signed: profile → user-set value). Summed with
+ *                                 the utilization-driven balance so a Credit
+ *                                 Utilization change no longer discards it.
  * @returns {{ state: object, warnings: Array, log: Array }}
  */
-export function propagate(editedFeature, oldState, newState, baseline, modifiedFeatures, appliedHomeMortgage = 0, userOpenDelta = 0, userTotalDelta = 0, userFicoDelta = 0) {
+export function propagate(editedFeature, oldState, newState, baseline, modifiedFeatures, appliedHomeMortgage = 0, userOpenDelta = 0, userTotalDelta = 0, userFicoDelta = 0, userDtiDelta = 0, userRevolDelta = 0) {
   const base = baseline || oldState;
   const working = { ...newState };
   const log = [];
@@ -94,6 +102,7 @@ export function propagate(editedFeature, oldState, newState, baseline, modifiedF
     appliedHomeMortgage,
     userOpenDelta,
     userTotalDelta,
+    revolManualDelta: userRevolDelta,
     editedFeature
   };
   for (const edge of edges) {
@@ -109,7 +118,7 @@ export function propagate(editedFeature, oldState, newState, baseline, modifiedF
   }
 
   // ── Phase 2: compute Section-4 parameters ONCE per pass ──────────────────
-  const params = computeParams(base, working, modifiedFeatures, userFicoDelta);
+  const params = computeParams(base, working, modifiedFeatures, userFicoDelta, userDtiDelta, userRevolDelta);
 
   // ── Phase 3: value writes (FICO / DTI) ───────────────────────────────────
   for (const edge of edges) {

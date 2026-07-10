@@ -513,6 +513,40 @@ test('F3. Manual FICO edit + heavy penalty still clamps to the 662 floor', () =>
   approx(state.fico_score, 662); // 690 + 30 − 80 = 640, clamped up to floor
 });
 
+// Manual DTI edit is a signed contribution folded onto the computed DTI and
+// survives a source change. 10th positional arg to propagate = userDtiDelta.
+test('F4. Manual DTI edit persists when Loan Amount changes', () => {
+  const base = makeBaseline();
+  const current = edit(base, 'loan_amnt', 20000);
+  const { state } = propagate('loan_amnt', base, current, base,
+    new Set(['dti', 'loan_amnt']), 0, 0, 0, 0, 5, 0); // +5 manual DTI
+  approx(state.dti, expectedDti(base, current) + 5); // computed + manual, not just computed
+});
+
+test('F5. Manual DTI delta also folds onto an income change', () => {
+  const base = makeBaseline();
+  const current = edit(base, 'annual_inc', 120000); // double income -> DTI down
+  const { state } = propagate('annual_inc', base, current, base,
+    new Set(['dti', 'annual_inc']), 0, 0, 0, 0, 5, 0); // +5 manual DTI
+  // Only income is edited, so the gate excludes the (untouched) loan payment:
+  // computed = baseDebt / newMonthlyIncome * 100, then + 5 manual.
+  const baseDebt = (base.dti * (base.annual_inc / 12)) / 100;
+  const computed = (baseDebt / (current.annual_inc / 12)) * 100;
+  approx(state.dti, computed + 5);
+});
+
+// Manual Revolving Balance edit sums with a later utilization-driven change.
+// 11th positional arg to propagate = userRevolDelta.
+test('F6. Manual Revolving Balance edit sums with a utilization change', () => {
+  const base = makeBaseline(); // revol_bal 5000, revol_util 25 -> limit 20000
+  const limit = creditLimitFromBaseline(base); // 20000
+  // User set balance +3000 (manual), then set utilization to 50%.
+  const current = edit(base, 'revol_util', 50);
+  const { state } = propagate('revol_util', base, current, base,
+    new Set(['revol_bal', 'revol_util']), 0, 0, 0, 0, 0, 3000);
+  approx(state.revol_bal, (50 / 100) * limit + 3000); // util-driven 10000 + manual 3000
+});
+
 test('X4. Annual income up -> DTI down; numerator still includes loan payment', () => {
   const base = makeBaseline();
   const next = edit(base, 'annual_inc', 120000); // double income

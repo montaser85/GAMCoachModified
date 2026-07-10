@@ -25,6 +25,7 @@
     MORTGAGE_HOME_VALUE,
     FICO_FLOOR,
     FICO_CEIL,
+    MODEL_BOUNDS,
     EDGES
   } from '../../engine/index.mjs';
 
@@ -186,6 +187,11 @@
   // the hard-inquiry penalty, so a later source change (open account / mortgage /
   // inquiry) no longer discards the manual edit. Cleared only on a FICO reset.
   let userFicoDelta = 0;
+  // Same pattern for the two other editable-and-derived features: a SIGNED manual
+  // delta vs. the profile value, folded onto the computed result so a later
+  // source change never discards it. Cleared only on that feature's own reset.
+  let userDtiDelta = 0;    // DTI: newDTI = computedDTI + userDtiDelta
+  let userRevolDelta = 0;  // Revolving Balance: newBal = profile + userRevolDelta + util-driven
 
   /**
    * Recompute the tracked manual account deltas from the current model state
@@ -241,6 +247,58 @@
       setTimeout(() => featureValueOverrideStore.set({}), 400);
     }
     ficoLinkCalculation = buildFicoBreakdown(applicantBaselineState, buildCurrentEngineState());
+  };
+
+  /**
+   * Settle DTI from the current full state and the given manual delta, honoring
+   * the same computed-DTI + manual-delta formula and the model's [0, 99.9] clamp.
+   */
+  const settleDti = (dtiManualDelta) => {
+    const current = buildCurrentEngineState();
+    const params = computeParams(
+      applicantBaselineState, current, modifiedFeatures, userFicoDelta, dtiManualDelta, userRevolDelta
+    );
+    const parts = computeDtiParts(current, params);
+    const b = MODEL_BOUNDS.dti;
+    return Math.max(b[0], Math.min(b[1], parts.newDti));
+  };
+
+  /**
+   * Capture a direct DTI edit as a signed delta vs. the profile DTI, then
+   * re-settle the displayed DTI so any active source contribution (loan /
+   * revolving / income) applies on top of the manual edit (DTI is a leaf, so
+   * triggerPropagation can't do this).
+   */
+  const applyManualDtiEdit = () => {
+    if (!applicantBaselineState || !plan) return;
+    const cur = buildCurrentEngineState();
+    userDtiDelta = (cur.dti || 0) - (applicantBaselineState.dti || 0);
+    const settled = settleDti(userDtiDelta);
+    plan.ebmLocal.updateFeature('dti', settled);
+    const f = plan.features.find(ff => ff.data.name === 'dti');
+    if (f) f.hypotheticalValue = settled;
+    lastKnownValues['dti'] = settled;
+    planStore.set(plan);
+    // Snap the slider to the settled value when a source contribution pulled it
+    // away from what the user typed.
+    if (Math.abs(settled - (cur.dti || 0)) > 1e-6) {
+      featureValueOverrideStore.set({ dti: settled });
+      setTimeout(() => featureValueOverrideStore.set({}), 400);
+    }
+    refreshDtiBreakdown();
+  };
+
+  /**
+   * Capture a direct Revolving Balance edit as a signed delta vs. the profile
+   * balance. Revolving Balance is NOT a leaf (triggerPropagation runs and derives
+   * utilization + DTI), and its own value keeps what the user typed, so no
+   * re-settle is needed here — the delta is what a LATER utilization change sums
+   * with (via revolBalFromUtil).
+   */
+  const captureManualRevolDelta = () => {
+    if (!applicantBaselineState || !plan) return;
+    const cur = buildCurrentEngineState();
+    userRevolDelta = (cur.revol_bal || 0) - (applicantBaselineState.revol_bal || 0);
   };
 
   // Set up the GAM Coach feature cards
@@ -360,6 +418,19 @@
         applyManualFicoEdit();
       }
 
+      // DTI is a leaf as well — capture the signed manual delta and re-settle
+      // (computedDTI + delta) so existing source contributions apply on top.
+      if (featureName === 'dti') {
+        applyManualDtiEdit();
+      }
+
+      // Revolving Balance is NOT a leaf — just capture its signed manual delta so
+      // a LATER Credit Utilization change sums with it. triggerPropagation below
+      // derives utilization + DTI and refreshes the hovers.
+      if (featureName === 'revol_bal') {
+        captureManualRevolDelta();
+      }
+
       // Debounce — only fire after user stops dragging (350ms of silence)
       if (propagationDebounceTimer) clearTimeout(propagationDebounceTimer);
       propagationDebounceTimer = setTimeout(() => {
@@ -434,6 +505,12 @@
       return;
     }
 
+    // NOTE: DTI is intentionally NOT special-cased. Unlike FICO (whose penalties
+    // must persist), resetting DTI applies full RESET_TO_LOAD_STATE — it restores
+    // DTI AND its source features (Loan Amount, Revolving Balance, Payment Period,
+    // Loan Purpose, Annual Income) to their load-time snapshot values via the
+    // general path below, and clears the DTI manual delta (see below).
+
     const overrides = {};
 
     // ── 1. Un-modify: reset feature + its direct sources -> load-time ─────────
@@ -448,6 +525,12 @@
     // Reset each counter's manual delta when that counter is restored.
     if (unmodify.has('open_acc')) userOpenDelta = 0;
     if (unmodify.has('total_acc')) userTotalDelta = 0;
+    // Clear the Revolving Balance manual delta when the balance (or its two-way
+    // sibling) is restored, so the utilization-driven derivation starts clean.
+    if (unmodify.has('revol_bal')) userRevolDelta = 0;
+    // Clear the DTI manual delta when DTI is restored (its sources are restored
+    // to load-time alongside it, so no contribution should linger).
+    if (unmodify.has('dti')) userDtiDelta = 0;
 
     // ── 2. Recompute affected dependents from the remaining modified state ────
     // Restoring a SOURCE (e.g. Open Accounts / Mortgages) changes that source's
@@ -460,7 +543,8 @@
     unmodify.forEach(src => {
       const { state: next, log } = propagate(
         src, baseline, current, baseline,
-        modifiedFeatures, appliedHomeMortgage, userOpenDelta, userTotalDelta, userFicoDelta
+        modifiedFeatures, appliedHomeMortgage, userOpenDelta, userTotalDelta, userFicoDelta,
+        userDtiDelta, userRevolDelta
       );
       log.filter(l => !l.note).forEach(l => {
         if (!unmodify.has(l.dependent)) recomputed[l.dependent] = next[l.dependent];
@@ -714,6 +798,11 @@
       hasContributors: parts.loanEngaged || parts.revolEngaged,
       debtSumExpr: pieces.join(' '),
       totalDebt: money(parts.newMonthlyDebt),
+      // Computed DTI (from the debt rows) plus the user's own manual adjustment,
+      // folded into the result line: "DTI = computed% ±manual% = new%".
+      computedDTI: pct(parts.computedDti),
+      showManualDti: Math.abs(parts.dtiManualDelta || 0) > 1e-9,
+      dtiManualDelta: (parts.dtiManualDelta < 0 ? '−' : '+') + pct(Math.abs(parts.dtiManualDelta || 0)),
       newDTI: pct(parts.newDti)
     };
   };
@@ -826,28 +915,52 @@
   };
 
   /**
-   * Build the Revolving Balance hover breakdown — Revolving Balance is edited
-   * directly, so the note explains what it AFFECTS (credit utilization + DTI).
-   * `params` carries the modified set so the DTI effect matches DTI_USER_EDITS_ONLY.
+   * Build the Revolving Balance hover breakdown as a sum of contributions:
+   *   newBalance = profile balance + your manual edit + utilization-driven delta
+   * Each row is shown only when its delta ≠ 0, and the rows always sum to the
+   * displayed balance. The utilization-driven part is attributed only when Credit
+   * Utilization is the current INPUT (revolUtilIsInput) — otherwise the whole
+   * change is the user's own manual edit. Definition-only until the user edits
+   * Revolving Balance or Credit Utilization (no-propagation-on-load rule).
    */
-  const buildRevolBalBreakdown = (baseline, state, params) => {
+  const buildRevolBalBreakdown = (baseline, state) => {
+    const engaged =
+      modifiedFeatures.has('revol_bal') || modifiedFeatures.has('revol_util');
+    if (!engaged) return { type: 'revol_bal', engaged: false };
+
     const money = (n) => '$' + Math.round(n).toLocaleString();
-    const pct = (n) => Number(n).toFixed(2);
+    const signedMoney = (n) =>
+      (n < 0 ? '−$' : '+$') + Math.round(Math.abs(n)).toLocaleString();
+    const profileBal = baseline.revol_bal || 0;
     const creditLimit = creditLimitFromBaseline(baseline); // null when indeterminate
-    const parts = computeDtiParts(state, params);
-    const revolDelta = parts.revolDelta; // signed monthly payment change (2% of balance change)
+    const manualDelta = userRevolDelta; // signed direct balance edit
+    // Utilization-driven part: only when Credit Utilization is the input (balance
+    // is derived from it) and the limit is recoverable.
+    const utilDriven =
+      revolUtilIsInput && creditLimit !== null
+        ? ((Number(state.revol_util) || 0) / 100) * creditLimit - profileBal
+        : 0;
+    const newBalance = profileBal + manualDelta + utilDriven;
+    const showManualRow = Math.abs(manualDelta) > 0.5;
+    const showUtilRow = Math.abs(utilDriven) > 0.5;
+
+    // Assemble the total as an addition of the shown contributions, e.g.
+    // "$5,000 + $3,733" (or "$5,000 − $200" for a paydown), summing to newBalance.
+    const pieces = [money(profileBal)];
+    if (showManualRow) pieces.push((manualDelta < 0 ? '− ' : '+ ') + money(Math.abs(manualDelta)));
+    if (showUtilRow) pieces.push((utilDriven < 0 ? '− ' : '+ ') + money(Math.abs(utilDriven)));
+
     return {
       type: 'revol_bal',
-      // Show the utilization→balance derivation only when Credit Utilization was
-      // the edited input (balance is derived) and the credit limit is recoverable.
-      showDerivation: creditLimit !== null && revolUtilIsInput,
-      creditLimit: creditLimit !== null ? money(creditLimit) : null,
-      currentBalance: money(baseline.revol_bal || 0),
-      currentUtilization: pct(Number(baseline.revol_util) || 0),
-      newUtilization: pct(Number(state.revol_util) || 0),
-      paymentSign: revolDelta < 0 ? '−' : '+',
-      revolvingDelta: money(Math.abs(revolDelta)),
-      newBalance: money(state.revol_bal || 0)
+      engaged: true,
+      profileBalance: money(profileBal),
+      showManualRow,
+      manualDelta: signedMoney(manualDelta),
+      showUtilRow,
+      utilDrivenDelta: signedMoney(utilDriven),
+      hasContributors: showManualRow || showUtilRow,
+      balanceSumExpr: pieces.join(' '),
+      newBalance: money(newBalance)
     };
   };
 
@@ -932,11 +1045,13 @@
   const refreshDtiBreakdown = () => {
     if (!plan || !applicantBaselineState) return;
     const current = buildCurrentEngineState();
-    const params = computeParams(applicantBaselineState, current, modifiedFeatures);
+    const params = computeParams(
+      applicantBaselineState, current, modifiedFeatures, userFicoDelta, userDtiDelta, userRevolDelta
+    );
     dtiLinkCalculation = formatDtiBreakdown(computeDtiParts(current, params));
     ficoLinkCalculation = buildFicoBreakdown(applicantBaselineState, current);
     revolUtilLinkCalculation = buildRevolUtilBreakdown(applicantBaselineState, current);
-    revolBalLinkCalculation = buildRevolBalBreakdown(applicantBaselineState, current, params);
+    revolBalLinkCalculation = buildRevolBalBreakdown(applicantBaselineState, current);
     mortAccLinkCalculation = buildMortAccBreakdown(applicantBaselineState, current);
     openAccLinkCalculation = buildOpenAccBreakdown(applicantBaselineState, current);
     totalAccLinkCalculation = buildTotalAccBreakdown(applicantBaselineState, current);
@@ -947,7 +1062,9 @@
    * engine's own parameters so the explanation matches the applied values.
    */
   const populateLinkCalculations = (editedFeature, baseline, current, next, changedSet) => {
-    const params = computeParams(baseline, current, modifiedFeatures);
+    const params = computeParams(
+      baseline, current, modifiedFeatures, userFicoDelta, userDtiDelta, userRevolDelta
+    );
 
     // FICO breakdown — the single hard-inquiry channel, gated to user edits.
     // Built from the post-propagation state (`next`), which carries the
@@ -961,7 +1078,7 @@
     // Credit Utilization + Revolving Balance breakdowns — always refreshed from
     // the live post-propagation state (`next`); credit limit from the profile.
     revolUtilLinkCalculation = buildRevolUtilBreakdown(baseline, next);
-    revolBalLinkCalculation = buildRevolBalBreakdown(baseline, next, params);
+    revolBalLinkCalculation = buildRevolBalBreakdown(baseline, next);
     // Number of Mortgages extra (shown when Home Ownership is currently Mortgage).
     mortAccLinkCalculation = buildMortAccBreakdown(baseline, next);
     // Number of Open Accounts extra (shown when mortgages exceed the profile).
@@ -1245,7 +1362,8 @@
     // counters sum ALL sources (profile + each manual delta + mortgage delta).
     const { state: next, log } = propagate(
       featureName, baseline, current, baseline,
-      modifiedFeatures, appliedHomeMortgage, userOpenDelta, userTotalDelta, userFicoDelta
+      modifiedFeatures, appliedHomeMortgage, userOpenDelta, userTotalDelta, userFicoDelta,
+      userDtiDelta, userRevolDelta
     );
 
     // Record the home's now-applied contribution so the NEXT Home Ownership

@@ -600,19 +600,23 @@
                   {#if linkCalculation.showRevolRow}
                     <div class="dti-row">Revolving balance change:<br /><b>{linkCalculation.revolvingDelta}/month</b></div>
                   {/if}
-                  <div class="dti-line final">Total monthly debt: {#if linkCalculation.hasContributors}{linkCalculation.debtSumExpr} = {/if}<b>{linkCalculation.totalDebt}</b> &rarr; DTI = <b>{linkCalculation.newDTI}%</b>, i.e., {linkCalculation.newDTI}% of your income goes to debt payment.</div>
+                  <div class="dti-line final">Total monthly debt: {#if linkCalculation.hasContributors}{linkCalculation.debtSumExpr} = {/if}<b>{linkCalculation.totalDebt}</b> &rarr; DTI = {#if linkCalculation.showManualDti}{linkCalculation.computedDTI}% {linkCalculation.dtiManualDelta}% (you adjusted) = {/if}<b>{linkCalculation.newDTI}%</b>, i.e., {linkCalculation.newDTI}% of your income goes to debt payment.</div>
                   <div class="dti-footnote">Your loan&rsquo;s monthly payment also depends on its purpose (for the interest rate), payment period (loan length), and Credit utilization which rises and falls with your revolving balance.</div>
                 </div>
               {:else if linkCalculation?.type === 'revol_bal'}
-                <div class="link-calculation dti-calc">
-                  {#if linkCalculation.showDerivation}
-                    <div class="dti-subhead">Calculation breakdown</div>
-                    <div class="dti-row">Estimated credit limit {linkCalculation.creditLimit} = current balance {linkCalculation.currentBalance} &divide; current utilization {linkCalculation.currentUtilization}%</div>
-                    <div class="dti-row">Revolving balance {linkCalculation.newBalance} = new utilization {linkCalculation.newUtilization}% &times; estimated credit limit {linkCalculation.creditLimit}</div>
-                  {/if}
-                  <!-- <div class="dti-row">Estimated monthly payment change: <b>{linkCalculation.paymentSign}{linkCalculation.revolvingDelta}/mo</b> (about 2% of the revolving balance change as minimum payment)</div> -->
-                  <div class="dti-line final">You owe <b>{linkCalculation.newBalance}</b> on revolving credit.</div>
-                </div>
+                {#if linkCalculation.engaged}
+                  <div class="link-calculation dti-calc">
+                    <div class="dti-subhead">Your revolving balance breakdown</div>
+                    <div class="dti-row">Your profile balance: <b>{linkCalculation.profileBalance}</b></div>
+                    {#if linkCalculation.showManualRow}
+                      <div class="dti-row">Adjusted by you: <b>{linkCalculation.manualDelta}</b></div>
+                    {/if}
+                    {#if linkCalculation.showUtilRow}
+                      <div class="dti-row">From your credit utilization change: <b>{linkCalculation.utilDrivenDelta}</b></div>
+                    {/if}
+                    <div class="dti-line final">Total: {#if linkCalculation.hasContributors}{linkCalculation.balanceSumExpr} = {/if}<b>{linkCalculation.newBalance}</b>, i.e., you owe {linkCalculation.newBalance} on revolving credit.</div>
+                  </div>
+                {/if}
               {:else if linkCalculation?.type === 'revol_util'}
                 {#if linkCalculation.engaged}
                   <div class="link-calculation dti-calc">

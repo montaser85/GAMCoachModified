@@ -123,7 +123,7 @@ export function loanMonthlyPayment(loanAmount, monthlyInterestRate, termMonths) 
  *   "all current values" behavior).
  * @returns {object} params consumed by the rule functions.
  */
-export function computeParams(baseline, current, modifiedFeatures = null, ficoManualDelta = 0) {
+export function computeParams(baseline, current, modifiedFeatures = null, ficoManualDelta = 0, dtiManualDelta = 0, revolManualDelta = 0) {
   // Income denominators — one shared "New Monthly Income" everywhere. If income
   // was not edited, current.annual_inc === baseline.annual_inc and the two
   // collapse to the same value (Brief Section 8: New-Monthly-Income discipline).
@@ -185,6 +185,8 @@ export function computeParams(baseline, current, modifiedFeatures = null, ficoMa
     openAccountsIncreaseExMortgage,
     hardInquiries,
     ficoManualDelta,
+    dtiManualDelta,
+    revolManualDelta,
     creditLimit: creditLimitFromBaseline(baseline)
   };
 }

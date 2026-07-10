@@ -111,7 +111,14 @@ export function computeDtiParts(state, params) {
     ((isEdited('annual_inc') ? state.annual_inc : base.annual_inc) || 0) / 12;
 
   const newMonthlyDebt = baseDebt + loanPayment + revolDelta;
-  const newDti = monthlyIncome ? (newMonthlyDebt / monthlyIncome) * 100 : base.dti;
+  // The computed DTI from the contribution rows (loan + revolving), before the
+  // user's own manual DTI adjustment.
+  const computedDti = monthlyIncome ? (newMonthlyDebt / monthlyIncome) * 100 : base.dti;
+  // The user's manual DTI edit is a SIGNED contribution folded onto the computed
+  // result (its unit is a percentage). Tracked/cleared by the adapter, so it is
+  // 0 unless the user edited DTI. A source change never overwrites it.
+  const dtiManualDelta = params.dtiManualDelta || 0;
+  const newDti = computedDti + dtiManualDelta;
 
   return {
     baseDebt,
@@ -119,6 +126,8 @@ export function computeDtiParts(state, params) {
     revolDelta,
     monthlyIncome,
     newMonthlyDebt,
+    computedDti,
+    dtiManualDelta,
     newDti,
     loanEngaged,
     revolEngaged,
@@ -141,10 +150,15 @@ function revolUtilFromBal(state, params) {
   return ((state.revol_bal || 0) / params.creditLimit) * 100;
 }
 
-// Inverse: New Bal = New Util / 100 * Credit Limit. Limit indeterminate => hold.
+// Inverse: New Bal = profile + manual edit + utilization-driven delta. The user's
+// direct Revolving Balance edit is a SIGNED contribution that PERSISTS when a
+// later Credit Utilization change recomputes the balance, so both sum. The
+// utilization-driven part is (New Util / 100 * Credit Limit). Limit indeterminate
+// => hold the profile balance plus the manual delta.
 function revolBalFromUtil(state, params) {
-  if (params.creditLimit === null) return params.baseline.revol_bal;
-  return ((state.revol_util || 0) / 100) * params.creditLimit;
+  const manual = params.revolManualDelta || 0;
+  if (params.creditLimit === null) return (params.baseline.revol_bal || 0) + manual;
+  return ((state.revol_util || 0) / 100) * params.creditLimit + manual;
 }
 
 // ── Account counters — sum ALL contributions ───────────────────────────────
