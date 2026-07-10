@@ -348,7 +348,13 @@ export class ScorePanel {
     });
     changed.sort((a, b) => Math.abs(b.delta) - Math.abs(a.delta));
 
-    const rawDelta = Math.round(totalPPChange);
+    // Header delta = the sum of the per-row contributions (each already rounded
+    // to 1 decimal), so the breakdown rows + rollup reconcile EXACTLY with the
+    // header total change (the "rows must sum" discipline). Kept at 1-decimal so
+    // a tiny net (e.g. −0.2 from near-cancelling contributions) isn't rounded to
+    // 0 and rendered inconsistent with the rows.
+    const netActualPP = changed.reduce((s, d) => s + d.actualPP, 0);
+    const rawDelta = Math.round(netActualPP * 10) / 10;
     return {
       origPct:   Math.round(this.originalValue * 100),
       curPct:    Math.round(this.curValue * 100),

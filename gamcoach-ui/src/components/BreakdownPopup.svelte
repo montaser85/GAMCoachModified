@@ -3,7 +3,29 @@
 
   const POPUP_WIDTH = 440;
 
+  // Color-vision-safe red/blue (never red/green). Bars use the brighter stops;
+  // value labels use the darker stops so they stay readable as text.
+  const RED_BAR = '#E24B4A';
+  const BLUE_BAR = '#378ADD';
+  const RED_TEXT = '#A32D2D';
+  const BLUE_TEXT = '#185FA5';
+  // Rollup: contributions below 10% of the LARGEST single contribution collapse,
+  // AND at most 4 rows are ever shown individually (whichever is stricter).
+  const ROLLUP_REL_THRESHOLD = 0.10;
+  const MAX_VISIBLE_ROWS = 4;
+  // A positive is only named in the verdict when it is at least this fraction of
+  // the largest harm's magnitude — otherwise a small offset isn't overstated.
+  const OFFSET_MENTION_FRACTION = 0.25;
+
   let hideTimer = null;
+  let expanded = false;
+  let lastData = null;
+
+  // Reset the rollup expansion whenever a new breakdown is shown.
+  $: if ($breakdownPopupStore.data !== lastData) {
+    lastData = $breakdownPopupStore.data;
+    expanded = false;
+  }
 
   const keepPopup = () => clearTimeout(hideTimer);
 
@@ -19,25 +41,96 @@
     breakdownPopupStore.set({ show: false, x: 0, y: 0, data: null, pinned: false });
   };
 
+  const signed = v => (v > 0 ? '+' : '') + v;
+
   /**
-   * Compute a shade within a hue family.
-   * index 0 = darkest (largest contributor), increases = lighter.
+   * Split contributors into the rows shown individually and the rest rolled up.
+   * Two rules, whichever is STRICTER:
+   *   - relative threshold: roll up any |contribution| < 10% of the largest, and
+   *   - hard cap: never show more than 4 rows individually.
+   * Always shows at least the top 2; a lone left-over becomes its own row rather
+   * than a one-item rollup (a rollup must hold ≥ 2 members). Rows + rollup net
+   * always sum to the total.
    */
-  const negColor = i => `hsl(4,   82%, ${Math.min(38 + i * 9, 58)}%)`;
-  const posColor = i => `hsl(213, 82%, ${Math.min(38 + i * 9, 58)}%)`;
+  const splitRows = (feats) => {
+    const maxAbs = Math.max(...feats.map(f => Math.abs(f.actualPP)), 0);
+    const threshold = ROLLUP_REL_THRESHOLD * maxAbs;
+    // feats arrive sorted by |contribution| desc, so the above-threshold ones
+    // form a prefix.
+    let k = feats.filter(f => Math.abs(f.actualPP) >= threshold).length;
+    k = Math.max(k, Math.min(2, feats.length));  // always show the top 2
+    k = Math.min(k, MAX_VISIBLE_ROWS);           // …but never more than 4 (cap wins)
+    let shown = feats.slice(0, k);
+    let rolled = feats.slice(k);
+    if (rolled.length === 1) { shown = feats.slice(0, k + 1); rolled = []; } // no lone rollup
+    const rollupNet = Math.round(rolled.reduce((s, f) => s + f.actualPP, 0) * 10) / 10;
+    return { shown, rolled, rollupNet, maxAbs };
+  };
+
+  /** Join names with an Oxford comma: [a] → "a", [a,b] → "a and b", … */
+  const joinNames = (names) => {
+    if (names.length <= 1) return names[0] || '';
+    if (names.length === 2) return `${names[0]} and ${names[1]}`;
+    return `${names.slice(0, -1).join(', ')}, and ${names[names.length - 1]}`;
+  };
+
+  /** Top drivers (up to `maxN`) whose combined magnitude covers most (≥80%). */
+  const topCovering = (sorted, maxN, coverage = 0.8) => {
+    const total = sorted.reduce((s, f) => s + Math.abs(f.actualPP), 0);
+    const picked = [];
+    let acc = 0;
+    for (const f of sorted) {
+      picked.push(f);
+      acc += Math.abs(f.actualPP);
+      if (picked.length >= maxN || acc >= coverage * total) break;
+    }
+    return picked;
+  };
+
+  /** Bar length as a fraction of the largest single contribution. */
+  const barFrac = (v, maxAbs) => (maxAbs > 0 ? Math.abs(v) / maxAbs * 100 : 0);
+
+  /**
+   * Generated verdict sentence.
+   *   - Names the top harms (up to 3) covering most of the dominant-direction
+   *     movement, e.g. "Your A, B, and C all pulled approval down."
+   *   - Mentions an offsetting contributor ONLY when it is substantial (≥ 25% of
+   *     the largest harm) — otherwise omits it, so a small offset is never
+   *     overstated while the net stays strongly one-directional.
+   *   - Falls back to the simple single-name form when everything shares a sign.
+   */
+  const verdict = (feats, headerDelta) => {
+    if (!feats.length) return '';
+    const drop = headerDelta < 0;
+    const driverSign = drop ? -1 : 1;
+    const drivers = feats.filter(f => Math.sign(f.actualPP) === driverSign);
+    const offsets = feats.filter(f => Math.sign(f.actualPP) === -driverSign);
+
+    // All one direction → simple form naming just the dominant contributor.
+    if (drivers.length === 0 || offsets.length === 0) {
+      return `Your ${feats[0].displayName.toLowerCase()} drove most of this ${drop ? 'drop' : 'gain'}.`;
+    }
+
+    const driversSorted = drivers.slice().sort((a, b) => Math.abs(b.actualPP) - Math.abs(a.actualPP));
+    const named = topCovering(driversSorted, 3).map(f => f.displayName.toLowerCase());
+    const driverVerb = drop ? 'pulled approval down' : 'pushed approval up';
+    let sentence = `Your ${joinNames(named)} ${named.length > 1 ? 'all ' : ''}${driverVerb}`;
+
+    // Offset clause only if the largest offset is substantial vs. the top harm.
+    const largestHarm = Math.abs(driversSorted[0].actualPP);
+    const topOffset = offsets.slice().sort((a, b) => Math.abs(b.actualPP) - Math.abs(a.actualPP))[0];
+    if (Math.abs(topOffset.actualPP) >= OFFSET_MENTION_FRACTION * largestHarm) {
+      const offsetVerb = drop ? 'offset part of it' : 'worked against it';
+      sentence += `, though your ${topOffset.displayName.toLowerCase()} ${offsetVerb}`;
+    }
+    return sentence + '.';
+  };
 </script>
 
 {#if $breakdownPopupStore.show && $breakdownPopupStore.data}
   {@const d = $breakdownPopupStore.data}
-
-  <!-- Sort into two groups; largest magnitude nearest the center divider -->
-  {@const negList = d.features
-      .filter(f => f.actualPP < 0)
-      .sort((a, b) => a.actualPP - b.actualPP)}   <!-- most-neg first (leftmost) -->
-  {@const posList = d.features
-      .filter(f => f.actualPP > 0)
-      .sort((a, b) => b.actualPP - a.actualPP)}   <!-- most-pos first (nearest center) -->
-  {@const totalAbsPP = d.features.reduce((s, f) => s + Math.abs(f.actualPP), 0)}
+  {@const feats = d.features}
+  {@const split = splitRows(feats)}
 
   <div
     class="bd-popup"
@@ -48,118 +141,89 @@
     on:mouseleave={scheduleHide}
     role="tooltip"
   >
-    <!-- ── Header ──────────────────────────────────────────────── -->
-    <div class="bd-header">
-      <div class="bd-header-row">
-        <div class="bd-title-block">
-          <span class="bd-label">Approval Probability:</span>
-          <span class="bd-scores">{d.origPct}% → {d.curPct}%</span>
-          <span class="bd-delta"
-            class:bd-delta-pos={d.deltaPP > 0}
-            class:bd-delta-neg={d.deltaPP < 0}>
-            {d.deltaSign}{d.deltaPP}
-          </span>
-        </div>
+    <!-- ── 1. Header ───────────────────────────────────────────── -->
+    <div class="bd-header-row">
+      <div class="bd-title-block">
+        <span class="bd-label">Approval probability</span>
+        <span class="bd-scores">{d.origPct}% &rarr; {d.curPct}%</span>
+      </div>
+      <div class="bd-header-right">
+        <span class="bd-delta"
+          class:bd-delta-pos={d.deltaPP > 0}
+          class:bd-delta-neg={d.deltaPP < 0}>
+          {signed(d.deltaPP)}
+        </span>
         {#if $breakdownPopupStore.pinned}
           <button class="bd-close" on:click={closePopup} title="Close">✕</button>
         {/if}
       </div>
-      <div class="bd-subtitle">SCORE CHANGE BREAKDOWN</div>
     </div>
 
-    <!-- ── Force plot bar ──────────────────────────────────────── -->
-    {#if totalAbsPP > 0}
-      <div class="force-plot">
-        <div class="force-bar">
+    <!-- ── 2. Verdict sentence ─────────────────────────────────── -->
+    <div class="bd-verdict">{verdict(feats, d.deltaPP)}</div>
 
-          <!-- Negative (red) segments — largest on the far left -->
-          {#each negList as feat, i}
-            <div
-              class="force-seg"
-              style="width:{Math.abs(feat.actualPP) / totalAbsPP * 100}%;
-                     background:{negColor(i)}"
-              title="{feat.displayName}: {feat.actualPP.toFixed(1)}"
-            >
-              <span class="force-label">{feat.displayName}</span>
-            </div>
-          {/each}
+    <!-- ── 3. Axis labels ──────────────────────────────────────── -->
+    <div class="bd-axis-labels">
+      <span class="bd-axis-neg" style="color:{RED_TEXT}">&larr; Decreases approval</span>
+      <span class="bd-axis-pos" style="color:{BLUE_TEXT}">Increases approval &rarr;</span>
+    </div>
 
-          <!-- Centre divider — only when both sides are present -->
-          {#if negList.length > 0 && posList.length > 0}
-            <div class="force-divider"></div>
-          {/if}
-
-          <!-- Positive (blue) segments — largest nearest the centre -->
-          {#each posList as feat, i}
-            <div
-              class="force-seg"
-              style="width:{feat.actualPP / totalAbsPP * 100}%;
-                     background:{posColor(i)}"
-              title="{feat.displayName}: +{feat.actualPP.toFixed(1)}"
-            >
-              <span class="force-label">{feat.displayName}</span>
-            </div>
-          {/each}
-
-        </div>
-
-        <!-- Axis labels -->
-        <div class="force-axis">
-          {#if negList.length > 0}
-            <span class="force-axis-neg">← reduces</span>
-          {/if}
-          {#if posList.length > 0}
-            <span class="force-axis-pos">increases →</span>
-          {/if}
-        </div>
-      </div>
-    {/if}
-
-    <!-- ── Feature rows ────────────────────────────────────────── -->
+    <!-- ── 4. Diverging bars ───────────────────────────────────── -->
     <div class="bd-rows">
-      {#each d.features as feat}
+      {#each split.shown as feat}
         <div class="bd-row">
-
-          <span class="bd-name">{feat.displayName}</span>
-
-          <span class="bd-badge" class:bd-badge-prop={feat.isPropagated}>
-            {feat.isPropagated ? 'PROPAGATED' : 'DIRECT'}
-          </span>
-
-          <span class="bd-values">{feat.origValStr} → {feat.curValStr}</span>
-
-          <!-- Per-row diverging mini-bar -->
-          <div class="bd-bar-wrap">
-            <div class="bd-bar-neg-side">
-              {#if feat.proportion < 0}
-                <div class="bd-bar-fill bd-bar-neg"
-                  style="width:{Math.abs(feat.proportion) * 100}%"></div>
+          <div class="bd-row-top">
+            <span class="bd-name">{feat.displayName}</span>
+            <span class="bd-val"
+              class:bd-val-left={feat.actualPP < 0}
+              style="color:{feat.actualPP < 0 ? RED_TEXT : BLUE_TEXT}">
+              {signed(feat.actualPP)}
+            </span>
+          </div>
+          <div class="bd-diverge">
+            <div class="bd-half bd-half-left">
+              {#if feat.actualPP < 0}
+                <div class="bd-fill"
+                  style="width:{barFrac(feat.actualPP, split.maxAbs)}%; background:{RED_BAR}"></div>
               {/if}
             </div>
-            <div class="bd-bar-center"></div>
-            <div class="bd-bar-pos-side">
-              {#if feat.proportion > 0}
-                <div class="bd-bar-fill bd-bar-pos"
-                  style="width:{feat.proportion * 100}%"></div>
+            <div class="bd-axis"></div>
+            <div class="bd-half bd-half-right">
+              {#if feat.actualPP > 0}
+                <div class="bd-fill"
+                  style="width:{barFrac(feat.actualPP, split.maxAbs)}%; background:{BLUE_BAR}"></div>
               {/if}
             </div>
           </div>
-
-          <!-- pp contribution + % share -->
-          <div class="bd-pct"
-            class:bd-pct-pos={feat.actualPP > 0}
-            class:bd-pct-neg={feat.actualPP < 0}>
-            <span class="bd-pct-val">
-              {feat.actualPP > 0 ? '+' : ''}{feat.actualPP}
-            </span>
-            <span class="bd-pct-sub">
-              {feat.pctOfTotal > 0 ? '+' : ''}{feat.pctOfTotal}%
-            </span>
-          </div>
-
+          <div class="bd-sub">{feat.origValStr} &rarr; {feat.curValStr}</div>
         </div>
       {/each}
     </div>
+
+    <!-- ── 6. Rollup row ───────────────────────────────────────── -->
+    {#if split.rolled.length > 0}
+      <button class="bd-rollup" on:click={() => (expanded = !expanded)}>
+        <span class="bd-rollup-caret">{expanded ? '▾' : '▸'}</span>
+        <span class="bd-rollup-label">{split.rolled.length} smaller changes</span>
+        <span class="bd-rollup-net"
+          style="color:{split.rollupNet < 0 ? RED_TEXT : BLUE_TEXT}">
+          {signed(split.rollupNet)} <em>net</em>
+        </span>
+      </button>
+      {#if expanded}
+        <div class="bd-rollup-members">
+          {#each split.rolled as m}
+            <div class="bd-rollup-member">
+              <span class="bd-name">{m.displayName}</span>
+              <span class="bd-val"
+                style="color:{m.actualPP < 0 ? RED_TEXT : BLUE_TEXT}">
+                {signed(m.actualPP)}
+              </span>
+            </div>
+          {/each}
+        </div>
+      {/if}
+    {/if}
 
   </div>
 {/if}
@@ -167,7 +231,6 @@
 <style lang="scss">
   @import '../define';
 
-  /* ── Popup shell ──────────────────────────────────────────────── */
   .bd-popup {
     position: absolute;
     z-index: 9000;
@@ -187,149 +250,94 @@
   }
 
   /* ── Header ───────────────────────────────────────────────────── */
-  .bd-header {
-    margin-bottom: 10px;
-
-    .bd-header-row {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: 2px;
-    }
-
-    .bd-title-block {
-      display: flex;
-      align-items: baseline;
-      gap: 6px;
-      flex-wrap: wrap;
-    }
-
-    .bd-label {
-      font-size: 0.75rem;
-      font-weight: 600;
-      //color: $gray-500;
-      color: black;
-      text-transform: uppercase;
-      letter-spacing: 0.04em;
-    }
-
-    .bd-scores {
-      font-size: 1rem;
-      font-weight: 700;
-      color: $gray-900;
-    }
-
-    .bd-delta {
-      font-size: 0.85rem;
-      font-weight: 700;
-      padding: 1px 8px;
-      border-radius: 10px;
-      &.bd-delta-pos {
-        background: hsl(213, 100%, 94%);
-        color: hsl(213, 80%, 38%);
-        border: 1px solid hsl(213, 80%, 80%);
-      }
-      &.bd-delta-neg {
-        background: hsl(4, 100%, 94%);
-        color: hsl(4, 70%, 40%);
-        border: 1px solid hsl(4, 70%, 78%);
-      }
-    }
-
-    .bd-subtitle {
-      font-size: 0.70rem;
-      font-weight: 600;
-      letter-spacing: 0.06em;
-      //color: $gray-400;
-      color:gray;
-      text-transform: uppercase;
-    }
-
-    .bd-close {
-      background: none;
-      border: none;
-      cursor: pointer;
-      font-size: 0.85rem;
-      //color: $gray-400;
-      color: gray;
-      padding: 2px 5px;
-      border-radius: 4px;
-      line-height: 1;
-      transition: color 0.15s, background 0.15s;
-      &:hover {
-        color: $gray-700;
-        background: $gray-100;
-      }
-    }
-  }
-
-  /* ── Force plot ───────────────────────────────────────────────── */
-  .force-plot {
-    margin-bottom: 12px;
-  }
-
-  .force-bar {
-    display: flex;
-    height: 24px;
-    border-radius: 5px;
-    overflow: hidden;
-  }
-
-  .force-seg {
+  .bd-header-row {
     display: flex;
     align-items: center;
-    justify-content: center;
-    overflow: hidden;
-    min-width: 0;
-    transition: opacity 0.15s;
-
-    &:hover { opacity: 0.82; }
-
-    .force-label {
-      font-size: 0.63rem;
-      font-weight: 600;
-      color: white;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-      padding: 0 5px;
-      text-shadow: 0 1px 2px hsla(0,0%,0%,0.25);
-      pointer-events: none;
-    }
+    justify-content: space-between;
+    gap: 8px;
   }
 
-  /* 2 px white divider between negative and positive sides */
-  .force-divider {
-    width: 2px;
-    background: white;
-    flex-shrink: 0;
+  .bd-title-block {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+    flex-wrap: wrap;
   }
 
-  .force-axis {
+  .bd-label {
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: $gray-700;
+  }
+
+  .bd-scores {
+    font-size: 1.05rem;
+    font-weight: 700;
+    color: $gray-900;
+  }
+
+  .bd-header-right {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .bd-delta {
+    font-size: 0.9rem;
+    font-weight: 700;
+    padding: 2px 9px;
+    border-radius: 11px;
+    &.bd-delta-pos { background: hsl(211, 68%, 92%); color: #185FA5; }
+    &.bd-delta-neg { background: hsl(4, 68%, 93%); color: #A32D2D; }
+  }
+
+  .bd-close {
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-size: 0.85rem;
+    color: gray;
+    padding: 2px 5px;
+    border-radius: 4px;
+    line-height: 1;
+    transition: color 0.15s, background 0.15s;
+    &:hover { color: $gray-700; background: $gray-100; }
+  }
+
+  /* ── 2. Verdict sentence ──────────────────────────────────────── */
+  .bd-verdict {
+    margin: 6px 0 12px;
+    font-size: 14px;
+    line-height: 1.35;
+    color: $gray-600;
+  }
+
+  /* ── 3. Axis labels ───────────────────────────────────────────── */
+  .bd-axis-labels {
     display: flex;
     justify-content: space-between;
-    margin-top: 3px;
-    font-size: 0.8rem;
-    font-weight: 500;
-
-    .force-axis-neg { color: hsl(4,   70%, 50%); }
-    .force-axis-pos { color: hsl(213, 70%, 48%); }
+    margin-bottom: 8px;
+    font-size: 0.78rem;
+    font-weight: 600;
   }
 
-  /* ── Feature rows ─────────────────────────────────────────────── */
+  /* ── 4. Diverging bar rows ────────────────────────────────────── */
   .bd-rows {
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 18px; /* inter-row gap — larger than the 4px row-internal gap */
   }
 
   .bd-row {
-    display: grid;
-    /* name | badge | values | mini-bar | label */
-    grid-template-columns: 1fr auto auto 120px 52px;
-    align-items: center;
-    gap: 6px;
-    font-size: 0.8rem;
+    display: flex;
+    flex-direction: column;
+    gap: 4px; /* tight: name → bar → before/after group as one unit */
+  }
+
+  .bd-row-top {
+    display: flex;
+    align-items: baseline;
+    gap: 0;
   }
 
   .bd-name {
@@ -338,95 +346,97 @@
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    flex-shrink: 1;
   }
 
-  .bd-badge {
-    font-size: 0.62rem;
+  .bd-val {
     font-weight: 700;
-    letter-spacing: 0.04em;
-    padding: 1px 5px;
-    border-radius: 3px;
+    font-size: 0.85rem;
     white-space: nowrap;
-    background: hsl(213, 100%, 94%);
-    color: hsl(213, 80%, 38%);
-    border: 1px solid hsl(213, 80%, 80%);
-    &.bd-badge-prop {
-      background: $gray-100;
-      color: $gray-500;
-      border-color: $gray-300;
-    }
+    flex-shrink: 0;
+    /* Positive (increase) values sit on the right, matching the right-pointing
+       bar. Negative (decrease) values sit right beside the name, matching the
+       left-pointing bar, so the value stays close to the feature it describes. */
+    margin-left: auto;
+    &.bd-val-left { margin-left: 8px; }
   }
 
-  .bd-values {
-    //color: $gray-500;
-    color: black;
-    white-space: nowrap;
-    font-size: 0.8rem;
-  }
-
-  /* ── Per-row diverging mini-bar ───────────────────────────────── */
-  .bd-bar-wrap {
+  /* Bars diverge from a real, bold center zero-line. The axis is 24px — taller
+     than the 12px bars — using negative margins so it overflows visually without
+     growing the row (keeping the before/after line tight under the bar). */
+  .bd-diverge {
     display: flex;
     align-items: center;
-    height: 7px;
-
-    .bd-bar-neg-side {
-      flex: 1;
-      height: 100%;
-      display: flex;
-      justify-content: flex-end;
-      background: hsl(0, 0%, 93%);
-      border-radius: 3px 0 0 3px;
-      overflow: hidden;
-    }
-
-    .bd-bar-center {
-      width: 1px;
-      height: 100%;
-      background: $gray-400;
-      flex-shrink: 0;
-    }
-
-    .bd-bar-pos-side {
-      flex: 1;
-      height: 100%;
-      display: flex;
-      justify-content: flex-start;
-      background: hsl(0, 0%, 93%);
-      border-radius: 0 3px 3px 0;
-      overflow: hidden;
-    }
-
-    .bd-bar-fill { height: 100%; }
-    .bd-bar-neg  { background: hsl(4,   89%, 48%); border-radius: 3px 0 0 3px; }
-    .bd-bar-pos  { background: hsl(213, 89%, 44%); border-radius: 0 3px 3px 0; }
+    height: 12px;
   }
 
-  /* ── Label column (pp + %) ────────────────────────────────────── */
-  .bd-pct {
+  .bd-half {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    height: 12px;
+    overflow: hidden;
+  }
+  .bd-half-left  { justify-content: flex-end;   border-radius: 3px 0 0 3px; }
+  .bd-half-right { justify-content: flex-start; border-radius: 0 3px 3px 0; }
+
+  .bd-fill {
+    height: 12px;
+    border-radius: 2px;
+  }
+
+  .bd-axis {
+    width: 3px;
+    height: 24px;
+    margin: -6px 0; /* extend 6px above/below the 12px bar row, no layout growth */
+    background: $gray-900;
+    flex-shrink: 0;
+  }
+
+  .bd-sub {
+    font-size: 0.76rem;
+    color: $gray-500;
+    white-space: nowrap;
+  }
+
+  /* ── 6. Rollup ────────────────────────────────────────────────── */
+  .bd-rollup {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    margin-top: 10px;
+    padding: 6px 4px;
+    background: none;
+    border: none;
+    border-top: 1px solid $gray-200;
+    cursor: pointer;
+    font-size: 0.8rem;
+    color: $gray-700;
+    text-align: left;
+
+    &:hover { background: $gray-100; }
+
+    .bd-rollup-caret { color: $gray-500; width: 10px; }
+    .bd-rollup-label { flex: 1; font-weight: 600; }
+    .bd-rollup-net {
+      font-weight: 700;
+      em { font-style: normal; font-weight: 500; color: $gray-500; margin-left: 2px; }
+    }
+  }
+
+  .bd-rollup-members {
     display: flex;
     flex-direction: column;
-    align-items: flex-end;
-    gap: 1px;
+    gap: 5px;
+    padding: 4px 4px 2px 22px;
 
-    &.bd-pct-pos {
-      .bd-pct-val { color: hsl(213, 80%, 40%); }
-      .bd-pct-sub { color: hsl(213, 60%, 60%); }
-    }
-    &.bd-pct-neg {
-      .bd-pct-val { color: hsl(4, 70%, 42%); }
-      .bd-pct-sub { color: hsl(4, 60%, 62%); }
-    }
-
-    .bd-pct-val {
-      font-size: 0.8rem;
-      font-weight: 700;
-      line-height: 1;
-    }
-    .bd-pct-sub {
+    .bd-rollup-member {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 8px;
       font-size: 0.78rem;
-      font-weight: 650;
-      line-height: 1;
     }
   }
 </style>
