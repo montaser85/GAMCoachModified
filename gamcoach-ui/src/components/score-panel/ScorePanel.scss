@@ -59,6 +59,9 @@
   // Delta highlight between original score and current score.
   // pointer-events must be 'all' so mouseenter/mouseleave fire for the
   // score-change breakdown popup.
+  // Delta highlight between original score and current score.
+  // pointer-events must be 'all' so mouseenter/mouseleave fire for the
+  // score-change breakdown popup.
   :global(.delta-rect) {
     pointer-events: all;
     transition: fill 200ms;
