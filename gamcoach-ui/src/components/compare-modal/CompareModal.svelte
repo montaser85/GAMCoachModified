@@ -12,57 +12,71 @@
 
   let unchangedOpen = false;
 
+  // A change whose per-feature score contribution is within ±this (log-odds) is
+  // treated as neutral — the value moved but the score didn't.
+  const CONTRIB_EPS = 1e-6;
+
   // ─── Helpers ──────────────────────────────────────────────────────────────
 
   const sigmoid = x => 1 / (1 + Math.exp(-x));
 
+  /** "debt_consolidation" → "Debt consolidation", "MORTGAGE" → "Mortgage". */
+  function prettifyLabel(s) {
+    const t = String(s).replace(/_/g, ' ').toLowerCase();
+    return t.charAt(0).toUpperCase() + t.slice(1);
+  }
+
   /**
-   * Format a raw feature value for display.
-   * Handles log10 transform, categorical label lookup, integers, and large numbers.
+   * Format a raw feature value for display, ALWAYS decoding categoricals to their
+   * human-readable label (never a raw index). The stored value may be a category
+   * CODE (f.originalValue) or an already-decoded LABEL (ebmLocal.sample), so we
+   * accept both directions of the feature's {code: label} encoder.
    */
   function formatVal(val, feature) {
     if (val === null || val === undefined) return '—';
 
     if (feature.data?.type === 'categorical') {
-      const enc = feature.labelEncoder;
+      const enc = feature.labelEncoder; // {code: label}
       if (enc) {
-        const entry = Object.entries(enc).find(([, v]) => v === val);
-        return entry ? entry[0] : String(val);
+        if (enc[val] !== undefined) return prettifyLabel(enc[val]);        // code → label
+        if (Object.values(enc).includes(val)) return prettifyLabel(val);   // already a label
       }
-      return String(val);
+      return prettifyLabel(val);
     }
 
-    if (feature.transform === 'log10') {
-      val = Math.pow(10, val);
-    }
-
-    if (val >= 1000) {
-      return val.toLocaleString('en-US', { maximumFractionDigits: 0 });
-    }
-
+    if (feature.transform === 'log10') val = Math.pow(10, val);
+    if (val >= 1000) return val.toLocaleString('en-US', { maximumFractionDigits: 0 });
     if (feature.requiresInt) return Math.round(val).toString();
-
     return parseFloat(val.toFixed(2)).toString();
+  }
+
+  /** Color bucket for a changed cell, from the model's per-feature contribution. */
+  function colorOf(changedInPlan, contribution) {
+    if (!changedInPlan) return 'empty';
+    if (contribution > CONTRIB_EPS) return 'up';    // raised approval prob
+    if (contribution < -CONTRIB_EPS) return 'down'; // lowered it
+    return 'neutral';                               // changed, ~zero contribution
   }
 
   // ─── Comparison data ──────────────────────────────────────────────────────
 
   let planList = [];
-  let changedFeatureIDs = [];
-  let unchangedFeatureIDs = [];
+  let changedRows = [];
+  let unchangedList = [];
   let originalProbPct = 0;
 
   function rebuildComparison() {
     if (!plans || !localPlans || localPlans.size === 0) {
       planList = [];
-      changedFeatureIDs = [];
-      unchangedFeatureIDs = [];
+      changedRows = [];
+      unchangedList = [];
       return;
     }
 
-    originalProbPct = Math.round(sigmoid(plans.originalScore) * 100);
+    const origProb = sigmoid(plans.originalScore) * 100;
+    originalProbPct = Math.round(origProb);
 
-    // Build sorted plan list
+    // Build sorted plan list with per-feature current value + score contribution.
     const newList = Array.from(localPlans.keys())
       .sort((a, b) => a - b)
       .map(idx => {
@@ -70,89 +84,92 @@
         if (!plan) return null;
 
         const probPct = sigmoid(plan.ebmLocal.predScore) * 100;
-        const deltaPP = probPct - (sigmoid(plans.originalScore) * 100);
         const label = planLabels.find(l => l.planIndex === idx);
+
+        // Per-feature contribution: current per-feature score minus the original
+        // per-feature score (log-odds). Same values that feed the score breakdown.
+        const origScores = plan.ebmLocal.countScore(plan.curExample);
+        const curScores  = plan.ebmLocal.countScore(plan.ebmLocal.sample);
 
         return {
           planIndex: idx,
           name: label?.name ?? `Plan ${idx}`,
           approvalPct: Math.round(probPct),
-          deltaPP: parseFloat(deltaPP.toFixed(1)),
+          deltaPP: parseFloat((probPct - origProb).toFixed(1)),
           isBest: false,
           features: plan.features.map(f => {
-            // ebmLocal.sample[featureID] is the live current value — updated by
-            // both the coach's initial suggestion AND any user slider changes.
-            // f.myValue is only set once at plan creation and never updated.
+            const name = f.data?.name;
             const currentVal = plan.ebmLocal.sample[f.featureID];
-            const origVal    = plan.curExample[f.featureID];
-            // f.isChanged !== 0 → coach suggested a change (1 = direct, 2 = propagated).
-            // currentVal !== origVal → user slider moved it away from original.
-            // f.coachValue !== f.originalValue → redundant safety check on stored values.
-            // Any of these being true should highlight the cell.
-            const isChanged  = (f.isChanged !== 0)
-                             || (currentVal !== origVal)
-                             || (f.coachValue !== f.originalValue);
+            const currentDisplay = formatVal(currentVal, f);
+            const originalDisplay = formatVal(f.originalValue, f);
+            const contribution = (curScores[name] ?? 0) - (origScores[name] ?? 0);
             return {
               featureID: f.featureID,
               displayName: f.data?.description?.displayName ?? f.data?.name ?? `Feature ${f.featureID}`,
-              isChanged,
-              currentDisplay: formatVal(currentVal, f),
-              originalDisplay: formatVal(f.originalValue, f)
+              currentDisplay,
+              originalDisplay,
+              contribution,
+              changedInPlan: currentDisplay !== originalDisplay
             };
           })
         };
       })
       .filter(Boolean);
 
-    // Mark best (highest approval probability)
+    // Mark best (highest approval probability) — may be a tie.
     if (newList.length > 0) {
       const maxPct = Math.max(...newList.map(p => p.approvalPct));
       newList.forEach(p => { p.isBest = p.approvalPct === maxPct; });
     }
 
-    // Categorise features: changed = at least one plan differs from original
-    const firstFeatures = newList[0]?.features ?? [];
-    const newChanged = [];
-    const newUnchanged = [];
+    // Split features: identical across ALL plans → collapsed; varies → changed.
+    const first = newList[0]?.features ?? [];
+    const changed = [];
+    const unchanged = [];
 
-    for (const feat of firstFeatures) {
-      const anyChanged = newList.some(p =>
-        p.features.find(f => f.featureID === feat.featureID)?.isChanged
-      );
-      (anyChanged ? newChanged : newUnchanged).push(feat.featureID);
+    for (const feat of first) {
+      const fid = feat.featureID;
+      const cells = newList.map(p => p.features.find(f => f.featureID === fid));
+      const values = cells.map(c => c?.currentDisplay);
+      const identical = values.every(v => v === values[0]);
+
+      if (identical) {
+        unchanged.push({ featureID: fid, displayName: feat.displayName, sharedValue: values[0] });
+      } else {
+        changed.push({
+          featureID: fid,
+          displayName: feat.displayName,
+          originalDisplay: feat.originalDisplay,
+          // Discriminating power: how many distinct values appear across plans.
+          spread: new Set(values).size,
+          cells: cells.map((c, i) => ({
+            display: c && c.changedInPlan ? c.currentDisplay : '—',
+            color: colorOf(c?.changedInPlan, c?.contribution ?? 0),
+            isBest: newList[i].isBest
+          }))
+        });
+      }
     }
 
+    // Widest spread (most discriminating) first.
+    changed.sort((a, b) => b.spread - a.spread);
+
     planList = newList;
-    changedFeatureIDs = newChanged;
-    unchangedFeatureIDs = newUnchanged;
+    changedRows = changed;
+    unchangedList = unchanged;
   }
 
   // ── Direct store subscription for modal-open trigger ─────────────────────
-  // Using a direct subscription + setTimeout(0) rather than a Svelte reactive
-  // statement: this guarantees the callback runs in a fresh macrotask AFTER
-  // all pending Svelte prop propagation, reactive flushes, and microtasks
-  // have settled — so localPlans is definitely readable with full plan data.
   const _compareUnsub = compareOpenStore.subscribe(isOpen => {
     if (isOpen) {
-      // Synchronous attempt first (works if planList is already populated)
       rebuildComparison();
-      // Macrotask fallback — runs after ALL pending work, guaranteed correct
       setTimeout(() => rebuildComparison(), 0);
     }
   });
   onDestroy(() => _compareUnsub());
 
-  // Rebuild immediately whenever a plan store emits (slider changes, plan load).
+  // Rebuild whenever a plan store emits (slider changes, plan load).
   $: localPlansVersion && rebuildComparison();
-
-  // ─── Helpers for template ─────────────────────────────────────────────────
-
-  const getFeature = (plan, featureID) =>
-    plan.features.find(f => f.featureID === featureID);
-
-  const getFeatureName = featureID =>
-    planList[0]?.features.find(f => f.featureID === featureID)?.displayName
-    ?? `Feature ${featureID}`;
 </script>
 
 {#if $compareOpenStore}
@@ -174,8 +191,9 @@
 
       <!-- ── Legend ───────────────────────────────────────────────── -->
       <div class="cmp-legend">
-        <span class="leg leg-changed">Changed from original</span>
-        <span class="leg leg-same">Same across all plans</span>
+        <span class="leg"><span class="leg-tag leg-tag-up">Blue</span> &mdash; raised approval probability</span>
+        <span class="leg"><span class="leg-tag leg-tag-down">Red</span> &mdash; lowered it</span>
+        <span class="leg"><span class="leg-bar leg-unchanged"></span> Unchanged from original</span>
       </div>
 
       <!-- ── Table ────────────────────────────────────────────────── -->
@@ -205,56 +223,46 @@
           </thead>
 
           <tbody>
-            <!-- Changed features -->
-            {#if changedFeatureIDs.length > 0}
-              <tr class="sec-row sec-changed">
-                <td colspan={planList.length + 1}>CHANGED FEATURES (in at least one plan)</td>
-              </tr>
-              {#each changedFeatureIDs as fid}
+            {#if changedRows.length > 0}
+              {#each changedRows as row (row.featureID)}
                 <tr class="data-row">
-                  <td class="td-name">{getFeatureName(fid)}</td>
-                  {#each planList as plan}
-                    {@const feat = getFeature(plan, fid)}
-                    <td class="td-cell"
-                      style="background: {
-                        feat?.isChanged               ? 'hsl(45, 100%, 82%)' :
-                        plan.isBest                   ? 'hsl(152, 55%, 95%)' :
-                        'white'}">
-                      <div class="cell-val">{feat?.currentDisplay ?? '—'}</div>
-                      {#if feat?.isChanged}
-                        <div class="cell-from">from {feat.originalDisplay}</div>
+                  <td class="td-name">
+                    <div class="td-name-main">{row.displayName}</div>
+                    <div class="td-name-orig"><span class="orig-tag">Original</span> {row.originalDisplay}</div>
+                  </td>
+                  {#each row.cells as cell}
+                    <td class="td-cell td-{cell.color}" class:td-best={cell.isBest}>
+                      {#if cell.color === 'empty'}
+                        <span class="cell-empty">&mdash;</span>
+                      {:else}
+                        <span class="cell-val">{cell.display}</span>
                       {/if}
                     </td>
                   {/each}
                 </tr>
               {/each}
-            {/if}
-
-            <!-- Unchanged features (collapsed by default) -->
-            {#if unchangedFeatureIDs.length > 0}
-              <!-- svelte-ignore a11y-click-events-have-key-events -->
-              <tr class="sec-row sec-unchanged" on:click={() => unchangedOpen = !unchangedOpen}>
-                <td colspan={planList.length + 1}>
-                  UNCHANGED FEATURES (SAME ACROSS ALL PLANS)
-                  <span class="toggle-arrow">{unchangedOpen ? '▲' : '▼'}</span>
-                </td>
-              </tr>
-              {#if unchangedOpen}
-                {#each unchangedFeatureIDs as fid}
-                  <tr class="data-row data-row-dim">
-                    <td class="td-name td-name-dim">{getFeatureName(fid)}</td>
-                    {#each planList as plan}
-                      {@const feat = getFeature(plan, fid)}
-                      <td class="td-cell td-cell-dim">
-                        <div class="cell-val cell-val-dim">{feat?.currentDisplay ?? '—'}</div>
-                      </td>
-                    {/each}
-                  </tr>
-                {/each}
-              {/if}
+            {:else}
+              <tr><td class="td-none" colspan={planList.length + 1}>No plans differ on any feature.</td></tr>
             {/if}
           </tbody>
         </table>
+
+        <!-- ── Unchanged features (collapsed by default) ──────────── -->
+        {#if unchangedList.length > 0}
+          <!-- svelte-ignore a11y-click-events-have-key-events -->
+          <button class="uc-toggle" on:click={() => unchangedOpen = !unchangedOpen}>
+            <span class="uc-arrow">{unchangedOpen ? '▾' : '▸'}</span>
+            {unchangedList.length} feature{unchangedList.length !== 1 ? 's are' : ' is'} the same across all plans
+          </button>
+          {#if unchangedOpen}
+            <div class="uc-grid">
+              {#each unchangedList as u (u.featureID)}
+                <div class="uc-name">{u.displayName}</div>
+                <div class="uc-val">{u.sharedValue}</div>
+              {/each}
+            </div>
+          {/if}
+        {/if}
       </div>
 
       <!-- ── Footer ───────────────────────────────────────────────── -->
@@ -272,6 +280,11 @@
 <style lang="scss">
   @import '../../define';
 
+  $c-up-text: #185FA5;
+  $c-up-bar: #185FA5;
+  $c-down-text: #A32D2D;
+  $c-down-bar: #E24B4A;
+
   /* ── Overlay ───────────────────────────────────────────────────── */
   .cmp-overlay {
     position: fixed;
@@ -284,7 +297,6 @@
     padding: 20px;
   }
 
-  /* ── Modal shell ───────────────────────────────────────────────── */
   .cmp-modal {
     background: white;
     border-radius: 10px;
@@ -306,29 +318,12 @@
     border-bottom: 1px solid $gray-200;
     flex-shrink: 0;
 
-    .cmp-title {
-      font-size: 1.15rem;
-      font-weight: 700;
-      color: $gray-900;
-      margin-bottom: 3px;
-    }
-
-    .cmp-subtitle {
-      font-size: 0.9rem;
-      //color: $gray-500;
-      color: gray;
-    }
+    .cmp-title { font-size: 1.15rem; font-weight: 700; color: $gray-900; margin-bottom: 3px; }
+    .cmp-subtitle { font-size: 0.9rem; color: gray; }
 
     .cmp-x {
-      background: none;
-      border: none;
-      cursor: pointer;
-      font-size: 1rem;
-      color: $gray-400;
-      padding: 2px 6px;
-      border-radius: 4px;
-      line-height: 1;
-      flex-shrink: 0;
+      background: none; border: none; cursor: pointer; font-size: 1rem;
+      color: $gray-400; padding: 2px 6px; border-radius: 4px; line-height: 1; flex-shrink: 0;
       &:hover { background: $gray-100; color: $gray-700; }
     }
   }
@@ -337,7 +332,7 @@
   .cmp-legend {
     display: flex;
     align-items: center;
-    gap: 18px;
+    gap: 20px;
     padding: 7px 20px;
     background: $gray-50;
     border-bottom: 1px solid $gray-200;
@@ -346,41 +341,37 @@
     .leg {
       display: flex;
       align-items: center;
-      gap: 5px;
-      font-size: 0.85rem;
-      //color: $gray-600;
-      color: black;
-
-      &::before {
-        content: '';
-        display: inline-block;
-        width: 13px;
-        height: 13px;
-        border-radius: 3px;
-      }
-
-      &.leg-best::before    { background: hsl(152, 55%, 91%); border: 1.5px solid hsl(152, 50%, 58%); }
-      &.leg-changed::before { background: hsl(45,  100%, 91%); border: 1.5px solid hsl(45, 90%, 62%); }
-      &.leg-same::before    { background: $gray-100;           border: 1.5px solid $gray-300; }
+      gap: 6px;
+      font-size: 12px;
+      color: $gray-600;
+    }
+    .leg-tag {
+      font-weight: 700;
+      &.leg-tag-up { color: $c-up-text; }
+      &.leg-tag-down { color: $c-down-text; }
+    }
+    .leg-bar {
+      display: inline-block;
+      border-radius: 2px;
+    }
+    /* Unchanged marker: a thick horizontal gray bar (a bold em-dash). */
+    .leg-unchanged {
+      width: 16px;
+      height: 5px;
+      background: $gray-400;
     }
   }
 
-  /* ── Scrollable table area ─────────────────────────────────────── */
-  .cmp-scroll {
-    overflow-y: auto;
-    overflow-x: auto;
-    flex: 1 1 auto;
-  }
+  /* ── Scrollable area ───────────────────────────────────────────── */
+  .cmp-scroll { overflow: auto; flex: 1 1 auto; }
 
   /* ── Table ─────────────────────────────────────────────────────── */
   .cmp-table {
     width: 100%;
     border-collapse: collapse;
-
     th, td { padding: 0; text-align: left; }
   }
 
-  /* Sticky header */
   .cmp-head-row {
     position: sticky;
     top: 0;
@@ -392,11 +383,10 @@
   th.th-feature {
     width: 220px;
     min-width: 180px;
-    padding: 10px 12px 2px 10px;
+    padding: 10px 12px 8px 20px;
     font-size: 0.85rem;
     font-weight: 700;
     letter-spacing: 0.06em;
-    //color: $gray-500;
     color: gray;
     vertical-align: bottom;
     border-bottom: 2px solid $gray-200;
@@ -410,120 +400,93 @@
     border-bottom: 2px solid $gray-200;
     border-left: 1px solid $gray-100;
 
-    &.th-best {
-      background: hsl(152, 55%, 95%);
-      border-bottom-color: hsl(152, 50%, 50%);
-    }
+    &.th-best { background: hsl(152, 55%, 95%); border-bottom-color: hsl(152, 50%, 50%); }
 
     .plan-name {
-      font-size: 0.92rem;
-      font-weight: 700;
-      color: $gray-600;
-      margin-bottom: 5px;
+      font-size: 0.92rem; font-weight: 700; color: $gray-600; margin-bottom: 5px;
       .star { color: hsl(45, 88%, 42%); margin-right: 2px; }
     }
-
     .plan-pct {
-      font-size: 1.45rem;
-      font-weight: 800;
-      color: $gray-800;
-      line-height: 1;
+      font-size: 1.45rem; font-weight: 800; color: $gray-800; line-height: 1;
       &.plan-pct-best { color: hsl(152, 48%, 32%); }
     }
-
     .plan-pct-label {
-      font-size: 0.75rem;
-      font-weight: 600;
-      letter-spacing: 0.05em;
-      //color: $gray-400;
-      color: gray;
-      margin: 3px 0 2px;
+      font-size: 0.75rem; font-weight: 600; letter-spacing: 0.05em; color: gray; margin: 3px 0 2px;
     }
-
     .plan-delta {
-      font-size: 0.85rem;
-      font-weight: 600;
-      &.delta-pos { color: hsl(152, 48%, 36%); }
-      &.delta-neg { color: hsl(4,   68%, 46%); }
+      font-size: 0.85rem; font-weight: 600;
+      &.delta-pos { color: $c-up-text; }   /* increase → blue, matching the cells */
+      &.delta-neg { color: $c-down-text; } /* decrease → red */
     }
-  }
-
-  /* ── Section header rows ───────────────────────────────────────── */
-  .sec-row td {
-    padding: 5px 20px;
-    font-size: 0.82rem;
-    font-weight: 700;
-    letter-spacing: 0.08em;
-    color: white;
-
-    .toggle-arrow {
-      float: right;
-      font-size: 0.75rem;
-      opacity: 0.75;
-    }
-  }
-
-  .sec-changed td  { background: hsl(215, 28%, 26%); }
-  .sec-unchanged td {
-    background: hsl(215, 15%, 44%);
-    cursor: pointer;
-    user-select: none;
   }
 
   /* ── Data rows ─────────────────────────────────────────────────── */
   .data-row {
     border-bottom: 1px solid $gray-100;
-    &:hover td { background: hsl(213, 100%, 97%) !important; }
+    &:hover td { background: hsl(213, 100%, 98%); }
   }
 
-  .data-row-dim {
-    &:hover td { background: $gray-50 !important; }
-  }
-
-  /* Feature name cell — td.td-name beats the .cmp-table td { padding:0 } reset */
   td.td-name {
     padding: 8px 12px 8px 20px;
-    font-size: 0.92rem;
-    font-weight: 600;
-    color: $gray-700;
     white-space: nowrap;
+
+    .td-name-main { font-size: 0.92rem; font-weight: 600; color: $gray-800; }
+    .td-name-orig { font-size: 0.8rem; color: $gray-500; margin-top: 1px;
+      .orig-tag {
+        font-size: 0.68rem; font-weight: 700; letter-spacing: 0.03em;
+        text-transform: uppercase; color: $gray-400; margin-right: 3px;
+      }
+    }
   }
 
-  td.td-name-dim {
-    color: $gray-600;
-    font-weight: 600;
-  }
+  .td-none { padding: 16px 20px; color: $gray-500; font-size: 0.9rem; }
 
-  /* Value cell */
+  /* Value cells — text colored strictly by the model's per-feature contribution
+     (no left bar). Neutral = value in default color; empty = muted em-dash. */
   .td-cell {
-    padding: 7px 12px;
+    padding: 9px 12px;
     text-align: center;
     vertical-align: middle;
     border-left: 1px solid $gray-100;
     background: white;
+
+    .cell-val { font-size: 1rem; font-weight: 700; color: $gray-800; }
+    .cell-empty { color: $gray-400; font-weight: 600; }
   }
 
-  /* Use !important so these beat the .cmp-table td reset regardless of specificity */
-  .td-changed      { background: hsl(45, 100%, 82%) !important; }
-  .td-best         { background: hsl(152, 55%, 95%) !important; }
-  .td-changed-best { background: hsl(90, 55%, 91%) !important; }
-  .td-cell-dim     { background: $gray-50 !important; }
+  .td-up   { .cell-val { color: $c-up-text; } }
+  .td-down { .cell-val { color: $c-down-text; } }
 
-  .cell-val {
-    font-size: 0.82rem;
-    font-weight: 700;
-    color: $gray-800;
-  }
+  /* Subtle tint on starred (best) plan columns — kept from the old design. */
+  .td-best { background: hsl(152, 55%, 96%); }
 
-  .cell-val-dim {
-    color: $gray-600;
+  /* ── Unchanged (collapsed) ─────────────────────────────────────── */
+  .uc-toggle {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    width: 100%;
+    padding: 9px 20px;
+    background: $gray-50;
+    border: none;
+    border-top: 1px solid $gray-200;
+    cursor: pointer;
+    font-size: 0.9rem;
     font-weight: 600;
+    color: $gray-700;
+    text-align: left;
+    &:hover { background: $gray-100; }
+    .uc-arrow { color: $gray-500; width: 10px; }
   }
 
-  .cell-from {
-    font-size: 0.8rem;
-    color: $gray-500;
-    margin-top: 2px;
+  .uc-grid {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 4px 24px;
+    padding: 10px 20px 14px 34px;
+
+    .uc-name { font-size: 0.88rem; color: $gray-700; }
+    .uc-val  { font-size: 0.88rem; font-weight: 600; color: $gray-800; text-align: right; }
   }
 
   /* ── Footer ────────────────────────────────────────────────────── */
@@ -536,21 +499,11 @@
     flex-shrink: 0;
     background: $gray-50;
 
-    .footer-note {
-      font-size: 0.85rem;
-      //color: $gray-400;
-      color:black;
-    }
+    .footer-note { font-size: 0.85rem; color: black; }
 
     .cmp-close-btn {
-      background: white;
-      border: 1px solid $gray-300;
-      color: $gray-700;
-      cursor: pointer;
-      font-size: 0.9rem;
-      font-weight: 600;
-      padding: 6px 20px;
-      border-radius: 6px;
+      background: white; border: 1px solid $gray-300; color: $gray-700;
+      cursor: pointer; font-size: 0.9rem; font-weight: 600; padding: 6px 20px; border-radius: 6px;
       &:hover { background: $gray-100; }
     }
   }
