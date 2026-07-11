@@ -39,6 +39,18 @@ export function createHistoryEntry(planIndex, plan, propagatedFeatures, previous
     }
   }
 
+  // Per-feature score contributions (log-odds) vs the original profile — the
+  // same values that color the score-breakdown and plan-comparison panels. Used
+  // to color propagated ("This caused") rows: >0 raised approval, <0 lowered it.
+  let origScores = {};
+  let curScores = {};
+  try {
+    origScores = plan.ebmLocal.countScore(plan.curExample);
+    curScores = plan.ebmLocal.countScore(plan.ebmLocal.sample);
+  } catch (e) {
+    // Leave empty → contributions default to 0 (neutral).
+  }
+
   // Capture all features - both changed and unchanged
   for (const feature of plan.features) {
     try {
@@ -60,7 +72,8 @@ export function createHistoryEntry(planIndex, plan, propagatedFeatures, previous
           newValue: currentVal,
           displayOldValue: formatValue(baselineVal, feature),
           displayNewValue: formatValue(currentVal, feature),
-          isAuto: isAuto || false  // Default to false if propagation check fails
+          isAuto: isAuto || false,  // Default to false if propagation check fails
+          contribution: (curScores[featureName] ?? 0) - (origScores[featureName] ?? 0)
         });
       } else {
         // Feature didn't change - add to unchanged list
@@ -100,19 +113,27 @@ export function createHistoryEntry(planIndex, plan, propagatedFeatures, previous
   };
 }
 
+/** "debt_consolidation" → "Debt consolidation", "MORTGAGE" → "Mortgage". */
+function prettifyLabel(s) {
+  const t = String(s).replace(/_/g, ' ').toLowerCase();
+  return t.charAt(0).toUpperCase() + t.slice(1);
+}
+
 /**
- * Format a value for display (reuse from FeatureCard logic)
+ * Format a value for display, ALWAYS decoding categoricals to their label (never
+ * a raw index). The stored value may be a category CODE or an already-decoded
+ * LABEL, so both directions of the feature's {code: label} encoder are handled.
  */
 function formatValue(val, feature) {
   if (val === null || val === undefined) return '—';
 
   if (feature.data?.type === 'categorical') {
-    const enc = feature.labelEncoder;
+    const enc = feature.labelEncoder; // {code: label}
     if (enc) {
-      const entry = Object.entries(enc).find(([, v]) => v === val);
-      return entry ? entry[0] : String(val);
+      if (enc[val] !== undefined) return prettifyLabel(enc[val]);       // code → label
+      if (Object.values(enc).includes(val)) return prettifyLabel(val);  // already a label
     }
-    return String(val);
+    return prettifyLabel(val);
   }
 
   if (feature.transform === 'log10') {

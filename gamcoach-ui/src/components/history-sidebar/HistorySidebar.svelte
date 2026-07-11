@@ -7,201 +7,123 @@
   /** Callback to restore a history entry state: (entry) => void */
   export let onRestoreEntry = null;
 
+  let expandedUnchanged = new Set(); // display indices with expanded "unchanged"
 
-  let confirmTooltip = null;
-  let confirmingEntry = null;
-  let expandedUnchanged = new Set();  // Track which entries have expanded unchanged features
+  // A propagated change whose per-feature contribution is within ±this (log-odds)
+  // is neutral — the value moved but the score didn't.
+  const CONTRIB_EPS = 1e-6;
 
   $: planEntries = $historyEntriesStore?.get(activePlanIndex) || [];
 
-  /**
-   * Toggle expanded state for unchanged features
-   */
-  const toggleUnchangedExpanded = (entryIndex) => {
-    if (expandedUnchanged.has(entryIndex)) {
-      expandedUnchanged.delete(entryIndex);
-    } else {
-      expandedUnchanged.add(entryIndex);
-    }
-    expandedUnchanged = expandedUnchanged;  // Trigger reactivity
+  const toggleUnchangedExpanded = (idx) => {
+    if (expandedUnchanged.has(idx)) expandedUnchanged.delete(idx);
+    else expandedUnchanged.add(idx);
+    expandedUnchanged = expandedUnchanged; // reactivity
   };
 
-  /**
-   * Show confirmation tooltip when entry is clicked
-   */
-  const handleEntryClick = (e, entryIndex) => {
-    const rect = e.currentTarget.getBoundingClientRect();
+  // Restore is a move-to-end relocation (handled by the parent) — nothing is
+  // deleted, so it applies immediately without a confirmation dialog.
+  const restore = (entry) => onRestoreEntry && onRestoreEntry(entry);
 
-    // Center the tooltip in the sidebar (sidebar is 320px wide)
-    // Sidebar center = window.innerWidth - 160
-    const x = window.innerWidth - 160;
-
-    confirmTooltip = {
-      x: x,
-      y: rect.top - 10,
-      entryIndex
-    };
-    // Account for reversed display order: if we're showing 3 entries reversed,
-    // displayIndex 0 corresponds to planEntries[2], displayIndex 1 to planEntries[1], etc.
-    const actualIndex = planEntries.length - 1 - entryIndex;
-    confirmingEntry = planEntries[actualIndex];
-  };
-
-  /**
-   * Confirm restoration and call callback
-   */
-  const confirmRestore = () => {
-    if (confirmingEntry && onRestoreEntry) {
-      onRestoreEntry(confirmingEntry);
-    }
-    confirmTooltip = null;
-    confirmingEntry = null;
-  };
-
-  /**
-   * Cancel restoration
-   */
-  const cancelRestore = () => {
-    confirmTooltip = null;
-    confirmingEntry = null;
-  };
-
-
-  /**
-   * Format a feature value for display
-   */
-  function formatValue(val, feature) {
-    if (val === null || val === undefined) return '—';
-    if (typeof val === 'string') return val;
-    if (typeof val === 'number') {
-      if (val >= 1000) {
-        return val.toLocaleString('en-US', { maximumFractionDigits: 0 });
-      }
-      return val.toFixed(2);
-    }
-    return String(val);
-  }
+  /** Color bucket for a propagated value, from its per-feature contribution. */
+  const contribColor = (c) =>
+    (c ?? 0) > CONTRIB_EPS ? 'up' : (c ?? 0) < -CONTRIB_EPS ? 'down' : 'neutral';
 </script>
 
 {#if $historySidebarOpenStore}
   <div class="sidebar-panel">
-      <div class="sidebar-header">
-        <h2>Exploration History</h2>
-      </div>
+    <div class="sidebar-header">
+      <h2>Exploration History</h2>
+    </div>
 
-      <div class="entries-list">
-        {#if planEntries.length === 0}
-          <div class="no-entries">No entries yet. Start modifying features to build your history.</div>
-        {:else}
-          {#each [...planEntries].reverse() as entry, idx (idx)}
-            <div
-              class="entry-card"
-              title={entry.timestamp ? new Date(entry.timestamp).toLocaleString() : ''}
-            >
-              <!-- Entry Header -->
-              <div class="entry-header">
-                <div class="entry-info">
-                  <span class="entry-number">Entry {entry.entryNumber}</span>
-                  <span class="entry-score">{entry.probPct}%</span>
-                </div>
-                <button
-                  class="restore-btn"
-                  on:click={(e) => handleEntryClick(e, idx)}
-                  title="Restore this entry"
-                >
-                  Restore
-                </button>
+    <div class="entries-list">
+      {#if planEntries.length === 0}
+        <div class="no-entries">No entries yet. Start modifying features to build your history.</div>
+      {:else}
+        {#each [...planEntries].reverse() as entry, idx (idx)}
+          {@const userFeats = entry.features.filter(f => !f.isAuto)}
+          {@const autoFeats = entry.features.filter(f => f.isAuto)}
+          <div class="entry-card">
+
+            <!-- Header: entry number + approval % (anchor) · Restore -->
+            <div class="entry-header">
+              <div class="entry-info">
+                <span class="entry-number">Entry {entry.entryNumber}</span>
+                <span class="entry-score">{entry.probPct}%</span>
               </div>
-
-              <!-- Direct Features -->
-              {#if entry.features.some(f => !f.isAuto)}
-                <div class="features-group">
-                  <div class="group-label direct">DIRECT</div>
-                  {#each entry.features.filter(f => !f.isAuto) as feat (feat.featureID)}
-                    <div class="feature-row direct">
-                      <span class="feature-name">{feat.name}</span>
-                      <span class="feature-values">
-                        {feat.displayNewValue}
-                      </span>
-                    </div>
-                  {/each}
-                </div>
-              {/if}
-
-              <!-- Auto-Changed Features -->
-              {#if entry.features.some(f => f.isAuto)}
-                <div class="features-group">
-                  <div class="group-label auto">↔ AUTO</div>
-                  {#each entry.features.filter(f => f.isAuto) as feat (feat.featureID)}
-                    <div class="feature-row auto">
-                      <span class="feature-name">{feat.name}</span>
-                      <span class="feature-values">
-                        {feat.displayNewValue}
-                      </span>
-                    </div>
-                  {/each}
-                </div>
-              {/if}
-
-              <!-- Unchanged Features (Collapsible) -->
-              {#if entry.unchangedFeatures && entry.unchangedFeatures.length > 0}
-                <div class="features-group">
-                  <button
-                    class="group-label-btn unchanged"
-                    on:click={() => toggleUnchangedExpanded(idx)}
-                    title="Toggle unchanged features"
-                  >
-                    <span class="expand-icon">
-                      {expandedUnchanged.has(idx) ? '▼' : '▶'}
-                    </span>
-                    <span>UNCHANGED ({entry.unchangedFeatures.length})</span>
-                  </button>
-                  {#if expandedUnchanged.has(idx)}
-                    <div class="unchanged-features-list">
-                      {#each entry.unchangedFeatures as feat (feat.featureID)}
-                        <div class="feature-row unchanged">
-                          <span class="feature-name">{feat.name}</span>
-                          <span class="feature-values">
-                            {feat.displayValue}
-                          </span>
-                        </div>
-                      {/each}
-                    </div>
-                  {/if}
-                </div>
-              {/if}
+              <button class="restore-btn" on:click={() => restore(entry)} title="Restore this state">
+                Restore
+              </button>
             </div>
-          {/each}
-        {/if}
-      </div>
-    </div>
-  {/if}
 
-  <!-- Confirmation Tooltip -->
-  {#if confirmTooltip}
-    <!-- svelte-ignore a11y-click-events-have-key-events -->
-    <div class="confirm-overlay" on:click={cancelRestore} />
-    <div
-      class="confirm-tooltip"
-      style="left: {confirmTooltip.x}px; top: {confirmTooltip.y}px"
-    >
-      <div class="confirm-message">Restore this state?</div>
-      <div class="confirm-buttons">
-        <button class="btn-confirm" on:click={confirmRestore}>Confirm</button>
-        <button class="btn-cancel" on:click={cancelRestore}>Cancel</button>
-      </div>
+            <!-- You changed (always present) -->
+            {#if userFeats.length > 0}
+              <div class="group">
+                <div class="group-label">You changed</div>
+                {#each userFeats as feat (feat.featureID)}
+                  <div class="feat-row user">
+                    <span class="feat-name">{feat.name}</span>
+                    <span class="feat-val">
+                      <span class="from">{feat.displayOldValue}</span>
+                      <span class="arrow">&rarr;</span>
+                      <span class="to">{feat.displayNewValue}</span>
+                    </span>
+                  </div>
+                {/each}
+              </div>
+            {/if}
+
+            <!-- This caused (only when propagation occurred) -->
+            {#if autoFeats.length > 0}
+              <div class="group group-caused">
+                <div class="group-label">This caused</div>
+                {#each autoFeats as feat (feat.featureID)}
+                  <div class="feat-row caused">
+                    <span class="feat-name">{feat.name}</span>
+                    <span class="feat-val">
+                      <span class="from">{feat.displayOldValue}</span>
+                      <span class="arrow">&rarr;</span>
+                      <span class="to val-{contribColor(feat.contribution)}">{feat.displayNewValue}</span>
+                    </span>
+                  </div>
+                {/each}
+              </div>
+            {/if}
+
+            <!-- Unchanged rollup (collapsed by default) -->
+            {#if entry.unchangedFeatures && entry.unchangedFeatures.length > 0}
+              <button class="uc-toggle" on:click={() => toggleUnchangedExpanded(idx)}>
+                <span class="uc-arrow">{expandedUnchanged.has(idx) ? '▾' : '▸'}</span>
+                {entry.unchangedFeatures.length} unchanged
+              </button>
+              {#if expandedUnchanged.has(idx)}
+                <div class="uc-list">
+                  {#each entry.unchangedFeatures as feat (feat.featureID)}
+                    <div class="feat-row uc">
+                      <span class="feat-name">{feat.name}</span>
+                      <span class="feat-val">{feat.displayValue}</span>
+                    </div>
+                  {/each}
+                </div>
+              {/if}
+            {/if}
+
+          </div>
+        {/each}
+      {/if}
     </div>
-  {/if}
+  </div>
+{/if}
 
 <style lang="scss">
   @import '../../define';
 
-  /* ── Sidebar Panel ────────────────────────────────── */
+  $c-up: #185FA5;
+  $c-down: #A32D2D;
+
   .sidebar-panel {
     position: fixed;
-    right: 0;
-    top: 0;
-    bottom: 0;
+    right: 0; top: 0; bottom: 0;
     width: 320px;
     background: white;
     border-left: 1px solid $gray-300;
@@ -213,12 +135,8 @@
   }
 
   @keyframes slideInRight {
-    from {
-      transform: translateX(100%);
-    }
-    to {
-      transform: translateX(0);
-    }
+    from { transform: translateX(100%); }
+    to   { transform: translateX(0); }
   }
 
   .sidebar-header {
@@ -239,270 +157,155 @@
   .entries-list {
     flex: 1 1 auto;
     overflow-y: auto;
-    padding: 12px 8px;
+    padding: 12px 10px;
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 10px;
   }
 
   .no-entries {
     padding: 24px 16px;
     text-align: center;
     color: $gray-500;
-    font-size: 0.85rem;
+    font-size: 0.9rem;
     line-height: 1.4;
   }
 
-  /* ── Entry Card ──────────────────────────────────── */
+  /* ── Entry card ──────────────────────────────────── */
   .entry-card {
-    padding: 12px;
+    padding: 12px 14px;
     background: white;
-    border: 1px solid $gray-200;
-    border-radius: 6px;
-    cursor: pointer;
-    transition: all 150ms;
+    border: 1px solid $gray-400;
+    border-radius: 8px;
     flex: 0 0 auto;
-
-    &:hover {
-      background: $gray-50;
-      border-color: $gray-300;
-      box-shadow: 0 2px 4px hsla(0, 0%, 0%, 0.04);
-    }
   }
 
   .entry-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 10px;
     gap: 8px;
+    margin-bottom: 10px;
   }
 
   .entry-info {
     display: flex;
     align-items: baseline;
     gap: 8px;
-    flex: 1;
     min-width: 0;
+  }
+
+  .entry-number {
+    font-size: 0.9rem;
+    font-weight: 700;
+    color: $gray-700;
+    letter-spacing: 0.04em;
+  }
+
+  .entry-score {
+    font-size: 22px;
+    font-weight: 800;
+    color: $gray-900;
+    line-height: 1;
   }
 
   .restore-btn {
     flex: 0 0 auto;
-    padding: 4px 12px;
-    font-size: 0.75rem;
+    padding: 5px 14px;
+    font-size: 0.8rem;
     font-weight: 600;
     background: $blue-600;
     color: white;
     border: none;
-    border-radius: 4px;
+    border-radius: 5px;
     cursor: pointer;
-    transition: all 150ms;
-    white-space: nowrap;
-
-    &:hover {
-      background: $blue-700;
-    }
-
-    &:active {
-      background: $blue-800;
-    }
+    transition: background 150ms;
+    &:hover { background: $blue-700; }
+    &:active { background: $blue-800; }
   }
 
-  .entry-number {
-    font-size: 0.8rem;
-    font-weight: 700;
-    color: $gray-700;
-    letter-spacing: 0.06em;
-  }
+  /* ── Groups ──────────────────────────────────────── */
+  .group { margin-top: 8px; }
 
-  .entry-score {
-    font-size: 1rem;
-    font-weight: 800;
-    color: $gray-900;
-  }
-
-  /* ── Features Groups ─────────────────────────────── */
-  .features-group {
-    margin-bottom: 8px;
-
-    &:last-child {
-      margin-bottom: 0;
-    }
+  .group-caused {
+    margin-top: 10px;
+    padding-top: 9px;
+    border-top: 1px solid $gray-200;
   }
 
   .group-label {
-    font-size: 0.65rem;
+    font-size: 0.8rem;
     font-weight: 700;
-    letter-spacing: 0.08em;
+    letter-spacing: 0.07em;
     text-transform: uppercase;
-    margin-bottom: 4px;
-    padding: 0 4px;
-
-    &.direct {
-      color: $gray-700;
-    }
-
-    &.auto {
-      color: $gray-500;
-    }
-  }
-
-  .group-label-btn {
-    background: none;
-    border: none;
-    padding: 0 4px;
-    font-size: 0.65rem;
-    font-weight: 700;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    cursor: pointer;
     color: $gray-500;
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    margin-bottom: 4px;
-    transition: color 150ms;
-
-    &:hover {
-      color: $gray-600;
-    }
-
-    &.unchanged {
-      color: $gray-500;
-    }
+    margin-bottom: 5px;
   }
 
-  .expand-icon {
-    display: inline-block;
-    font-size: 0.5rem;
-    width: 0.5rem;
-    text-align: center;
-    transition: transform 150ms;
-  }
-
-  .unchanged-features-list {
-    margin-bottom: 8px;
-  }
-
-  .feature-row {
-    font-size: 0.75rem;
-    line-height: 1.3;
-    padding: 4px 6px;
-    margin-bottom: 3px;
-    border-radius: 3px;
+  .feat-row {
     display: flex;
     justify-content: space-between;
-    gap: 4px;
-
-    &.direct {
-      color: $gray-800;
-      font-weight: 500;
-      background: hsla(0, 0%, 0%, 0.02);
-    }
-
-    &.auto {
-      color: $gray-600;
-      font-weight: 400;
-      background: hsla(0, 0%, 0%, 0.01);
-    }
-
-    &.unchanged {
-      color: $gray-500;
-      font-weight: 400;
-      background: hsla(0, 0%, 0%, 0.005);
-      opacity: 0.8;
-    }
-
-    &:last-child {
-      margin-bottom: 0;
-    }
+    gap: 10px;
+    padding: 2px 0;
   }
 
-  .feature-name {
-    flex: 0 0 auto;
-    max-width: 60%;
+  .feat-name {
+    min-width: 0;
     overflow: hidden;
     white-space: nowrap;
     text-overflow: ellipsis;
   }
 
-  .feature-values {
-    flex: 1 1 auto;
+  .feat-val {
+    flex: 0 0 auto;
     text-align: right;
     font-variant-numeric: tabular-nums;
-    color: inherit;
-    opacity: 0.85;
+
+    /* "from" and arrow are muted so the "to" value stays the emphasis. */
+    .from  { color: $gray-400; font-weight: 500; }
+    .arrow { color: $gray-400; margin: 0 3px; }
+    .to    { font-weight: 700; }
   }
 
-  /* ── Confirmation Tooltip ────────────────────────── */
-  .confirm-overlay {
-    position: fixed;
-    inset: 0;
-    z-index: 9998;
+  /* Both groups share the same row font (size + weight); only the "to" value
+     color differs — primary in "You changed", contribution-colored in "This
+     caused". */
+  .feat-row.user, .feat-row.caused {
+    .feat-name { font-size: 15px; font-weight: 500; color: $gray-800; }
+    .feat-val  { font-size: 15px; }
   }
 
-  .confirm-tooltip {
-    position: fixed;
-    z-index: 9999;
-    background: white;
-    border: 1px solid $gray-300;
-    border-radius: 6px;
-    padding: 12px;
-    box-shadow: 0 4px 16px hsla(0, 0%, 0%, 0.12);
-    transform: translate(-50%, -100%);
-    min-width: 180px;
+  .feat-row.user .feat-val .to { color: $gray-900; }
+
+  .feat-row.caused .feat-val {
+    .to.val-up      { color: $c-up; }
+    .to.val-down    { color: $c-down; }
+    .to.val-neutral { color: $gray-700; }
+  }
+
+  /* ── Unchanged rollup ────────────────────────────── */
+  .uc-toggle {
     display: flex;
-    flex-direction: column;
-    gap: 8px;
-  }
-
-  .confirm-message {
-    font-size: 0.85rem;
-    font-weight: 600;
-    color: $gray-900;
-    text-align: center;
-  }
-
-  .confirm-buttons {
-    display: flex;
+    align-items: center;
     gap: 6px;
-    justify-content: center;
-  }
-
-  .btn-confirm,
-  .btn-cancel {
-    padding: 5px 12px;
-    font-size: 0.75rem;
-    font-weight: 600;
-    border-radius: 4px;
+    width: 100%;
+    margin-top: 10px;
+    padding: 4px 0 0;
+    background: none;
     border: none;
     cursor: pointer;
-    transition: all 150ms;
+    font-size: 0.9rem;
+    color: $gray-500;
+    text-align: left;
+    &:hover { color: $gray-700; }
+    .uc-arrow { width: 9px; }
   }
 
-  .btn-confirm {
-    background: $green-600;
-    color: white;
-
-    &:hover {
-      background: $green-700;
-    }
-
-    &:active {
-      background: $green-800;
-    }
-  }
-
-  .btn-cancel {
-    background: $gray-200;
-    color: $gray-700;
-
-    &:hover {
-      background: $gray-300;
-    }
-
-    &:active {
-      background: $gray-400;
+  .uc-list {
+    margin-top: 4px;
+    .feat-row.uc {
+      .feat-name { font-size: 0.8rem; color: $gray-500; }
+      .feat-val  { font-size: 0.8rem; color: $gray-500; }
     }
   }
 </style>
