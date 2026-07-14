@@ -138,7 +138,8 @@ export class ScorePanel {
         .transition(widthTransition)
         .attr('width', this.xScale(this.curValue));
 
-      // Update delta highlight rect
+      // Update delta highlight rect (blue when score increased, red when it
+      // decreased) spanning original→current.
       const deltaClass = this.curValue > this.originalValue
         ? 'delta-up'
         : this.curValue < this.originalValue
@@ -429,7 +430,8 @@ export class ScorePanel {
       .on('mouseleave', () => this.mouseleaveHandler());
 
     // Draw the delta highlight between original score and current score.
-    // Red when score decreased (bad), blue when score increased (good).
+    // Delta highlight between original and current score (blue up / red down),
+    // and the hover trigger for the score-change breakdown popup.
     const deltaClass = this.curValue > this.originalValue
       ? 'delta-up'
       : this.curValue < this.originalValue
