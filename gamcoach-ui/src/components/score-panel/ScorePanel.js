@@ -62,13 +62,16 @@ export class ScorePanel {
     planStore,
     tooltipConfigStore,
     updateInRange,
-    logger
+    logger,
+    onDelta = null
   ) {
     this.component = component;
     this.planLabel = planLabel;
     this.updateInRange = updateInRange;
     /** @type {Logger} */
     this.logger = logger;
+    this.onDelta = onDelta; // (delta|null) => void — publishes the ±pp label
+    this.previousValue = undefined;
 
     // Track propagated features so breakdown labels are correct.
     this._propagatedFeatures = new Set();
@@ -170,6 +173,60 @@ export class ScorePanel {
       const data = this.computeBreakdown(this._propagatedFeatures);
       return { ...v, data };
     });
+
+    // ── Settled score change → ±pp label above the bar ───────────────────────
+    // The score fires many times during a drag/propagation, so we debounce and
+    // act once it settles. `previousValue` only DETECTS that a user change
+    // occurred (so nothing shows at load); the published delta is always
+    // measured from the ORIGINAL score.
+    if (this.previousValue === undefined) {
+      this.previousValue = this.curValue; // baseline (first score seen)
+    }
+    clearTimeout(this._deltaLogTimer);
+    this._deltaLogTimer = setTimeout(() => {
+      const prev = this.previousValue;
+      const cur = this.curValue;
+      const settledStep = Math.round(cur * 100) - Math.round(prev * 100);
+      this.previousValue = cur;
+      if (settledStep === 0) return; // no real change settled — keep current label
+
+      const deltaPP = Math.round(cur * 100) - Math.round(this.originalValue * 100);
+      console.log(
+        `[DELTA] Plan ${this.planLabel?.planIndex}: original ` +
+        `${Math.round(this.originalValue * 100)}% → ${Math.round(cur * 100)}%  =  ` +
+        `${deltaPP > 0 ? '+' : ''}${deltaPP}pp`
+      );
+
+      if (!this.onDelta) return;
+      if (deltaPP === 0) { this.onDelta(null); return; } // back at the original
+      const thrPP = Math.round(this.maxThreshold * 100); // 50 for the classifier
+      this.onDelta({
+        deltaPP,
+        direction: deltaPP > 0 ? 'up' : 'down',
+        distancePP: Math.max(0, thrPP - Math.round(cur * 100)),
+        thresholdMet: cur >= this.maxThreshold,
+        ...(this.getDeltaLabelPos() || { screenX: 0, screenY: 0 })
+      });
+    }, 600);
+  }
+
+  /**
+   * Viewport position for the ±pp label: centered over the original→current
+   * segment, just above the bar. Computed from the SVG's LIVE screen rect (so
+   * callers can re-invoke it on window resize / scroll / tab changes). Returns
+   * null when the bar is not currently laid out (e.g. hidden tab).
+   */
+  getDeltaLabelPos() {
+    if (!this.svgInitialized) return null;
+    const svgNode = this.svg.node();
+    if (!svgNode) return null;
+    const sr = svgNode.getBoundingClientRect();
+    if (sr.width < 5) return null; // collapsed / hidden tab
+    const midVB =
+      this.padding.left +
+      (this.xScale(this.originalValue) + this.xScale(this.curValue)) / 2;
+    const frac = Math.max(0.06, Math.min(0.94, midVB / this.width));
+    return { screenX: sr.left + frac * sr.width, screenY: sr.top - 2 };
   }
 
   destroy() {
