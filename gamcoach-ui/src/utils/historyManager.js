@@ -9,39 +9,27 @@
  */
 
 /**
- * Create a history entry from a plan state
+ * Create a history entry from a plan state.
+ *
+ * The changed/unchanged split is a CUMULATIVE SNAPSHOT against the load-time
+ * baseline (the applicant's starting application, plan.curExample) — never a
+ * diff of the last interaction. A feature edited and later returned to its
+ * baseline value lands back in "unchanged".
+ *
  * @param {number} planIndex - Plan index
  * @param {Plan} plan - The current plan object
- * @param {Set<string>} propagatedFeatures - Set of feature names that were auto-changed
+ * @param {Set<string>} propagatedFeatures - (unused; kept for call-site parity)
  * @param {number} previousScore - Previous probability (for delta calculation)
  * @param {number} entryNumber - Sequential entry number
- * @param {HistoryEntry} previousEntry - Previous entry (to compare against) or null for first entry
- * @param {object} initialFeatureState - Initial feature state (after coach suggestions) for first entry
  * @returns {HistoryEntry}
  */
-export function createHistoryEntry(planIndex, plan, propagatedFeatures, previousScore, entryNumber, previousEntry, initialFeatureState) {
+export function createHistoryEntry(planIndex, plan, propagatedFeatures, previousScore, entryNumber) {
   const changedFeatures = [];
   const unchangedFeatures = [];
 
-  // Determine the baseline values: either from previous entry's complete state, initial state, or original input
-  const baselineValues = {};
-  if (previousEntry && previousEntry.allFeatureValues) {
-    // Use the complete feature state from previous entry as baseline
-    // This includes all features, not just the ones that changed
-    Object.assign(baselineValues, previousEntry.allFeatureValues);
-  } else if (initialFeatureState) {
-    // First entry: use the initial state (after coach suggestions were applied)
-    Object.assign(baselineValues, initialFeatureState);
-  } else {
-    // Fallback: use original values as baseline
-    for (const feature of plan.features) {
-      baselineValues[feature.featureID] = plan.curExample[feature.featureID];
-    }
-  }
-
   // Per-feature score contributions (log-odds) vs the original profile — the
-  // same values that color the score-breakdown and plan-comparison panels. Used
-  // to color propagated ("This caused") rows: >0 raised approval, <0 lowered it.
+  // same values that color the score-breakdown and plan-comparison panels:
+  // >0 raised approval (blue), <0 lowered it (red).
   let origScores = {};
   let curScores = {};
   try {
@@ -51,42 +39,37 @@ export function createHistoryEntry(planIndex, plan, propagatedFeatures, previous
     // Leave empty → contributions default to 0 (neutral).
   }
 
-  // Capture all features - both changed and unchanged
+  // Capture all features - both changed and unchanged (vs load-time baseline).
   for (const feature of plan.features) {
     try {
       const currentVal = plan.ebmLocal.sample[feature.featureID];
-      const baselineVal = baselineValues[feature.featureID];
+      const baselineVal = plan.curExample[feature.featureID];
       const displayName = feature.data?.description?.displayName || feature.data?.name || `Feature ${feature.featureID}`;
+      const featureName = feature.data?.name;
 
-      // Check if feature changed
-      if (currentVal !== baselineVal) {
-        // Determine if this feature was auto-changed (propagated)
-        // Check if the feature name appears in propagatedFeatures (same logic as arrows)
-        const featureName = feature.data?.name;
-        const isAuto = propagatedFeatures && featureName && propagatedFeatures.has(featureName);
+      const displayNewValue = formatValue(currentVal, feature);
+      const displayBaselineValue = formatValue(baselineVal, feature);
 
+      // Compare on the DECODED labels: the baseline stores category codes while
+      // the live sample stores label strings, so raw comparison would misfire.
+      if (displayNewValue !== displayBaselineValue) {
         changedFeatures.push({
           featureID: feature.featureID,
           name: displayName,
-          oldValue: baselineVal,
-          newValue: currentVal,
-          displayOldValue: formatValue(baselineVal, feature),
-          displayNewValue: formatValue(currentVal, feature),
-          isAuto: isAuto || false,  // Default to false if propagation check fails
+          displayOldValue: displayBaselineValue, // from = load-time baseline
+          displayNewValue,                       // to = value at this entry
           contribution: (curScores[featureName] ?? 0) - (origScores[featureName] ?? 0)
         });
       } else {
-        // Feature didn't change - add to unchanged list
         unchangedFeatures.push({
           featureID: feature.featureID,
           name: displayName,
           value: currentVal,
-          displayValue: formatValue(currentVal, feature)
+          displayValue: displayNewValue
         });
       }
     } catch (error) {
-      // Silently skip features with errors in propagation logic
-      // They will be treated as direct changes if they appear in the history
+      // Silently skip features with errors; they will simply not be listed.
     }
   }
 
@@ -106,9 +89,11 @@ export function createHistoryEntry(planIndex, plan, propagatedFeatures, previous
     probPct: currentProb,
     previousScore,
     previousProbPct: previousProb,
-    features: changedFeatures,  // Features that changed (DIRECT or AUTO)
-    unchangedFeatures: unchangedFeatures,  // Features that didn't change
-    allFeatureValues,  // Store complete state for next baseline
+    features: changedFeatures,  // Features that differ from the load-time baseline
+    unchangedFeatures: unchangedFeatures,  // Features still at their baseline value
+    allFeatureValues,  // Complete state (used by Restore)
+    saved: false,  // Star/bookmark: saved entries are pinned (never auto-pruned)
+    note: null,    // Optional user note — tied to saved state
     timestamp: Date.now()
   };
 }
@@ -163,18 +148,27 @@ function sigmoid(x) {
  * @param {HistoryEntry} entry - The entry to add
  * @returns {Map<number, HistoryEntry[]>} - Updated history map
  */
+// Lifecycle caps (independent): up to 15 transient (unsaved) entries pruned
+// FIFO, and up to 5 saved entries which are pinned — never auto-pruned.
+export const MAX_TRANSIENT_ENTRIES = 15;
+export const MAX_SAVED_ENTRIES = 5;
+
 export function addHistoryEntry(historyMap, planIndex, entry) {
   const entries = historyMap.get(planIndex) || [];
 
-  // Add the new entry
+  // Add the new entry (always transient at creation)
   entries.push(entry);
 
-  // Enforce 10-entry cap (remove oldest entry if exceeded)
-  if (entries.length > 10) {
-    entries.shift();
+  // FIFO-prune the OLDEST UNSAVED entries beyond the transient cap. Saved
+  // entries are skipped — pruning never touches them.
+  let unsavedCount = entries.filter((e) => !e.saved).length;
+  while (unsavedCount > MAX_TRANSIENT_ENTRIES) {
+    const oldestUnsaved = entries.findIndex((e) => !e.saved);
+    entries.splice(oldestUnsaved, 1);
+    unsavedCount -= 1;
   }
 
-  // Renumber all entries
+  // Renumber all entries (numbering always reflects list order; oldest = 1)
   entries.forEach((e, idx) => {
     e.entryNumber = idx + 1;
   });
@@ -183,6 +177,37 @@ export function addHistoryEntry(historyMap, planIndex, entry) {
   const newMap = new Map(historyMap);
   newMap.set(planIndex, [...entries]);  // Create a new array reference for reactivity
   return newMap;
+}
+
+/**
+ * Toggle an entry's saved (starred) state.
+ * - Saving is blocked (ok:false, reason:'cap') when MAX_SAVED_ENTRIES entries
+ *   are already saved — never silently discards an existing save.
+ * - Unsaving returns the entry to the transient pool and discards its note
+ *   (notes are tied to saved state; the UI warns first when a note exists).
+ * @returns {{map: Map, ok: boolean, reason?: string}}
+ */
+export function toggleSaveEntry(historyMap, planIndex, entry) {
+  const entries = historyMap.get(planIndex) || [];
+  const target = entries.find(
+    (e) => e === entry || (e.timestamp === entry.timestamp && e.score === entry.score)
+  );
+  if (!target) return { map: historyMap, ok: false, reason: 'missing' };
+
+  if (target.saved) {
+    target.saved = false;
+    target.note = null; // notes only exist on saved entries
+  } else {
+    const savedCount = entries.filter((e) => e.saved).length;
+    if (savedCount >= MAX_SAVED_ENTRIES) {
+      return { map: historyMap, ok: false, reason: 'cap' };
+    }
+    target.saved = true;
+  }
+
+  const newMap = new Map(historyMap);
+  newMap.set(planIndex, [...entries]);
+  return { map: newMap, ok: true };
 }
 
 /**
