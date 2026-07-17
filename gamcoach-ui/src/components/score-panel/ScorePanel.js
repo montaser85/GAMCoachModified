@@ -12,7 +12,10 @@ const formatter = d3.format(',.2~f');
 
 export class ScorePanel {
   width;
-  height = 30;
+  // The bar band: the bar sits in the vertical MIDDLE of the 46px band
+  // (padding.top/bottom balance it), and the ±pp chip renders in the strip
+  // just ABOVE the bar — inside the band, clear of the toolbar buttons.
+  height = 46;
   rectHeight = 8;
   rectRadius = 5;
   lineWidth = 2;
@@ -35,8 +38,8 @@ export class ScorePanel {
   svgInitialized = false;
 
   padding = {
-    top: 1,
-    bottom: 8,
+    top: 18,   // bar sits in the band's lower half (bar spans y31–39) so the
+    bottom: 7, // vertical lines (which rise above the bar) stay below the chip
     right: 8,
     left: 5
   };
@@ -212,21 +215,30 @@ export class ScorePanel {
 
   /**
    * Viewport position for the ±pp label: centered over the original→current
-   * segment, just above the bar. Computed from the SVG's LIVE screen rect (so
-   * callers can re-invoke it on window resize / scroll / tab changes). Returns
-   * null when the bar is not currently laid out (e.g. hidden tab).
+   * segment, just ABOVE the bar (the label is bottom-anchored via CSS
+   * translate(-50%,-100%)), inside the band's upper strip — clear of the
+   * toolbar buttons. Computed from the SVG's LIVE screen rect (so callers can
+   * re-invoke it on window resize / scroll / tab changes). Returns null when
+   * the bar is not laid out (e.g. hidden tab).
    */
   getDeltaLabelPos() {
     if (!this.svgInitialized) return null;
     const svgNode = this.svg.node();
     if (!svgNode) return null;
     const sr = svgNode.getBoundingClientRect();
-    if (sr.width < 5) return null; // collapsed / hidden tab
+    if (sr.width < 5 || sr.height < 5) return null; // collapsed / hidden tab
     const midVB =
       this.padding.left +
       (this.xScale(this.originalValue) + this.xScale(this.curValue)) / 2;
     const frac = Math.max(0.06, Math.min(0.94, midVB / this.width));
-    return { screenX: sr.left + frac * sr.width, screenY: sr.top - 2 };
+    // The label's bottom edge lands just above the TOPS of the vertical lines
+    // (the lines start at the content area's top, padding.top), not merely
+    // above the bar — so the ±pp text never overlaps the score/threshold lines.
+    const yFrac = (this.padding.top - 2) / this.height;
+    return {
+      screenX: sr.left + frac * sr.width,
+      screenY: sr.top + yFrac * sr.height
+    };
   }
 
   destroy() {

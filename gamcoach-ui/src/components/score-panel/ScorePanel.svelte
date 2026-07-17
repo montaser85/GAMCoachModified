@@ -189,6 +189,7 @@
      it; pointer-events off so it never blocks the bar's hover targets. */
   .delta-label {
     position: fixed;
+    /* Bottom-anchored just ABOVE the bar (inside the band's upper strip). */
     transform: translate(-50%, -100%);
     font-size: 0.9rem;
     font-weight: 700;

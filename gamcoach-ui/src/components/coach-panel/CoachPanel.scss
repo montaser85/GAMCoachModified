@@ -89,12 +89,19 @@
   padding: 10px 15px 10px 15px;
 
   border-bottom: 1px solid $gray-light-border;
-  z-index: 1;
+  // NOTE: .coach-header is a flex item of .coach-panel, so z-index here creates
+  // a stacking context even at position:static. It must outrank the selected
+  // tab (z-index: 2) or anything popping out of the header paints UNDER the
+  // tab bar regardless of its own z-index.
+  z-index: 3;
   box-shadow: 0px 1px 4px hsla(0, 0%, 0%, 0.07);
+  // Guaranteed breathing room between the subtitle and the button group.
+  gap: 24px;
 }
 
 .coach-logo {
   flex: 1 1 auto;
+  min-width: 0; // allow the tagline to shrink instead of pushing the buttons
   display: flex;
   justify-content: flex-start;
   align-items: baseline;
@@ -113,11 +120,45 @@
     font-size: 1rem;
     font-weight: 300;
     color: $gray-700;
+    // The subtitle yields on narrow windows: truncate with an ellipsis rather
+    // than colliding with the toolbar buttons.
+    flex: 0 1 auto;
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
   img {
     pointer-events: none;
     height: 19px;
+  }
+}
+
+// ── Watch example — subtle accent entry point, left of Compare ─────────────
+.coach-controls {
+  .watch-example-btn {
+    align-self: center;
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 10px;
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: $blue-700;                  // accent text
+    background: hsl(206, 100%, 96%);   // light accent tint
+    border: 1px solid hsl(206, 70%, 82%); // thin accent border
+    border-radius: 6px;
+    cursor: pointer;
+    line-height: 1.4;
+    transition: background 150ms, border-color 150ms;
+
+    &:hover {
+      background: hsl(206, 100%, 93%);
+      border-color: hsl(206, 70%, 70%);
+    }
+
+    svg { flex: 0 0 auto; }
   }
 }
 
@@ -163,7 +204,10 @@
   justify-content: space-between;
   align-items: center;
 
-  height: 32px;
+  // Tall enough for the score bar band (46px svg: bar + reserved ±pp chip
+  // strip below it) so the chip sits inside the strip, clear of the toolbar
+  // above and the content below.
+  height: 50px;
   line-height: 1.2;
   border-bottom: 1px solid $gray-light-border;
   background-color: $gray-200;
@@ -398,6 +442,7 @@
   flex-direction: row;
   align-items: center;
   gap: 5px;
+  flex: 0 0 auto; // the buttons never shrink; the subtitle yields instead
 
   .icon-wrapper {
     background-color: $gray-50;

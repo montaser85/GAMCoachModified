@@ -19,6 +19,7 @@
   import { createHistoryEntry, addHistoryEntry } from '../../utils/historyManager';
 
   import CompareModal from '../compare-modal/CompareModal.svelte';
+  import ExampleModal from '../example-modal/ExampleModal.svelte';
 
   import ScorePanel from '../score-panel/ScorePanel.svelte';
   import '../../typedef';
@@ -72,6 +73,12 @@
   const pendingHistoryTimeouts = new Map();
   let propagatedFeatures = new Set();
   let isRestoringEntry = false;
+
+  // ── Worked example ("Watch example") ───────────────────────────────────────
+  // The always-visible button is the SOLE entry point: the modal only opens on
+  // its click — no auto-hint, no auto-open, under any condition.
+  let exampleOpen = false;
+  const openExample = () => { exampleOpen = true; };
 
   // Set up tooltip
   unsubscribes.push(
@@ -613,6 +620,13 @@
       </span>
     </div>
     <div class="coach-controls">
+      <!-- Watch example — persistent, subtle entry point, left of Compare -->
+      <button class="watch-example-btn" on:click={openExample} title="Watch a short worked example">
+        <svg viewBox="0 0 20 20" width="13" height="13" aria-hidden="true">
+          <polygon points="5,3 17,10 5,17" fill="currentColor"/>
+        </svg>
+        Watch example
+      </button>
       <div class="icon-wrapper" on:click={compareClicked} title="Compare all plans side by side">
         <svg class="compare-svg" viewBox="0 0 20 20" width="18" height="18"
              fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
@@ -752,6 +766,8 @@
     {localPlans}
     {localPlansVersion}
   />
+
+  <ExampleModal open={exampleOpen} onClose={() => { exampleOpen = false; }} />
 </div>
 
 <style lang="scss">
