@@ -241,6 +241,29 @@ export class ScorePanel {
     };
   }
 
+  /**
+   * Open the score-change breakdown popup anchored under `rect` — the same
+   * popup the bar's delta segment triggers. `pinned` mirrors the segment's
+   * click-to-pin behavior. Used by the ±pp chip.
+   * @param {DOMRect} rect
+   * @param {boolean} [pinned]
+   */
+  showBreakdownForRect(rect, pinned = false) {
+    clearTimeout(this._hidePopupTimer);
+    const data = this.computeBreakdown(this._propagatedFeatures);
+    if (!data) return;
+    const next = { show: true, x: rect.left, y: rect.bottom + 6, data, pinned };
+    if (pinned) breakdownPopupStore.set(next);
+    else breakdownPopupStore.update((v) => (v.pinned ? v : next));
+  }
+
+  /** Schedule the popup to auto-hide (unless pinned) — same delay as the bar. */
+  hideBreakdownSoon() {
+    this._hidePopupTimer = setTimeout(() => {
+      breakdownPopupStore.update((v) => (v.pinned ? v : { ...v, show: false }));
+    }, 150);
+  }
+
   destroy() {
     if (this.svg !== null) {
       this.svg.selectAll('*').remove();

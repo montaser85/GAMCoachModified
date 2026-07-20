@@ -49,7 +49,6 @@
   // `pos` is null and the label hides — then reappears on its own.
   let pos = null;
   let rafId = null;
-  let panelHover = false; // hide the label while the bar's hover tooltips show
 
   const trackLabelPos = () => {
     pos = scorePanel ? scorePanel.getDeltaLabelPos() : null;
@@ -67,7 +66,16 @@
     else if (!d) stopTracking();
   };
 
-  $: showLabel = delta && pos && !panelHover;
+  $: showLabel = delta && pos;
+
+  // The chip doubles as a breakdown trigger, mirroring the bar's delta segment:
+  // hover shows the decomposition popup, click pins it, leaving hides it after
+  // the same short delay.
+  const chipEnter = (e) =>
+    scorePanel?.showBreakdownForRect(e.currentTarget.getBoundingClientRect());
+  const chipClick = (e) =>
+    scorePanel?.showBreakdownForRect(e.currentTarget.getBoundingClientRect(), true);
+  const chipLeave = () => scorePanel?.hideBreakdownSoon();
 
   // Move the label to <body>: an ancestor with a CSS transform (e.g. tab
   // animations) would otherwise re-anchor position:fixed and misplace it.
@@ -132,15 +140,10 @@
   $: planLabel && planLabelUpdated();
 </script>
 
-<!-- svelte-ignore a11y-no-static-element-interactions -->
-<div
-  class="score-panel"
-  bind:this={component}
-  on:mouseenter={() => { panelHover = true; }}
-  on:mouseleave={() => { panelHover = false; }}
->
+<div class="score-panel" bind:this={component}>
   <svg class="score-svg" width="10" height="10"/>
   {#if showLabel}
+    <!-- svelte-ignore a11y-no-static-element-interactions a11y-click-events-have-key-events -->
     <span
       class="delta-label"
       class:met={delta.thresholdMet}
@@ -148,6 +151,10 @@
       class:down={!delta.thresholdMet && delta.direction === 'down'}
       style="left: {pos.screenX}px; top: {pos.screenY}px"
       use:portal
+      on:mouseenter={chipEnter}
+      on:mouseleave={chipLeave}
+      on:click={chipClick}
+      title="Score change breakdown"
     >
       <span
         class="dl-pp"
@@ -195,8 +202,14 @@
     font-weight: 700;
     line-height: 1.35;
     white-space: nowrap;
-    pointer-events: none;
-    z-index: 9500;
+    /* Interactive: hovering opens the score-change breakdown (like the bar's
+       delta segment); clicking pins it. */
+    pointer-events: auto;
+    cursor: pointer;
+    /* Above the header (3) / tabs (2), but BELOW the score-line hover
+       tooltips (Tooltip.svelte, z-index 20) so the current/original/threshold
+       messages always read over the chip. */
+    z-index: 10;
     padding: 2px 10px;
     border-radius: 11px;
     box-shadow: 0 1px 4px hsla(0, 0%, 0%, 0.12);

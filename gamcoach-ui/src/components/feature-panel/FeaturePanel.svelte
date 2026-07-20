@@ -13,7 +13,7 @@
 
   import { onMount, onDestroy, tick } from 'svelte';
   import { fade } from 'svelte/transition';
-  import { tooltipConfigStore, featureValueOverrideStore, cardToggleStore, propagatedFeaturesStore } from '../../store';
+  import { tooltipConfigStore, featureValueOverrideStore, cardToggleStore, propagatedFeaturesStore, historySidebarOpenStore } from '../../store';
   import {
     propagate,
     allDependentFeatures,
@@ -1603,6 +1603,22 @@
     });
     unsubscribes.push(unsubCardToggle);
 
+    // The history sidebar squeezes the main content with an animated
+    // padding-right — the cards MOVE without resizing, so the column
+    // ResizeObserver never fires. The arrows overlay is viewport-fixed, so we
+    // must re-read positions throughout that slide: reuse the same
+    // recompute-per-frame loop the card animations use. (Also covers the X
+    // dismiss button, which recomputeArrows positions.)
+    let sidebarInit = true;
+    const unsubSidebar = historySidebarOpenStore.subscribe(() => {
+      if (sidebarInit) { sidebarInit = false; return; }
+      onCardToggle();
+    });
+    unsubscribes.push(unsubSidebar);
+
+    // Window resizes shift the viewport-fixed overlay's frame too.
+    window.addEventListener('resize', onCardToggle);
+
     // Recompute arrows on ANY panel geometry change — expand/collapse, content
     // reflow, or window resize. The panel is a fixed-height scroll container, so
     // its own size never changes; instead we observe the card columns, which
@@ -1624,6 +1640,7 @@
     unsubscribes.forEach(unsub => unsub());
     if (propagationDebounceTimer) clearTimeout(propagationDebounceTimer);
     window.removeEventListener('scroll', onScroll, { capture: true });
+    window.removeEventListener('resize', onCardToggle);
     if (scrollRafId) cancelAnimationFrame(scrollRafId);
     if (cardAnimRafId) cancelAnimationFrame(cardAnimRafId);
     if (resizeRafId) cancelAnimationFrame(resizeRafId);
