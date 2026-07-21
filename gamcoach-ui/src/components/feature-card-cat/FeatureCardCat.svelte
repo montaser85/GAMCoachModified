@@ -48,6 +48,9 @@
    *  Renders as "before − delta = after" beneath the popup text */
   export let linkCalculation = null;
 
+  /** Static dependency lists for the info tooltip: {changedBy?, canChange?}. */
+  export let linkDeps = null;
+
   // Flip the popup upward when near the bottom of the viewport.
   // Uses direct DOM manipulation (not Svelte state) to avoid triggering
   // a re-render, which would disrupt the CSS :hover state and cause flickering.
@@ -597,6 +600,22 @@
           <div class="link-popup">
             {#if linkPopupText}
               <p class="link-popup-text">{linkPopupText}</p>
+              {#if linkDeps}
+                <div class="link-deps">
+                  {#if linkDeps.changedBy}
+                    <div class="dep-row">
+                      <span class="dep-label">Can be changed by</span>
+                      <span class="dep-list">{linkDeps.changedBy}</span>
+                    </div>
+                  {/if}
+                  {#if linkDeps.canChange}
+                    <div class="dep-row">
+                      <span class="dep-label">Can change</span>
+                      <span class="dep-list">{linkDeps.canChange}</span>
+                    </div>
+                  {/if}
+                </div>
+              {/if}
               {#if linkCalculation?.type === 'fico'}
                 <div class="link-calculation">
                   {linkCalculation.before} &minus; 4 = {linkCalculation.after}

@@ -121,6 +121,34 @@ $card-h-padding: 16px;
       margin: 0 0 8px 0;
     }
 
+    // Static two-way dependency lists — between the description above and the
+    // calculation breakdown below; quieter than both.
+    .link-deps {
+      margin: 0 0 8px 0;
+      padding-top: 6px;
+      border-top: 1px solid $gray-200;
+
+      .dep-row {
+        margin-bottom: 4px;
+        &:last-child { margin-bottom: 0; }
+      }
+
+      .dep-label {
+        display: block;
+        font-size: 0.68rem;
+        font-weight: 700;
+        letter-spacing: 0.06em;
+        text-transform: uppercase;
+        color: $gray-400;
+      }
+
+      .dep-list {
+        font-size: 0.8rem;
+        color: $gray-600;
+        line-height: 1.4;
+      }
+    }
+
     .link-calculation {
       margin-top: 4px;
       padding: 5px 8px;

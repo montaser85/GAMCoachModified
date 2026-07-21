@@ -80,7 +80,36 @@
     'revol_util': "Credit utilization is how much of your available revolving credit you're using. It moves with your revolving balance — as the balance goes up or down, so does your utilization.",
     'mort_acc': "Number of mortgages is how many mortgage accounts you have.",
     'open_acc': "Number of open accounts is how many credit lines you currently have open, like credit cards and loans.",
-    'total_acc': "Number of accounts is the total number of credit lines currently in your credit file."
+    'total_acc': "Number of accounts is the total number of credit lines currently in your credit file.",
+    'loan_amnt': "Loan amount is how much money you're asking to borrow.",
+    'term': "Payment period is how long you'd take to repay the loan.",
+    'purpose': "Loan purpose is what the loan is for, which sets its interest rate.",
+    'annual_inc': "Annual income is how much you earn per year.",
+    'inq_last_6mths': "Number of credit inquiries is how many hard credit checks you've had in the last 6 months.",
+    'home_ownership': "Home ownership is your housing status — rent, own, or mortgage."
+  };
+
+  // ── Static two-way dependency lists for the info tooltip ────────────────────
+  // Authoritative mapping (fixed; independent of session state). A feature is
+  // listed here iff it has at least one edge — presence drives the "i" icon.
+  const FEATURE_DEPS = {
+    'loan_amnt':      { canChange: 'Debt to Income Ratio' },
+    'term':           { canChange: 'Debt to Income Ratio' },
+    'purpose':        { canChange: 'Debt to Income Ratio' },
+    'annual_inc':     { canChange: 'Debt to Income Ratio' },
+    'inq_last_6mths': { canChange: 'FICO Score' },
+    'home_ownership': { canChange: 'Number of Mortgages, Number of Open Accounts, Number of Accounts, FICO Score' },
+    'revol_bal':      { changedBy: 'Credit Utilization',
+                        canChange: 'Credit Utilization, Debt to Income Ratio' },
+    'revol_util':     { changedBy: 'Revolving Balance',
+                        canChange: 'Revolving Balance, Debt to Income Ratio' },
+    'open_acc':       { changedBy: 'Number of Mortgages, Home Ownership',
+                        canChange: 'Number of Accounts, FICO Score' },
+    'mort_acc':       { changedBy: 'Home Ownership',
+                        canChange: 'Number of Open Accounts, Number of Accounts, FICO Score' },
+    'dti':            { changedBy: 'Loan Amount, Payment Period, Loan Purpose, Annual Income, Revolving Balance, Credit Utilization' },
+    'fico_score':     { changedBy: 'Number of Open Accounts, Number of Mortgages, Home Ownership, Number of Credit Inquiries' },
+    'total_acc':      { changedBy: 'Number of Open Accounts, Number of Mortgages, Home Ownership' }
   };
 
   // Reactive calculations displayed in popup once propagation has been applied.
@@ -98,7 +127,7 @@
   // indirect/dependent change. The set of features that can be indirectly
   // changed — used to show the linked icon — is derived from the engine's
   // declarative edge set so the UI always matches the implemented edges.
-  const ALL_TARGETS = allDependentFeatures();
+  // (The "i" icon is driven by FEATURE_DEPS above — any feature with ≥1 edge.)
 
   // The applicant's ORIGINAL input profile, in engine display units, frozen at
   // load. This is the single baseline for every net-change computation
@@ -1698,7 +1727,8 @@
             <FeatureCard
               feature={feature}
               logger={logger}
-              isLinked={ALL_TARGETS.has(feature.data.name)}
+              isLinked={feature.data.name in FEATURE_DEPS}
+              linkDeps={FEATURE_DEPS[feature.data.name] || null}
               modified={modifiedFeatures.has(feature.data.name)}
               linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
               linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation
@@ -1717,7 +1747,8 @@
             <FeatureCardCat
               feature={feature}
               logger={logger}
-              isLinked={ALL_TARGETS.has(feature.data.name)}
+              isLinked={feature.data.name in FEATURE_DEPS}
+              linkDeps={FEATURE_DEPS[feature.data.name] || null}
               modified={modifiedFeatures.has(feature.data.name)}
               linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
               linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation
@@ -1744,7 +1775,8 @@
             <FeatureCard
               feature={feature}
               logger={logger}
-              isLinked={ALL_TARGETS.has(feature.data.name)}
+              isLinked={feature.data.name in FEATURE_DEPS}
+              linkDeps={FEATURE_DEPS[feature.data.name] || null}
               modified={modifiedFeatures.has(feature.data.name)}
               linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
               linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation
@@ -1763,7 +1795,8 @@
             <FeatureCardCat
               feature={feature}
               logger={logger}
-              isLinked={ALL_TARGETS.has(feature.data.name)}
+              isLinked={feature.data.name in FEATURE_DEPS}
+              linkDeps={FEATURE_DEPS[feature.data.name] || null}
               modified={modifiedFeatures.has(feature.data.name)}
               linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
               linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation
@@ -1790,7 +1823,8 @@
             <FeatureCard
               feature={feature}
               logger={logger}
-              isLinked={ALL_TARGETS.has(feature.data.name)}
+              isLinked={feature.data.name in FEATURE_DEPS}
+              linkDeps={FEATURE_DEPS[feature.data.name] || null}
               modified={modifiedFeatures.has(feature.data.name)}
               linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
               linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation
@@ -1809,7 +1843,8 @@
             <FeatureCardCat
               feature={feature}
               logger={logger}
-              isLinked={ALL_TARGETS.has(feature.data.name)}
+              isLinked={feature.data.name in FEATURE_DEPS}
+              linkDeps={FEATURE_DEPS[feature.data.name] || null}
               modified={modifiedFeatures.has(feature.data.name)}
               linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
               linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation
@@ -1846,7 +1881,8 @@
             <FeatureCard
               feature={feature}
               logger={logger}
-              isLinked={ALL_TARGETS.has(feature.data.name)}
+              isLinked={feature.data.name in FEATURE_DEPS}
+              linkDeps={FEATURE_DEPS[feature.data.name] || null}
               modified={modifiedFeatures.has(feature.data.name)}
               linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
               linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation
@@ -1865,7 +1901,8 @@
             <FeatureCardCat
               feature={feature}
               logger={logger}
-              isLinked={ALL_TARGETS.has(feature.data.name)}
+              isLinked={feature.data.name in FEATURE_DEPS}
+              linkDeps={FEATURE_DEPS[feature.data.name] || null}
               modified={modifiedFeatures.has(feature.data.name)}
               linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
               linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation
@@ -1892,7 +1929,8 @@
             <FeatureCard
               feature={feature}
               logger={logger}
-              isLinked={ALL_TARGETS.has(feature.data.name)}
+              isLinked={feature.data.name in FEATURE_DEPS}
+              linkDeps={FEATURE_DEPS[feature.data.name] || null}
               modified={modifiedFeatures.has(feature.data.name)}
               linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
               linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation
@@ -1911,7 +1949,8 @@
             <FeatureCardCat
               feature={feature}
               logger={logger}
-              isLinked={ALL_TARGETS.has(feature.data.name)}
+              isLinked={feature.data.name in FEATURE_DEPS}
+              linkDeps={FEATURE_DEPS[feature.data.name] || null}
               modified={modifiedFeatures.has(feature.data.name)}
               linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
               linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation
@@ -1938,7 +1977,8 @@
             <FeatureCard
               feature={feature}
               logger={logger}
-              isLinked={ALL_TARGETS.has(feature.data.name)}
+              isLinked={feature.data.name in FEATURE_DEPS}
+              linkDeps={FEATURE_DEPS[feature.data.name] || null}
               modified={modifiedFeatures.has(feature.data.name)}
               linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
               linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation
@@ -1957,7 +1997,8 @@
             <FeatureCardCat
               feature={feature}
               logger={logger}
-              isLinked={ALL_TARGETS.has(feature.data.name)}
+              isLinked={feature.data.name in FEATURE_DEPS}
+              linkDeps={FEATURE_DEPS[feature.data.name] || null}
               modified={modifiedFeatures.has(feature.data.name)}
               linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
               linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation
@@ -1994,7 +2035,8 @@
             <FeatureCard
               feature={feature}
               logger={logger}
-              isLinked={ALL_TARGETS.has(feature.data.name)}
+              isLinked={feature.data.name in FEATURE_DEPS}
+              linkDeps={FEATURE_DEPS[feature.data.name] || null}
               modified={modifiedFeatures.has(feature.data.name)}
               linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
               linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation
@@ -2013,7 +2055,8 @@
             <FeatureCardCat
               feature={feature}
               logger={logger}
-              isLinked={ALL_TARGETS.has(feature.data.name)}
+              isLinked={feature.data.name in FEATURE_DEPS}
+              linkDeps={FEATURE_DEPS[feature.data.name] || null}
               modified={modifiedFeatures.has(feature.data.name)}
               linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
               linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation
@@ -2040,7 +2083,8 @@
             <FeatureCard
               feature={feature}
               logger={logger}
-              isLinked={ALL_TARGETS.has(feature.data.name)}
+              isLinked={feature.data.name in FEATURE_DEPS}
+              linkDeps={FEATURE_DEPS[feature.data.name] || null}
               modified={modifiedFeatures.has(feature.data.name)}
               linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
               linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation
@@ -2059,7 +2103,8 @@
             <FeatureCardCat
               feature={feature}
               logger={logger}
-              isLinked={ALL_TARGETS.has(feature.data.name)}
+              isLinked={feature.data.name in FEATURE_DEPS}
+              linkDeps={FEATURE_DEPS[feature.data.name] || null}
               modified={modifiedFeatures.has(feature.data.name)}
               linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
               linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation
@@ -2086,7 +2131,8 @@
             <FeatureCard
               feature={feature}
               logger={logger}
-              isLinked={ALL_TARGETS.has(feature.data.name)}
+              isLinked={feature.data.name in FEATURE_DEPS}
+              linkDeps={FEATURE_DEPS[feature.data.name] || null}
               modified={modifiedFeatures.has(feature.data.name)}
               linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
               linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation
@@ -2105,7 +2151,8 @@
             <FeatureCardCat
               feature={feature}
               logger={logger}
-              isLinked={ALL_TARGETS.has(feature.data.name)}
+              isLinked={feature.data.name in FEATURE_DEPS}
+              linkDeps={FEATURE_DEPS[feature.data.name] || null}
               modified={modifiedFeatures.has(feature.data.name)}
               linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
               linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation
