@@ -102,8 +102,8 @@
   );
 
   // Set up the regenerate confirm modal
-  if (localStorage.getItem('needRegenerateConfirm') === null) {
-    localStorage.setItem('needRegenerateConfirm', 'true');
+  if (localStorage.getItem('needRegenerateConfirmV2') === null) {
+    localStorage.setItem('needRegenerateConfirmV2', 'true');
   }
 
   if (localStorage.getItem('needSaveConfirm') === null) {
@@ -474,7 +474,7 @@
     }
 
     // Show the confirm modal if it is the first time
-    const needRegenerateConfirm = localStorage.getItem('needRegenerateConfirm');
+    const needRegenerateConfirm = localStorage.getItem('needRegenerateConfirmV2');
     if (needRegenerateConfirm === 'true') {
       confirmModalConfig = {
         title: 'Regenerate Plans',
@@ -491,7 +491,7 @@
         confirmCallback: (doNotShowAgain, confirmed) => {
           if (confirmed) {
             localStorage.setItem(
-              'needRegenerateConfirm',
+              'needRegenerateConfirmV2',
               doNotShowAgain ? 'false' : 'true'
             );
             dispatchRegenerateClicked();

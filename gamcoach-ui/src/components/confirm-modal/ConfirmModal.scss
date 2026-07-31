@@ -5,11 +5,14 @@ $border-radius: 5px;
 
 .confirm-modal {
   border-radius: $border-radius;
-  position: absolute;
+  // Fixed → reliably centered on the viewport regardless of ancestor
+  // positioning/overflow. High z-index → above every other overlay (history
+  // sidebar 9997, compare/example modals 10000, score chips, etc.).
+  position: fixed;
   top: 50%;
   left: 50%;
   transform: translate(-50%, -50%);
-  z-index: 3;
+  z-index: 10051;
 
   display: flex;
   flex-direction: column;
@@ -125,13 +128,17 @@ $border-radius: 5px;
 }
 
 .confirm-modal-back {
-  position: absolute;
-  z-index: 2;
+  position: fixed;
+  z-index: 10050; // just under the modal
+  // Default full-viewport; overridden inline to cover just the feature panel
+  // (.coach-wrapper) so the dim + modal read as belonging to that white panel.
   width: 100vw;
   height: 100vh;
+  border-radius: $border-radius; // matches the panel's rounded corners
   background-color: $gray-900;
-  opacity: 0.8;
-  pointer-events: none;
+  opacity: 0.55;
+  // Block interaction with the panel behind while the modal is up.
+  pointer-events: auto;
   top: 0px;
   left: 0px;
 
