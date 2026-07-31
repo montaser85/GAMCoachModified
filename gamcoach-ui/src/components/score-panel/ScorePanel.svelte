@@ -66,7 +66,12 @@
     else if (!d) stopTracking();
   };
 
-  $: showLabel = delta && pos;
+  // NOTE: the chip's {#if} tests `delta && pos` DIRECTLY (not via a derived
+  // `$: showLabel` flag). A derived flag is computed before planLabelUpdated
+  // nulls `delta` in the same flush, so the chip fragment would update against
+  // a null delta and crash — which aborts Svelte's flush and freezes ALL
+  // reactivity (the regenerate-stuck-loading bug). Raw values in the {#if} are
+  // re-read at patch time, so the block tears down before touching them.
 
   // The chip doubles as a breakdown trigger, mirroring the bar's delta segment:
   // hover shows the decomposition popup, click pins it, leaving hides it after
@@ -142,7 +147,7 @@
 
 <div class="score-panel" bind:this={component}>
   <svg class="score-svg" width="10" height="10"/>
-  {#if showLabel}
+  {#if delta && pos}
     <!-- svelte-ignore a11y-no-static-element-interactions a11y-click-events-have-key-events -->
     <span
       class="delta-label"
