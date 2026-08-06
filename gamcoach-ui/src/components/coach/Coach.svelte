@@ -3,6 +3,8 @@
   import FeaturePanel from '../feature-panel/FeaturePanel.svelte';
   import CoachPanel from '../coach-panel/CoachPanel.svelte';
   import HistorySidebar from '../history-sidebar/HistorySidebar.svelte';
+  import ScoreReadout from '../score-readout/ScoreReadout.svelte';
+  import ScoreDrivers from '../score-readout/ScoreDrivers.svelte';
 
   import { EBM } from '../../ebm/ebm';
   import {
@@ -249,6 +251,26 @@
 
 
   $: curExample && !initialized && initModel();
+
+  // ── Two-column layout helpers ──────────────────────────────────────────────
+  // The active plan's store (shared by the left-column FeaturePanel and the
+  // right-column ScoreReadout).
+  $: activePlanStore =
+    plans && plans.planStores.has(plans.activePlanIndex)
+      ? plans.planStores.get(plans.activePlanIndex)
+      : null;
+
+  // Goal label for the plan-goal selector, moved from CoachPanel into the left
+  // column. Mirrors CoachPanel's "a" → "an" vowel adjustment.
+  $: goalLabel = (() => {
+    const base = 'Strategies to get a';
+    if (!plans) return base;
+    const vowels = ['a', 'e', 'i', 'o', 'u'];
+    const first = plans.isRegression
+      ? (plans.regressionName || '')[0]
+      : (plans.classes && plans.classes[0] ? plans.classes[0][0] : '');
+    return first && vowels.includes(first.toLowerCase()) ? base + 'n' : base;
+  })();
 </script>
 
 <div class="main-content-wrapper" class:sidebar-open={$historySidebarOpenStore}>
@@ -271,24 +293,62 @@
     />
   </div>
 
-  {#if plans === null}
-    <div class="feature-panel-wrapper">
-      <FeaturePanel {logger} planStore={null} {constraintsStore} />
+  <div class="two-column">
+    <!-- Left panel: plan-goal selector → "New plans can change …" control (in
+         FeaturePanel) → the feature list. Scrolls independently. -->
+    <div class="left-column">
+      {#if plans !== null}
+        <div class="plan-goal">
+          <span>{goalLabel}</span>
+          {#if plans.isRegression}
+            <span class="tab-keyword">{plans.regressionName}</span>
+            <span>from</span>
+            <input type="number" step="any" id="goal-from" />
+            <span>to</span>
+            <input type="number" step="any" id="goal-to" />
+          {:else}
+            <div class="select">
+              <select>
+                {#each plans.classes as c, i}
+                  {#if plans.classTarget.includes(i)}
+                    <option value={i}>{c}</option>
+                  {/if}
+                {/each}
+              </select>
+            </div>
+          {/if}
+        </div>
+      {/if}
+
+      {#if plans === null}
+        <div class="feature-panel-wrapper">
+          <FeaturePanel {logger} planStore={null} {constraintsStore} />
+        </div>
+      {:else}
+        {#key `${plans.activePlanIndex}-${restorationCounter}`}
+          <div class="feature-panel-wrapper">
+            <FeaturePanel
+              {windowLoaded}
+              {logger}
+              planStore={activePlanStore}
+              {constraintsStore}
+            />
+          </div>
+        {/key}
+      {/if}
     </div>
-  {:else}
-    {#key `${plans.activePlanIndex}-${restorationCounter}`}
-      <div class="feature-panel-wrapper">
-        <FeaturePanel
-          {windowLoaded}
-          {logger}
-          planStore={plans.planStores.has(plans.activePlanIndex)
-            ? plans.planStores.get(plans.activePlanIndex)
-            : null}
-          {constraintsStore}
-        />
-      </div>
-    {/key}
-  {/if}
+
+    <!-- Right panel: score readout, then the "what's driving this score"
+         decomposition section; rest reserved for later tasks. -->
+    <div class="right-column">
+      {#if plans !== null}
+        <ScoreReadout planStore={activePlanStore} />
+        <div class="rc-drivers">
+          <ScoreDrivers planStore={activePlanStore} />
+        </div>
+      {/if}
+    </div>
+  </div>
 </div>
 
 <!-- History Sidebar -->
@@ -345,10 +405,91 @@
   .coach-panel-wrapper {
     position: relative;
     z-index: 2;
+    width: 100%;
+  }
+
+  /* ── Two-column body: narrow left (controls + features) + flexible right ── */
+  .two-column {
+    display: flex;
+    flex-direction: row;
+    align-items: flex-start;
+    gap: 16px;
+    padding: 12px 14px 14px;
+    width: 100%;
+    box-sizing: border-box;
+  }
+
+  .left-column {
+    flex: 0 0 324px;
+    width: 324px;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .right-column {
+    flex: 1 1 auto;
+    min-width: 0;
+    padding-top: 2px;
+  }
+
+  .rc-drivers {
+    margin-top: 22px;
+    padding-top: 18px;
+    border-top: 1px solid $gray-200;
   }
 
   .feature-panel-wrapper {
     position: relative;
     z-index: 1;
+    width: 100%;
+  }
+
+  /* Plan-goal selector, relocated from CoachPanel to the top of the left column */
+  .plan-goal {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 5px;
+    font-size: 0.9rem;
+    color: $gray-700;
+    padding: 2px 2px 8px;
+    border-bottom: 1px solid $gray-200;
+
+    .tab-keyword { font-weight: 600; }
+    input { width: 70px; padding: 1px; margin: 0; }
+
+    .select {
+      position: relative;
+      border-radius: 4px;
+      border: 1px solid $gray-light-border;
+      background: $gray-50;
+
+      select {
+        padding: 1px 20px 1px 6px;
+        margin: 0;
+        border: none;
+        background: transparent;
+        font-size: 0.9rem;
+        cursor: pointer;
+        -moz-appearance: none;
+        -webkit-appearance: none;
+      }
+      &::after {
+        content: '';
+        position: absolute;
+        right: 7px;
+        top: 50%;
+        width: 0;
+        height: 0;
+        border-left: 4px solid transparent;
+        border-right: 4px solid transparent;
+        border-top: 5px solid $gray-500;
+        transform: translateY(-50%);
+        pointer-events: none;
+      }
+    }
   }
 </style>

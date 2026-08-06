@@ -1423,10 +1423,8 @@
     populateLinkCalculations(featureName, baseline, current, next, changedSet);
 
     // Nothing actually propagated (e.g. a home-ownership change that is not a
-    // mortgage transition) — clear any prior banner / arrows and stop.
+    // mortgage transition) — stop.
     if (activeTargets.length === 0) {
-      showPropagationMessage = false;
-      dismissArrows();
       return;
     }
 
@@ -1435,27 +1433,8 @@
       lastKnownValues[name] = internalValue;
     });
 
-    // ── 2. Build + show the sticky message ───────────────────────────────────
-    const count = activeTargets.length;
-    const featureWord = count === 1 ? 'feature' : 'features';
-    const targetNames = activeTargets
-      .map(name => DISPLAY_NAMES[name] || name)
-      .join(', ');
-    propagationMessage = `Changing ${DISPLAY_NAMES[featureName] || featureName} changed ${count} other ${featureWord}: ${targetNames}`;
-    showPropagationMessage = true;
-    showArrows = false;
-    arrowPaths = [];
-    arrowLabels = [];
-    arrowDismissBtn = null;
-
-    await tick();
-
-    // Restart blink animation on the banner (works whether or not message text changed)
-    if (bannerEl) {
-      bannerEl.style.animation = 'none';
-      void bannerEl.offsetHeight; // force reflow so browser resets the animation
-      bannerEl.style.animation = '';
-    }
+    // (The propagation status message and connector arrows were removed; the
+    // value propagation below is unchanged.)
 
     // ── 3. Blue outline on the edited feature + affected dependents ───────────
     // Mark them modified (reactive); the outline shows while modified and clears
@@ -1475,12 +1454,6 @@
     // feature object has already been updated (by reference) so collapsed
     // cards will still initialize at the correct position when expanded.
     setTimeout(() => featureValueOverrideStore.set({}), 400);
-
-    // ── 5. Draw SVG arrows ────────────────────────────────────────────────────
-    lastArrowSource = featureName;
-    lastArrowTargets = activeTargets;
-    showArrows = true;
-    recomputeArrows();
   };
 
   const maxFeatureNumChanged = () => {
@@ -1689,12 +1662,6 @@
 </style>
 
 <div class='feature-panel' bind:this={component}>
-
-  {#if showPropagationMessage}
-    <div class='propagation-message' bind:this={bannerEl} transition:fade={{ duration: 300 }}>
-      {propagationMessage}
-    </div>
-  {/if}
 
   <div class='card-block'>
     <div class='row-header'>
@@ -2174,106 +2141,5 @@
 
     </div>
   </div>
-
-  <!-- SVG overlay for propagation arrows — fixed to viewport, pointer-events off -->
-  {#if showArrows}
-    <svg
-      class='propagation-arrows-overlay'
-      xmlns='http://www.w3.org/2000/svg'
-      transition:fade={{ duration: 300 }}
-    >
-      <defs>
-        <marker
-          id='prop-arrowhead'
-          markerWidth='8'
-          markerHeight='6'
-          refX='7'
-          refY='3'
-          orient='auto'
-        >
-          <polygon points='0 0, 8 3, 0 6' fill='#1565C0' />
-        </marker>
-        {#if panelClipRect}
-          <clipPath id='panel-clip'>
-            <rect
-              x={panelClipRect.x}
-              y={panelClipRect.y}
-              width={panelClipRect.width}
-              height={panelClipRect.height}
-            />
-          </clipPath>
-        {/if}
-      </defs>
-      <g clip-path={panelClipRect ? 'url(#panel-clip)' : ''}>
-        {#each arrowPaths as d}
-          <path
-            {d}
-            stroke='#1976D2'
-            stroke-width='2.5'
-            fill='none'
-            marker-end='url(#prop-arrowhead)'
-            stroke-dasharray='6 3'
-          />
-        {/each}
-        {#each arrowLabels as label}
-          {@const pad = 10}
-          {@const approxWidth = label.text.length * 8.8 + pad * 2}
-          <rect
-            x={label.x - approxWidth / 2}
-            y={label.y - 20}
-            width={approxWidth}
-            height={24}
-            rx='3'
-            fill='#E3F2FD'
-            stroke='#1976D2'
-            stroke-width='0.5'
-          />
-          <text
-            x={label.x}
-            y={label.y - 4}
-            text-anchor='middle'
-            fill='#1565C0'
-            font-size='15'
-            font-weight='600'
-            font-family='system-ui, sans-serif'
-          >{label.text}</text>
-        {/each}
-
-        {#if arrowDismissBtn}
-          <!-- Single × button near the source card's top-right corner.
-               pointer-events:all overrides the overlay's pointer-events:none
-               so only this element is interactive. -->
-          <g
-            style='pointer-events: all; cursor: pointer;'
-            on:click={dismissArrows}
-            role='button'
-            tabindex='0'
-            aria-label='Hide dependency arrows'
-            on:keydown={e => e.key === 'Enter' && dismissArrows()}
-          >
-            <title>Click to hide ALL the dependency arrows</title>
-            <circle
-              cx={arrowDismissBtn.x}
-              cy={arrowDismissBtn.y}
-              r='13'
-              fill='white'
-              stroke='#1976D2'
-              stroke-width='1.5'
-            />
-            <text
-              x={arrowDismissBtn.x}
-              y={arrowDismissBtn.y + 5}
-              text-anchor='middle'
-              fill='#1976D2'
-              font-size='15'
-              font-weight='700'
-              font-family='system-ui, sans-serif'
-              style='pointer-events: none; user-select: none;'
-            >✕</text>
-          </g>
-        {/if}
-      </g>
-    </svg>
-  {/if}
 
 </div>

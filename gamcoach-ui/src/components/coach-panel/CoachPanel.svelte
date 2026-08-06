@@ -667,29 +667,8 @@
 
   <div class="coach-tab-bar">
     {#if plans !== null}
-      <div class="tab-input">
-        <span>{tabInputLabel}</span>
-
-        {#if plans.isRegression}
-          <span class="tab-keyword">{plans.regressionName}</span>
-          <span>from</span>
-          <input type="number" step="any" id="goal-from" />
-
-          <span>to</span>
-          <input type="number" step="any" id="goal-to" />
-        {:else}
-          <div class="select">
-            <select>
-              {#each plans.classes as c, i}
-                {#if plans.classTarget.includes(i)}
-                  <option value={i}>{c}</option>
-                {/if}
-              {/each}
-            </select>
-          </div>
-        {/if}
-      </div>
-
+      <!-- The plan-goal selector ("Strategies to get a …") now lives at the top
+           of the left column (rendered by Coach.svelte). -->
       <div class="tabs">
         {#each planLabels as planLabel}
           <div
