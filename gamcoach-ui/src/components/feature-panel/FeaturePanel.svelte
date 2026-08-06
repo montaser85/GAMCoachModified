@@ -1671,16 +1671,6 @@
     mounted = true;
     const iconList = [];
     bindInlineSVG(component, iconList);
-    if (typeof window !== 'undefined') {
-      window.__simEdit = (name, displayValue) => {
-        const feature = plan.features.find((f) => f.data.name === name);
-        if (!feature) return 'no feature';
-        let newValue = displayValue;
-        if (feature.isCont) newValue = toInternalValue(displayValue, name);
-        curValueUpdatedHandler({ detail: { newValue } }, feature);
-        return 'edited ' + name;
-      };
-    }
     // capture:true catches scroll events from any scrollable container, not
     // just the window — required because the feature panel has its own scroll area.
     window.addEventListener('scroll', onScroll, { passive: true, capture: true });
