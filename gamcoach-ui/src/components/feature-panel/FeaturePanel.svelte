@@ -13,7 +13,7 @@
 
   import { onMount, onDestroy, tick } from 'svelte';
   import { fade } from 'svelte/transition';
-  import { tooltipConfigStore, featureValueOverrideStore, cardToggleStore, propagatedFeaturesStore, historySidebarOpenStore } from '../../store';
+  import { tooltipConfigStore, featureValueOverrideStore, cardToggleStore, propagatedFeaturesStore, historySidebarOpenStore, changeEffectsStore } from '../../store';
   import {
     propagate,
     allDependentFeatures,
@@ -67,8 +67,6 @@
 
   /** @type {FeatureGrid} */
   let featureGrid = new FeatureGrid();
-
-  let maxFeatureNum = 'null';
 
   // ── Link-popup explanatory text for indirectly-affected features ────────────
   // Add an entry here whenever a feature gets real calculation mechanics so the
@@ -347,12 +345,6 @@
       })
     );
 
-    if (constraints.maxNumFeaturesToVary === null) {
-      maxFeatureNum = 'null';
-    } else {
-      maxFeatureNum = `${constraints.maxNumFeaturesToVary}`;
-    }
-
     // Organize the features into corresponding sections
     featureGrid.loadFeatures(plan.features, constraints);
     featureGrid = featureGrid;
@@ -360,6 +352,11 @@
     // Seed lastKnownValues with the initial coach-suggested values so that
     // the propagation helpers have baseline data even before the user moves any slider.
     initLastKnownValues();
+
+    // Start the "Effects of your changes" section empty on (re)init — a fresh
+    // mount happens on plan switch / regenerate / history restore, matching the
+    // FeaturePanel's own per-mount reset of propagation tracking.
+    changeEffectsStore.set([]);
 
     // console.log(featureGrid);
   };
@@ -508,6 +505,12 @@
    */
   const handleFeatureReset = (featureName) => {
     if (!plan || !loadTimeSample) return;
+
+    // Drop the "Effects of your changes" row sourced from this feature — its
+    // ripple no longer applies once the edit is reset.
+    changeEffectsStore.update((list) =>
+      list.filter((ev) => ev.sourceName !== featureName)
+    );
 
     // ── FICO Score reset — special case ──────────────────────────────────────
     // FICO's "sources" are real user edits (opened accounts / mortgages /
@@ -1371,6 +1374,122 @@
     cardAnimRafId = requestAnimationFrame(loop);
   };
 
+  // ── "Effects of your changes" (right panel) ─────────────────────────────────
+  // Display-only: builds source-edit events from the engine's EXISTING
+  // propagation output (before/after dependent values) and the SAME per-feature
+  // EBM contribution that "What's driving this score" uses. No propagation logic
+  // is added or changed here.
+
+  // Features displayed as currency (prefixed with $).
+  const MONEY_FEATURES = new Set(['loan_amnt', 'annual_inc', 'revol_bal']);
+
+  /** Pretty display value for a feature value in engine display units. */
+  const formatEffectValue = (name, val) => {
+    if (val === null || val === undefined) return '';
+    if (typeof val === 'string') {
+      // Categorical label — humanize (Title Case, underscores → spaces).
+      return val
+        .replace(/_/g, ' ')
+        .toLowerCase()
+        .replace(/\b\w/g, (c) => c.toUpperCase());
+    }
+    if (name === 'dti' || name === 'revol_util') return Number(val).toFixed(2);
+    const s = Math.round(Number(val)).toLocaleString();
+    return MONEY_FEATURES.has(name) ? `$${s}` : s;
+  };
+
+  /**
+   * Source-value label for a row. Categorical sources show a transition
+   * (e.g. "Rent → Mortgage") from the applicant's profile value to the current
+   * value; numeric sources show the single current (formatted) value.
+   */
+  const formatSourceValue = (sourceName, rawAfter) => {
+    const feat = plan.features.find((f) => f.data.name === sourceName);
+    if (feat && feat.data.type === 'categorical') {
+      const before = formatEffectValue(sourceName, applicantBaselineState?.[sourceName]);
+      const after = formatEffectValue(sourceName, rawAfter);
+      return before && before !== after ? `${before} → ${after}` : after;
+    }
+    return formatEffectValue(sourceName, rawAfter);
+  };
+
+  /**
+   * EBM main-effect contribution (log-odds) of `depName` set to `internalValue`,
+   * holding every other feature at the current sample. This is exactly the
+   * per-feature score "What's driving this score" reads
+   * (plan.ebmLocal.countedScores[name] / countScore).
+   */
+  const featureContribution = (depName, internalValue) => {
+    const f = plan.features.find((ff) => ff.data.name === depName);
+    if (!f) return 0;
+    const sampleCopy = plan.ebmLocal.sample.slice();
+    sampleCopy[f.featureID] = internalValue;
+    const scores = plan.ebmLocal.countScore(sampleCopy);
+    return scores[depName] ?? 0;
+  };
+
+  /**
+   * Build one effect entry: dependent `depName` changed from `before` to `after`
+   * (engine display units) because the user edited `sourceName`. The thumb
+   * direction is the sign of the contribution DELTA (after − before), not the
+   * value/count direction (per the thumb rule).
+   */
+  const buildEffectEntry = (sourceName, depName, before, after) => {
+    const beforeInternal = displayToInternal(depName, before);
+    const afterInternal = displayToInternal(depName, after);
+    const contribBefore = featureContribution(depName, beforeInternal);
+    const contribAfter = featureContribution(depName, afterInternal);
+    const delta = contribAfter - contribBefore; // >0 helped approval, <0 hurt it
+    const helps = delta >= 0;
+
+    const sourceDisplay = DISPLAY_NAMES[sourceName] || sourceName;
+    const depDisplay = DISPLAY_NAMES[depName] || depName;
+    const beforeDisplay = formatEffectValue(depName, before);
+    const afterDisplay = formatEffectValue(depName, after);
+
+    const numeric = typeof before === 'number' && typeof after === 'number';
+    const valueVerb = numeric
+      ? after > before
+        ? 'raised'
+        : after < before
+        ? 'lowered'
+        : 'changed'
+      : 'changed';
+    const approvalVerb = helps ? 'raised' : 'lowered';
+    const tooltip =
+      `${sourceDisplay} ${valueVerb} your ${depDisplay.toLowerCase()} ` +
+      `from ${beforeDisplay} to ${afterDisplay}, which ${approvalVerb} your approval.`;
+
+    return {
+      depName,
+      depDisplayName: depDisplay,
+      beforeDisplay,
+      afterDisplay,
+      helps,
+      contributionDelta: delta,
+      tooltip
+    };
+  };
+
+  /**
+   * Record (or refresh) the "Effects of your changes" row for one source edit.
+   * Collapses by source: the newest edit of a source replaces its prior row and
+   * moves to the top (newest first).
+   */
+  const recordChangeEffects = (sourceName, sourceValueRaw, effects) => {
+    if (effects.length === 0) return;
+    const event = {
+      sourceName,
+      sourceDisplayName: DISPLAY_NAMES[sourceName] || sourceName,
+      sourceValueDisplay: formatSourceValue(sourceName, sourceValueRaw),
+      effects
+    };
+    changeEffectsStore.update((list) => [
+      event,
+      ...list.filter((ev) => ev.sourceName !== sourceName)
+    ]);
+  };
+
   /**
    * Run the causal propagation engine for a directly-edited feature, then show
    * the message / outlines / arrows and push the engine's computed dependent
@@ -1403,6 +1522,11 @@
     const computedUpdates = {}; // internal feature name → internal value
     const activeTargets = [];
     const changedSet = new Set();
+    // Effect entries for the "Effects of your changes" section. `current[dep]` is
+    // the dependent's value immediately BEFORE this edit's ripple (the engine has
+    // not applied the dependent updates yet — that happens in step 4 below), so
+    // it is exactly the "before" value the task requires.
+    const effectEntries = [];
     const deps = [...new Set(log.filter(l => !l.note).map(l => l.dependent))];
     deps.forEach(dep => {
       const before = current[dep];
@@ -1414,6 +1538,7 @@
       computedUpdates[dep] = displayToInternal(dep, after);
       activeTargets.push(dep);
       changedSet.add(dep);
+      effectEntries.push(buildEffectEntry(featureName, dep, before, after));
     });
 
     // Publish which features changed via propagation so ScorePanel can label
@@ -1427,6 +1552,10 @@
     if (activeTargets.length === 0) {
       return;
     }
+
+    // Record this source edit + its ripple for the "Effects of your changes"
+    // section. `current[featureName]` is the source's just-edited value.
+    recordChangeEffects(featureName, current[featureName], effectEntries);
 
     // Keep lastKnownValues in sync so re-expanding a card doesn't refire.
     Object.entries(computedUpdates).forEach(([name, internalValue]) => {
@@ -1454,57 +1583,6 @@
     // feature object has already been updated (by reference) so collapsed
     // cards will still initialize at the correct position when expanded.
     setTimeout(() => featureValueOverrideStore.set({}), 400);
-  };
-
-  const maxFeatureNumChanged = () => {
-    resizeFeatureSelect();
-
-    if (constraints === null) return;
-
-    const oldValue = constraints.maxNumFeaturesToVary;
-
-    // Update the constraints
-    if (maxFeatureNum === 'null') {
-      constraints.maxNumFeaturesToVary = null;
-    } else {
-      constraints.maxNumFeaturesToVary = parseInt(maxFeatureNum);
-    }
-    constraintsStore.set(constraints);
-
-    logger?.addLog({
-      eventName: 'feature num changed',
-      elementName: 'select',
-      valueName: 'maxNumFeaturesToVary',
-      oldValue,
-      newValue: constraints.maxNumFeaturesToVary
-    });
-  };
-
-  /**
-   * Change the width of the select button so it fits the current content
-   */
-  const resizeFeatureSelect = () => {
-    const optionMap = {
-      'null': 'any number of',
-      '1': 'at most one',
-      '2': 'at most two',
-      '3': 'at most three',
-      '4': 'at most four',
-    };
-
-    const hiddenSelect = d3.select(component)
-      .select('#hidden-select')
-      .style('display', 'initial');
-
-    hiddenSelect.select('#hidden-option')
-      .text(optionMap[maxFeatureNum]);
-
-    const selectWidth = hiddenSelect.node().clientWidth + 5 + 'px';
-    hiddenSelect.style('display', 'none');
-
-    d3.select(component)
-      .select('#feature-num-select')
-      .style('width', selectWidth);
   };
 
   /**
@@ -1593,6 +1671,16 @@
     mounted = true;
     const iconList = [];
     bindInlineSVG(component, iconList);
+    if (typeof window !== 'undefined') {
+      window.__simEdit = (name, displayValue) => {
+        const feature = plan.features.find((f) => f.data.name === name);
+        if (!feature) return 'no feature';
+        let newValue = displayValue;
+        if (feature.isCont) newValue = toInternalValue(displayValue, name);
+        curValueUpdatedHandler({ detail: { newValue } }, feature);
+        return 'edited ' + name;
+      };
+    }
     // capture:true catches scroll events from any scrollable container, not
     // just the window — required because the feature panel has its own scroll area.
     window.addEventListener('scroll', onScroll, { passive: true, capture: true });
@@ -1653,7 +1741,6 @@
   $: featureGrid && arrowResizeObserver && observePanels();
 
   $: windowLoaded && planStore && !initialized && initFeatureCards();
-  $: mounted && maxFeatureNum && maxFeatureNumChanged();
 
 </script>
 
@@ -1666,23 +1753,6 @@
   <div class='card-block'>
     <div class='row-header'>
       <span class='label'>Suggested Changes</span>
-      <span class='label'>New plans can change
-        <div class='select' id='hidden-select'>
-          <select>
-            <option id='hidden-option'></option>
-          </select>
-        </div>
-        <div class='select'>
-          <select id='feature-num-select' bind:value={maxFeatureNum}>
-            <option value='null'>any number of</option>
-            <option value='1'>at most one</option>
-            <option value='2'>at most two</option>
-            <option value='3'>at most three</option>
-            <option value='4'>at most four</option>
-          </select>
-        </div>
-        {maxFeatureNum === '1' ? 'feature' : 'features'}
-      </span>
     </div>
 
     <div class='card-row'>

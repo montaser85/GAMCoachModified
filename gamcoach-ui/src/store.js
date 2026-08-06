@@ -116,3 +116,17 @@ export const historyEntriesStore = writable(new Map());
 
 // Flag to indicate when we're restoring a history entry (to prevent new entry creation)
 export const isRestoringEntryStore = writable(false);
+
+// "Effects of your changes" (right panel, last section). An array of source-edit
+// events, NEWEST FIRST. Each event describes one source feature the user edited
+// and the dependent features that changed via propagation as a result:
+//   {
+//     sourceName, sourceDisplayName, sourceValueDisplay,
+//     effects: [{ depName, depDisplayName, beforeDisplay, afterDisplay,
+//                 helps, contributionDelta, tooltip }]
+//   }
+// FeaturePanel writes to it from triggerPropagation (reusing the engine's
+// existing propagation output + the same per-feature contribution used by
+// "What's driving this score"). ChangeEffects.svelte renders it. Cleared when
+// FeaturePanel (re)initializes (plan switch / regenerate / restore).
+export const changeEffectsStore = writable([]);

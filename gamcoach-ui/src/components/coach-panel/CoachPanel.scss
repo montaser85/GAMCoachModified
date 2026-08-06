@@ -162,6 +162,42 @@
   }
 }
 
+// ── Row 1: action buttons + max-features control ───────────────────────────
+.coach-toolbar-row {
+  display: flex;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px 16px;
+
+  padding: 8px 15px;
+  border-bottom: 1px solid $gray-light-border;
+  background-color: $gray-50;
+
+  .max-feature-control {
+    display: flex;
+    flex-direction: row;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.95rem;
+    font-weight: 400;
+    color: $gray-600;
+
+    .select {
+      margin: 0 2px;
+      line-height: 1.2;
+
+      select {
+        color: $gray-600;
+        background-color: white;
+        font-weight: 400;
+      }
+    }
+  }
+}
+
 .coach-labels {
   display: grid;
   grid-template-columns: [col-start] auto [col-mid] auto [col-end];

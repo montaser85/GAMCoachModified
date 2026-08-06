@@ -5,6 +5,10 @@
   import HistorySidebar from '../history-sidebar/HistorySidebar.svelte';
   import ScoreReadout from '../score-readout/ScoreReadout.svelte';
   import ScoreDrivers from '../score-readout/ScoreDrivers.svelte';
+  import ChangeEffects from '../change-effects/ChangeEffects.svelte';
+
+  import starIconSolid from '../../img/icon-star-solid.svg';
+  import starIconOutline from '../../img/icon-star-outline.svg';
 
   import { EBM } from '../../ebm/ebm';
   import {
@@ -46,6 +50,10 @@
   let initialized = false;
   let restorationCounter = 0;  // Used to force FeaturePanel re-render on restoration
   const unsubscribes = [];
+
+  // CoachPanel instance — used to invoke its plan-switch / star handlers from the
+  // plan dropdown that now lives at the top of the left column (see below).
+  let coachPanel = null;
 
   // Set up tooltip
   let tooltip = null;
@@ -260,22 +268,25 @@
       ? plans.planStores.get(plans.activePlanIndex)
       : null;
 
-  // Goal label for the plan-goal selector, moved from CoachPanel into the left
-  // column. Mirrors CoachPanel's "a" → "an" vowel adjustment.
-  $: goalLabel = (() => {
-    const base = 'Strategies to get a';
-    if (!plans) return base;
-    const vowels = ['a', 'e', 'i', 'o', 'u'];
-    const first = plans.isRegression
-      ? (plans.regressionName || '')[0]
-      : (plans.classes && plans.classes[0] ? plans.classes[0][0] : '');
-    return first && vowels.includes(first.toLowerCase()) ? base + 'n' : base;
-  })();
+  // Plan indices available in the dropdown (loaded plans only), sorted ascending.
+  $: planIndices =
+    plans !== null
+      ? [...plans.planStores.keys()].sort((a, b) => a - b)
+      : [];
+
+  // Whether the active plan is currently bookmarked — drives the star icon.
+  // Read from the shared bookmark store so it updates reactively when
+  // CoachPanel's starActivePlan saves/removes the plan.
+  $: activePlanSaved =
+    plans !== null && $bookmarkConfigStore && $bookmarkConfigStore.plans
+      ? $bookmarkConfigStore.plans.has(plans.activePlanIndex)
+      : false;
 </script>
 
 <div class="main-content-wrapper" class:sidebar-open={$historySidebarOpenStore}>
   <div class="coach-panel-wrapper">
     <CoachPanel
+      bind:this={coachPanel}
       {windowLoaded}
       bind:plans
       {logger}
@@ -294,29 +305,37 @@
   </div>
 
   <div class="two-column">
-    <!-- Left panel: plan-goal selector → "New plans can change …" control (in
-         FeaturePanel) → the feature list. Scrolls independently. -->
+    <!-- Left panel: plan dropdown + save star (aligned with the feature cards,
+         parallel to the right-column score readout), then the feature list.
+         Scrolls independently. -->
     <div class="left-column">
       {#if plans !== null}
-        <div class="plan-goal">
-          <span>{goalLabel}</span>
-          {#if plans.isRegression}
-            <span class="tab-keyword">{plans.regressionName}</span>
-            <span>from</span>
-            <input type="number" step="any" id="goal-from" />
-            <span>to</span>
-            <input type="number" step="any" id="goal-to" />
-          {:else}
-            <div class="select">
-              <select>
-                {#each plans.classes as c, i}
-                  {#if plans.classTarget.includes(i)}
-                    <option value={i}>{c}</option>
-                  {/if}
-                {/each}
-              </select>
+        <div class="plan-row">
+          <div class="select plan-select">
+            <select
+              on:change={(e) =>
+                coachPanel && coachPanel.planSelected(parseInt(e.currentTarget.value))}
+            >
+              {#each planIndices as idx}
+                <option value={idx} selected={idx === plans.activePlanIndex}>
+                  Plan {idx}
+                </option>
+              {/each}
+            </select>
+          </div>
+
+          <div
+            class="star-wrapper"
+            on:click={(e) => coachPanel && coachPanel.starActivePlan(e)}
+            title="Click to save this plan"
+          >
+            <div class="svg-icon tab-icon" class:no-display={!activePlanSaved}>
+              {@html starIconSolid}
             </div>
-          {/if}
+            <div class="svg-icon tab-icon" class:no-display={activePlanSaved}>
+              {@html starIconOutline}
+            </div>
+          </div>
         </div>
       {/if}
 
@@ -338,13 +357,16 @@
       {/if}
     </div>
 
-    <!-- Right panel: score readout, then the "what's driving this score"
-         decomposition section; rest reserved for later tasks. -->
+    <!-- Right panel: score readout, then "what's driving this score", then
+         "effects of your changes" (the propagation ripple, last section). -->
     <div class="right-column">
       {#if plans !== null}
         <ScoreReadout planStore={activePlanStore} />
         <div class="rc-drivers">
           <ScoreDrivers planStore={activePlanStore} />
+        </div>
+        <div class="rc-effects">
+          <ChangeEffects />
         </div>
       {/if}
     </div>
@@ -440,56 +462,95 @@
     border-top: 1px solid $gray-200;
   }
 
+  .rc-effects {
+    margin-top: 22px;
+    padding-top: 18px;
+    border-top: 1px solid $gray-200;
+  }
+
   .feature-panel-wrapper {
     position: relative;
     z-index: 1;
     width: 100%;
   }
 
-  /* Plan-goal selector, relocated from CoachPanel to the top of the left column */
-  .plan-goal {
+  /* Plan dropdown + save star — top of the left column, aligned with the
+     feature cards and parallel to the right-column score readout. */
+  .plan-row {
     display: flex;
     flex-direction: row;
-    flex-wrap: wrap;
     align-items: center;
-    gap: 5px;
-    font-size: 0.9rem;
-    color: $gray-700;
-    padding: 2px 2px 8px;
-    border-bottom: 1px solid $gray-200;
+    gap: 8px;
+    padding: 0 2px 4px;
 
-    .tab-keyword { font-weight: 600; }
-    input { width: 70px; padding: 1px; margin: 0; }
-
-    .select {
-      position: relative;
-      border-radius: 4px;
-      border: 1px solid $gray-light-border;
-      background: $gray-50;
-
+    .plan-select {
       select {
-        padding: 1px 20px 1px 6px;
-        margin: 0;
-        border: none;
-        background: transparent;
-        font-size: 0.9rem;
+        font-size: 0.95rem;
+        font-weight: 600;
+        padding: 3px 22px 3px 10px;
         cursor: pointer;
-        -moz-appearance: none;
-        -webkit-appearance: none;
       }
-      &::after {
-        content: '';
-        position: absolute;
-        right: 7px;
-        top: 50%;
-        width: 0;
-        height: 0;
-        border-left: 4px solid transparent;
-        border-right: 4px solid transparent;
-        border-top: 5px solid $gray-500;
-        transform: translateY(-50%);
-        pointer-events: none;
+    }
+
+    .star-wrapper {
+      display: flex;
+      align-items: center;
+      border-radius: 5px;
+      padding: 4px;
+      cursor: pointer;
+      transition: background-color 100ms ease-in-out;
+
+      &:hover {
+        background-color: adjust-color($color: $gray-200, $lightness: -4%);
       }
+
+      .tab-icon {
+        color: $gray-700;
+        fill: $gray-700;
+        display: flex;
+        align-items: center;
+        cursor: pointer;
+
+        :global(svg) {
+          width: 1rem;
+          height: 1rem;
+        }
+      }
+
+      .no-display {
+        display: none;
+      }
+    }
+  }
+
+  /* Select control (borrowed from CoachPanel's .select) */
+  .select {
+    position: relative;
+    border-radius: 4px;
+    border: 1px solid $gray-light-border;
+    background: $gray-50;
+
+    select {
+      margin: 0;
+      border: none;
+      background: transparent;
+      -moz-appearance: none;
+      -webkit-appearance: none;
+    }
+
+    &::after {
+      content: '';
+      display: block;
+      position: absolute;
+      right: 8px;
+      top: 50%;
+      width: 6px;
+      height: 6px;
+      pointer-events: none;
+      border-right: 2px solid $gray-600;
+      border-top: 2px solid $gray-600;
+      transform: translateY(-65%) rotate(135deg);
+      transform-origin: center;
     }
   }
 </style>

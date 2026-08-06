@@ -14,17 +14,17 @@
     propagatedFeaturesStore,
     historyEntriesStore,
     historySidebarOpenStore,
-    isRestoringEntryStore
+    isRestoringEntryStore,
+    constraintsStore
   } from '../../store';
   import { createHistoryEntry, addHistoryEntry } from '../../utils/historyManager';
 
   import CompareModal from '../compare-modal/CompareModal.svelte';
   import ExampleModal from '../example-modal/ExampleModal.svelte';
 
-  import ScorePanel from '../score-panel/ScorePanel.svelte';
   import '../../typedef';
   import { Plan, SavedPlan } from '../coach/Coach';
-  import { setScorePanelWidth, InitPlanLabels } from './CoachPanel';
+  import { InitPlanLabels } from './CoachPanel';
 
   import refreshIcon from '../../img/icon-refresh2.svg';
   import starIconSolid from '../../img/icon-star-solid.svg';
@@ -46,7 +46,7 @@
   // Component variables
   let component = null;
   let tooltipConfig = null;
-  let scorePanelWidth = 0;
+  let mounted = false;
 
   const unsubscribes = [];
   let initialized = false;
@@ -55,8 +55,29 @@
 
   // Set up the model goal labels
   let planLabels = [];
-  let tabInputLabel = 'Strategies to get a';
   let savedPlanIndex = new Set();
+
+  // ── "New plans can change at most [N] features" control (Row 1) ──────────────
+  // Relocated from FeaturePanel's row-header to the top toolbar row. Reads/writes
+  // the same global constraintsStore, so the max-features preference behaves
+  // exactly as before — only the control's location changed.
+  /** @type {Constraints} */
+  let constraints = null;
+  let maxFeatureNum = 'null';
+  let maxFeatureInit = false;
+  unsubscribes.push(
+    constraintsStore.subscribe((value) => {
+      constraints = value;
+      // Seed the dropdown from the constraints once they are available.
+      if (constraints && !maxFeatureInit) {
+        maxFeatureNum =
+          constraints.maxNumFeaturesToVary === null
+            ? 'null'
+            : `${constraints.maxNumFeaturesToVary}`;
+        maxFeatureInit = true;
+      }
+    })
+  );
 
   /** @type {Map<number, Plan>} */
   const localPlans = new Map();
@@ -259,23 +280,13 @@
   };
 
   /**
-   * Handler for the transitionend event on tab element
-   * @param e {TransitionEvent} Transition event
+   * Handler for selecting a plan from the plan dropdown. Preserves the exact
+   * plan-switching behavior of the old tabs — only the control changed. Exported
+   * so the dropdown, now rendered by Coach.svelte at the top of the left column
+   * (parallel to the score readout), can invoke it via `bind:this`.
    * @param planIndex {number} Plan index
    */
-  const tabTransitionEndHandler = (e, planIndex) => {
-    // Listen to the flex-grow event
-    if (e.propertyName === 'flex-grow' && planIndex === plans.activePlanIndex) {
-      d3.select(e.target).select('.tab-score').classed('shown', true);
-    }
-  };
-
-  /**
-   * Handler for the mouse click event on tab element
-   * @param e {MouseEvent} Mouse event
-   * @param planIndex {number} Plan index
-   */
-  const tabClicked = (e, planIndex) => {
+  export const planSelected = (planIndex) => {
     if (!plans.planStores.has(planIndex)) {
       return;
     }
@@ -290,35 +301,33 @@
       elementName: 'tab'
     });
 
-    // First hide all the scores on tab
-    d3.select(component).selectAll('.tab-score').classed('shown', false);
-
     plans.activePlanIndex = planIndex;
   };
 
   /**
-   * Initialize the tab panel. This function should only be called after the
+   * Save/unsave the currently-active plan (star beside the plan dropdown).
+   * Delegates to the same starClicked handler the old per-tab star used.
+   * Exported for the same reason as planSelected (see above).
+   * @param {MouseEvent} e
+   */
+  export const starActivePlan = (e) => {
+    const activeLabel = planLabels.find(
+      (p) => p.planIndex === plans.activePlanIndex
+    );
+    if (activeLabel) starClicked(e, activeLabel);
+  };
+
+  /**
+   * Initialize the plan panel. This function should only be called after the
    * plan data is passed from the parent component.
    */
   const initPlanPanel = async () => {
     initialized = true;
 
-    const returnObj = InitPlanLabels(plans, tabInputLabel);
-    tabInputLabel = returnObj.tabInputLabel;
+    const returnObj = InitPlanLabels(plans, '');
     planLabels = returnObj.localPlanLabels;
 
     await tick();
-
-    // Show the current active tab details
-    const tab = d3.select(component).select(`.tab-${plans.activePlanIndex}`);
-
-    tab.select('.tab-score').classed('shown', true);
-
-    // Set up the width for score panels
-    // Need to set a timeout here to wait for the tab transition animation
-    setTimeout(() => {
-      scorePanelWidth = setScorePanelWidth(component, plans, planLabels);
-    }, 300);
   };
 
   /**
@@ -329,6 +338,23 @@
   const planStoreUpdated = (value, planIndex) => {
     localPlans.set(planIndex, value);
     localPlansVersion += 1; // triggers CompareModal reactive rebuild
+
+    // Seed the bookmark / input-form feature list on the FIRST emission (before
+    // the score-change early returns below). Saving a plan renders its change
+    // list via SavedPlan.getChangeList(bookmarkConfig.features); if that feature
+    // list is still null (no edit yet), the render throws and aborts the Svelte
+    // flush — freezing all reactivity. Setting it here guarantees it's ready as
+    // soon as a plan can be saved.
+    if (bookmarkConfig && bookmarkConfig.features === null) {
+      bookmarkConfig.features = value.features;
+      bookmarkConfig.plansInfo = plans;
+      bookmarkConfigStore.set(bookmarkConfig);
+    }
+    if (inputFormConfig && inputFormConfig.features === null) {
+      inputFormConfig.features = value.features;
+      inputFormConfig.plansInfo = plans;
+      inputFormConfigStore.set(inputFormConfig);
+    }
 
     // ─── History tracking: capture entry if score changed ─────────────────
     const currentScore = value.ebmLocal.predScore;
@@ -409,20 +435,6 @@
 
     // Track this timeout so we can cancel it if score changes again
     pendingHistoryTimeouts.set(planIndex, newTimeout);
-
-    // Set up the bookmark config features property
-    if (bookmarkConfig.features === null) {
-      bookmarkConfig.features = value.features;
-      bookmarkConfig.plansInfo = plans;
-      bookmarkConfigStore.set(bookmarkConfig);
-    }
-
-    // Set up the input form config features property
-    if (inputFormConfig.features === null) {
-      inputFormConfig.features = value.features;
-      inputFormConfig.plansInfo = plans;
-      inputFormConfigStore.set(inputFormConfig);
-    }
   };
 
   /**
@@ -587,6 +599,59 @@
     });
   };
 
+  /**
+   * Handler for the "New plans can change at most [N] features" dropdown.
+   * Writes maxNumFeaturesToVary into the shared constraints (same behavior as
+   * the control's previous home in FeaturePanel).
+   */
+  const maxFeatureNumChanged = () => {
+    resizeFeatureSelect();
+
+    if (constraints === null) return;
+
+    const oldValue = constraints.maxNumFeaturesToVary;
+
+    if (maxFeatureNum === 'null') {
+      constraints.maxNumFeaturesToVary = null;
+    } else {
+      constraints.maxNumFeaturesToVary = parseInt(maxFeatureNum);
+    }
+    constraintsStore.set(constraints);
+
+    logger?.addLog({
+      eventName: 'feature num changed',
+      elementName: 'select',
+      valueName: 'maxNumFeaturesToVary',
+      oldValue,
+      newValue: constraints.maxNumFeaturesToVary
+    });
+  };
+
+  /**
+   * Size the max-features select to fit the current option text.
+   */
+  const resizeFeatureSelect = () => {
+    const optionMap = {
+      null: 'any number of',
+      1: 'at most one',
+      2: 'at most two',
+      3: 'at most three',
+      4: 'at most four'
+    };
+
+    const hiddenSelect = d3
+      .select(component)
+      .select('#hidden-select')
+      .style('display', 'initial');
+
+    hiddenSelect.select('#hidden-option').text(optionMap[maxFeatureNum]);
+
+    const selectWidth = hiddenSelect.node().clientWidth + 5 + 'px';
+    hiddenSelect.style('display', 'none');
+
+    d3.select(component).select('#feature-num-select').style('width', selectWidth);
+  };
+
   onMount(() => {
     const iconList = [
       { class: 'icon-refresh', svg: refreshIcon },
@@ -595,6 +660,7 @@
       { class: 'icon-check-box', svg: checkIcon }
     ];
     bindInlineSVG(component, iconList);
+    mounted = true;
   });
 
   onDestroy(() => {
@@ -608,6 +674,9 @@
 
   $: windowLoaded && plans && !initialized && initPlanPanel();
   $: plans && localPlans.size !== NUM_TOTAL_PAN && planStoreAdded();
+  // Keep the constraints in sync when the user picks a max-features option (and
+  // size the select). Gated on mount + constraints so it never fires prematurely.
+  $: mounted && constraints && maxFeatureNum && maxFeatureNumChanged();
 </script>
 
 <div class="coach-panel" bind:this={component}>
@@ -619,14 +688,13 @@
         Personal coach to help you obtain desired AI decisions
       </span>
     </div>
+  </div>
+
+  <!-- Row 1: action buttons (Compare · Watch example · History · Bookmarks ·
+       Regenerate) with the "New plans can change at most N features" control at
+       the far right. -->
+  <div class="coach-toolbar-row">
     <div class="coach-controls">
-      <!-- Watch example — persistent, subtle entry point, left of Compare -->
-      <button class="watch-example-btn" on:click={openExample} title="Watch a short worked example">
-        <svg viewBox="0 0 20 20" width="13" height="13" aria-hidden="true">
-          <polygon points="5,3 17,10 5,17" fill="currentColor"/>
-        </svg>
-        Watch example
-      </button>
       <div class="icon-wrapper" on:click={compareClicked} title="Compare all plans side by side">
         <svg class="compare-svg" viewBox="0 0 20 20" width="18" height="18"
              fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
@@ -637,6 +705,13 @@
         </svg>
         <span class="icon-label">Compare</span>
       </div>
+      <!-- Watch example — persistent, subtle entry point -->
+      <button class="watch-example-btn" on:click={openExample} title="Watch a short worked example">
+        <svg viewBox="0 0 20 20" width="13" height="13" aria-hidden="true">
+          <polygon points="5,3 17,10 5,17" fill="currentColor"/>
+        </svg>
+        Watch example
+      </button>
       <div class="icon-wrapper" on:click={() => historySidebarOpenStore.update(v => !v)} title="Exploration history">
         <svg viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
           <circle cx="10" cy="10" r="8.5"/>
@@ -663,79 +738,30 @@
         <span class="icon-label">Regenerate</span>
       </div>
     </div>
-  </div>
 
-  <div class="coach-tab-bar">
-    {#if plans !== null}
-      <!-- The plan-goal selector ("Strategies to get a …") now lives at the top
-           of the left column (rendered by Coach.svelte). -->
-      <div class="tabs">
-        {#each planLabels as planLabel}
-          <div
-            class={`tab tab-${planLabel.planIndex}`}
-            class:selected={planLabel.planIndex === plans.activePlanIndex}
-            class:regression={plans.isRegression}
-            on:click={(e) => tabClicked(e, planLabel.planIndex)}
-            on:transitionend={(e) =>
-              tabTransitionEndHandler(e, planLabel.planIndex)}
-          >
-            <div
-              class="loading-container"
-              class:no-animation={plans.failedPlans.has(planLabel.planIndex)}
-              class:no-display={plans.planStores.has(planLabel.planIndex)}
-            >
-              <div class="line" />
-              <div class="line" />
-              <div class="line" />
-            </div>
-
-            <span
-              class="tab-name"
-              class:hidden={!plans.planStores.has(planLabel.planIndex)}
-              data-text={planLabel.name}>{planLabel.name}</span
-            >
-
-            <div
-              class="star-wrapper"
-              class:hidden={!plans.planStores.has(planLabel.planIndex)}
-              on:click={(e) => starClicked(e, planLabel)}
-              title="Click to save this plan"
-            >
-              <div
-                class="svg-icon tab-icon"
-                class:no-display={!savedPlanIndex.has(planLabel.planIndex)}
-              >
-                {@html starIconSolid}
-              </div>
-              <div
-                class="svg-icon tab-icon"
-                class:no-display={savedPlanIndex.has(planLabel.planIndex)}
-              >
-                {@html starIconOutline}
-              </div>
-            </div>
-
-            <div
-              class="tab-score"
-              class:hidden={!plans.planStores.has(planLabel.planIndex)}
-            >
-              <div class="score-bar-wrapper">
-                <ScorePanel
-                  {planLabel}
-                  isFailed={plans.failedPlans.has(planLabel.planIndex)}
-                  planStore={plans.planStores.has(planLabel.planIndex)
-                    ? plans.planStores.get(planLabel.planIndex)
-                    : null}
-                  scoreWidth={scorePanelWidth}
-                  {logger}
-                />
-              </div>
-            </div>
-          </div>
-        {/each}
+    <!-- "New plans can change at most [N] features" — relocated from FeaturePanel -->
+    <span class="max-feature-control">New plans can change
+      <div class="select" id="hidden-select">
+        <select>
+          <option id="hidden-option"></option>
+        </select>
       </div>
-    {/if}
+      <div class="select">
+        <select id="feature-num-select" bind:value={maxFeatureNum}>
+          <option value="null">any number of</option>
+          <option value="1">at most one</option>
+          <option value="2">at most two</option>
+          <option value="3">at most three</option>
+          <option value="4">at most four</option>
+        </select>
+      </div>
+      {maxFeatureNum === '1' ? 'feature' : 'features'}
+    </span>
   </div>
+
+  <!-- The plan dropdown + save star are rendered by Coach.svelte at the top of
+       the left column (aligned with the feature cards, parallel to the score
+       readout), invoking planSelected / starActivePlan here via bind:this. -->
 
   <!-- Plan comparison modal — rendered inside coach-panel so it has access
        to localPlans and planLabels; position:fixed in CSS places it above all. -->
