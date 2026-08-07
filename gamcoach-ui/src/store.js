@@ -130,3 +130,12 @@ export const isRestoringEntryStore = writable(false);
 // "What's driving this score"). ChangeEffects.svelte renders it. Cleared when
 // FeaturePanel (re)initializes (plan switch / regenerate / restore).
 export const changeEffectsStore = writable([]);
+
+// "Ideas to try" (right panel). An array of directional next-step suggestions,
+// STRONGEST FIRST (top 2–3). Each entry:
+//   { name, displayName, verb, direction, gain }
+// where verb ∈ {Lower, Raise, Change}, direction ∈ {raise, lower, change},
+// gain = the isolated speculative propagated approval gain used for ranking.
+// FeaturePanel computes it via the side-effect-free what-if evaluation and
+// publishes it here; IdeasToTry.svelte renders the amber lever chips.
+export const ideasStore = writable([]);

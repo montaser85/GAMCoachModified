@@ -13,7 +13,18 @@
 
   import { onMount, onDestroy, tick } from 'svelte';
   import { fade } from 'svelte/transition';
-  import { tooltipConfigStore, featureValueOverrideStore, cardToggleStore, propagatedFeaturesStore, historySidebarOpenStore, changeEffectsStore } from '../../store';
+  import { tooltipConfigStore, featureValueOverrideStore, cardToggleStore, propagatedFeaturesStore, historySidebarOpenStore, changeEffectsStore, ideasStore } from '../../store';
+  import { sigmoid } from '../../ebm/ebm';
+  import {
+    STRUCTURAL_EXCLUSIONS,
+    POLICY_OVERRIDES,
+    IMPOSSIBLE_TO_CHANGE,
+    SMALL_STEP_FRACTION,
+    LARGE_STEP_FRACTION,
+    MIN_GAIN,
+    ideaVerb,
+    isBaselineActionable
+  } from '../ideas/ideasConfig';
   import {
     propagate,
     allDependentFeatures,
@@ -336,12 +347,18 @@
     unsubscribes.push(
       planStore.subscribe(value => {
         plan = value;
+        // Any state change (edit / propagation / reset) → re-evaluate "Ideas to
+        // try" from the new current state (debounced, isolated).
+        scheduleIdeas();
       })
     );
 
     unsubscribes.push(
       constraintsStore.subscribe(value => {
         constraints = value;
+        // A difficulty change may flip the "Impossible to Change" runtime
+        // exclusion → re-evaluate suggestions.
+        scheduleIdeas();
       })
     );
 
@@ -357,6 +374,8 @@
     // mount happens on plan switch / regenerate / history restore, matching the
     // FeaturePanel's own per-mount reset of propagation tracking.
     changeEffectsStore.set([]);
+    // Same for "Ideas to try" (recomputed immediately by the store subscription).
+    ideasStore.set([]);
 
     // console.log(featureGrid);
   };
@@ -1490,6 +1509,182 @@
     ]);
   };
 
+  // ── "Ideas to try" — isolated speculative what-if evaluation (Part 1) ────────
+  // Side-effect-free: perturbs a COPY of the current state, runs the SAME DC1
+  // propagation used for real edits, scores a CLONED sample, and returns only the
+  // propagated approval-score delta. It never mutates the plan, feature values,
+  // current score, the "What's driving this score" panel, or the "Effects of your
+  // changes" band — nothing about a test step appears in the UI or user state.
+
+  let ideasDebounceTimer = null;
+
+  /** Display-unit [min, max] range for a numeric feature (for step sizing). */
+  const displayRange = (name) => {
+    if (MODEL_BOUNDS[name]) return MODEL_BOUNDS[name];
+    const f = plan.features.find((ff) => ff.data.name === name);
+    const bins = (f?.data?.binEdge || []).filter(Number.isFinite);
+    if (bins.length >= 2) {
+      let lo = bins[0];
+      let hi = bins[bins.length - 1];
+      if (f.transform === 'log10') { lo = Math.pow(10, lo); hi = Math.pow(10, hi); }
+      return [lo, hi];
+    }
+    return null;
+  };
+
+  const engineValuesEqual = (a, b) => {
+    if (typeof a === 'number' && typeof b === 'number') return Math.abs(a - b) < 1e-6;
+    return a === b;
+  };
+
+  /**
+   * Propagated approval-score effect (Δprobability) of a hypothetical step on
+   * `candidateName`. `isCont` picks the perturbation kind:
+   *   - continuous: `perturb` is the perturbed DISPLAY value.
+   *   - categorical: `perturb` is an alternative level LABEL.
+   * Fully isolated — see the section comment above.
+   */
+  const speculativeApprovalDelta = (candidateName, isCont, perturb) => {
+    const baseline = applicantBaselineState;
+    const current = buildCurrentEngineState();
+
+    // Engine-display value of the perturbation (term → months number).
+    const engineVal = isCont
+      ? perturb
+      : candidateName === 'term'
+      ? parseTermMonths(perturb)
+      : perturb;
+
+    const perturbed = { ...current };
+    perturbed[candidateName] = engineVal;
+
+    const specModified = new Set(modifiedFeatures);
+    specModified.add(candidateName);
+
+    // Same single DC1 propagation call used for real edits (pure — clones input).
+    let next = perturbed;
+    if (featureHasOutgoingEdges(candidateName)) {
+      const res = propagate(
+        candidateName, baseline, perturbed, baseline,
+        specModified, appliedHomeMortgage, userOpenDelta, userTotalDelta,
+        userFicoDelta, userDtiDelta, userRevolDelta
+      );
+      next = res.state;
+    }
+
+    // Score a CLONED sample — never touch the real ebmLocal / store.
+    const sample = plan.ebmLocal.sample.slice();
+    const cf = plan.features.find((f) => f.data.name === candidateName);
+    sample[cf.featureID] = isCont ? toInternalValue(perturb, candidateName) : perturb;
+    plan.features.forEach((f) => {
+      const name = f.data.name;
+      if (name === candidateName) return;
+      if (next[name] !== undefined && !engineValuesEqual(next[name], current[name])) {
+        sample[f.featureID] = displayToInternal(name, next[name]);
+      }
+    });
+
+    const scores = plan.ebmLocal.countScore(sample);
+    const logOdds =
+      Object.values(scores).reduce((a, b) => a + b, 0) + plan.ebmLocal.intercept;
+    return sigmoid(logOdds) - sigmoid(plan.ebmLocal.predScore);
+  };
+
+  /**
+   * Evaluate one candidate through Gates 2–4. Returns { direction, gain } for a
+   * surviving feature, or null if suppressed.
+   */
+  const evaluateIdea = (feature) => {
+    const name = feature.data.name;
+
+    if (feature.isCont) {
+      const range = displayRange(name);
+      if (!range) return null;
+      const [lo, hi] = range;
+      const cur = buildCurrentEngineState()[name];
+      const clamp = (v) => Math.max(lo, Math.min(hi, v));
+      // Step magnitude: a fraction of the current value (scale-invariant), with a
+      // range-fraction fallback for values sitting at ~0.
+      const stepMag = (frac) => {
+        const byValue = frac * Math.abs(cur);
+        return byValue > 1e-9 ? byValue : frac * (hi - lo);
+      };
+
+      const evalStep = (frac) => {
+        const mag = stepMag(frac);
+        if (!(mag > 0)) return { dir: 'raise', gain: 0 };
+        const up = speculativeApprovalDelta(name, true, clamp(cur + mag));
+        const down = speculativeApprovalDelta(name, true, clamp(cur - mag));
+        // Gate 2 — suggested direction from the PROPAGATED effect (not the direct
+        // feature→score sign): whichever direction yields the better approval.
+        return { dir: up >= down ? 'raise' : 'lower', gain: Math.max(up, down) };
+      };
+
+      const small = evalStep(SMALL_STEP_FRACTION);
+      const large = evalStep(LARGE_STEP_FRACTION);
+
+      // Gate 3 — the suggested direction must hold under BOTH step sizes.
+      if (small.dir !== large.dir) return null;
+      // Gate 4 gain — achievable propagated gain (larger step).
+      if (large.gain <= MIN_GAIN) return null;
+      return { direction: small.dir, gain: large.gain };
+    }
+
+    // Categorical: best alternative level. "Change" is the only direction, so
+    // Gate 3's step-size direction check does not apply.
+    const curLabel = buildCurrentEngineState()[name];
+    const levels = feature.labelEncoder ? Object.values(feature.labelEncoder) : [];
+    let best = 0;
+    levels.forEach((lvl) => {
+      const asEngine = name === 'term' ? parseTermMonths(lvl) : lvl;
+      if (engineValuesEqual(asEngine, curLabel)) return;
+      const eff = speculativeApprovalDelta(name, false, lvl);
+      if (eff > best) best = eff;
+    });
+    if (best <= MIN_GAIN) return null;
+    return { direction: 'change', gain: best };
+  };
+
+  /** Recompute the "Ideas to try" suggestions from the current state. */
+  const computeIdeas = () => {
+    if (!plan || !applicantBaselineState) return;
+    const ideas = [];
+    plan.features.forEach((feature) => {
+      const name = feature.data.name;
+      // Gate 1 — runtime exclusion FIRST: "Impossible to Change" (difficulty
+      // 'lock') overrides baseline actionability.
+      if (constraints?.difficulties?.get(name) === IMPOSSIBLE_TO_CHANGE) return;
+      // Gate 1 — baseline actionable set (structural + policy exclusions).
+      if (!isBaselineActionable(name)) return;
+
+      const res = evaluateIdea(feature);
+      if (!res) return;
+      ideas.push({
+        name,
+        displayName:
+          DISPLAY_NAMES[name] || feature.data.description?.displayName || name,
+        verb: ideaVerb(feature.isCont, res.direction),
+        direction: res.direction,
+        gain: res.gain
+      });
+    });
+
+    // Gate 4 — rank by achievable propagated gain (sign-agnostic wrt the
+    // feature's current contribution); strongest first; keep the top 2–3.
+    ideas.sort((a, b) => b.gain - a.gain);
+    ideasStore.set(ideas.slice(0, 3));
+  };
+
+  /** Debounced recompute so rapid edits settle before re-evaluating. */
+  const scheduleIdeas = () => {
+    if (ideasDebounceTimer) clearTimeout(ideasDebounceTimer);
+    ideasDebounceTimer = setTimeout(() => {
+      ideasDebounceTimer = null;
+      // Speculative evaluation must never break the UI.
+      try { computeIdeas(); } catch (e) { /* no-op */ }
+    }, 250);
+  };
+
   /**
    * Run the causal propagation engine for a directly-edited feature, then show
    * the message / outlines / arrows and push the engine's computed dependent
@@ -1719,6 +1914,7 @@
   onDestroy(() => {
     unsubscribes.forEach(unsub => unsub());
     if (propagationDebounceTimer) clearTimeout(propagationDebounceTimer);
+    if (ideasDebounceTimer) clearTimeout(ideasDebounceTimer);
     window.removeEventListener('scroll', onScroll, { capture: true });
     window.removeEventListener('resize', onCardToggle);
     if (scrollRafId) cancelAnimationFrame(scrollRafId);

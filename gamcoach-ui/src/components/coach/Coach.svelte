@@ -5,6 +5,7 @@
   import HistorySidebar from '../history-sidebar/HistorySidebar.svelte';
   import ScoreReadout from '../score-readout/ScoreReadout.svelte';
   import ScoreDrivers from '../score-readout/ScoreDrivers.svelte';
+  import IdeasToTry from '../ideas/IdeasToTry.svelte';
   import ChangeEffects from '../change-effects/ChangeEffects.svelte';
 
   import starIconSolid from '../../img/icon-star-solid.svg';
@@ -357,14 +358,15 @@
       {/if}
     </div>
 
-    <!-- Right panel: score readout, then "what's driving this score", then
-         "effects of your changes" (the propagation ripple, last section). -->
+    <!-- Right panel band order: score readout → "what's driving this score" →
+         "ideas to try" → "effects of your changes" (the propagation ripple). -->
     <div class="right-column">
       {#if plans !== null}
         <ScoreReadout planStore={activePlanStore} />
         <div class="rc-drivers">
           <ScoreDrivers planStore={activePlanStore} />
         </div>
+        <IdeasToTry />
         <div class="rc-effects">
           <ChangeEffects />
         </div>
@@ -454,6 +456,13 @@
     flex: 1 1 auto;
     min-width: 0;
     padding-top: 2px;
+    // Match the left column (plan row + 600px feature panel) and scroll its own
+    // content, so the lower bands (ideas / effects) stay reachable when they grow
+    // instead of being clipped by the wrapper's overflow:hidden.
+    max-height: 640px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    padding-right: 6px;
   }
 
   .rc-drivers {
