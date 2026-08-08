@@ -703,7 +703,7 @@
           <line x1="5" y1="6.5" x2="5" y2="6.5"/>
           <line x1="15" y1="6.5" x2="15" y2="6.5"/>
         </svg>
-        <span class="icon-label">Compare</span>
+        <span class="icon-label">Compare Plans</span>
       </div>
       <!-- Watch example — persistent, subtle entry point -->
       <button class="watch-example-btn" on:click={openExample} title="Watch a short worked example">
@@ -713,9 +713,9 @@
         Watch example
       </button>
       <div class="icon-wrapper" on:click={() => historySidebarOpenStore.update(v => !v)} title="Exploration history">
-        <svg viewBox="0 0 20 20" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-          <circle cx="10" cy="10" r="8.5"/>
-          <polyline points="10,6 10,10 14,12"/>
+        <svg class="history-svg" viewBox="0 0 24 24" width="18" height="18" style="fill: none;" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 8l0 4l2 2"/>
+          <path d="M3.05 11a9 9 0 1 1 .5 4m-.5 5v-5h5"/>
         </svg>
         <span class="icon-label">History</span>
       </div>
