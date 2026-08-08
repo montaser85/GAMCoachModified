@@ -15,6 +15,8 @@
   const unsub = changeEffectsStore.subscribe((v) => (events = v));
   onDestroy(unsub);
 
+  let collapsed = false; // section hide/unhide (name stays visible)
+
   // Short, friendly labels for the compact row layout.
   const SHORT_NAMES = {
     home_ownership: 'Home Ownership',
@@ -84,16 +86,23 @@
 </script>
 
 <div class="change-effects">
+  <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
+  <div class="ce-title" class:ce-title-empty={events.length === 0} on:click={() => (collapsed = !collapsed)}>
+    Effects of your changes
+    <span
+      class="ce-info"
+      title="How each feature you edit ripples through your application, and whether each ripple helps or hurts your approval."
+      >i</span
+    >
+    <svg class="ce-chev" class:collapsed viewBox="0 0 24 24" width="24" height="24"
+         fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M6 9l6 6l6 -6"/>
+    </svg>
+  </div>
+
+  {#if !collapsed}
   {#if events.length === 0}
     <!-- Empty state -->
-    <div class="ce-title ce-title-empty">
-      Effects of your changes
-      <span
-        class="ce-info"
-        title="How each feature you edit ripples through your application, and whether each ripple helps or hurts your approval."
-        >i</span
-      >
-    </div>
     <div class="ce-empty">
       <span class="ce-empty-icon">{@html ICONS.hand}</span>
       <div class="ce-empty-text">
@@ -102,26 +111,16 @@
       </div>
     </div>
   {:else}
-    <!-- Header + legend -->
-    <div class="ce-head">
-      <div class="ce-title">
-        Effects of your changes
-        <span
-          class="ce-info"
-          title="How each feature you edited rippled through your application, and whether each ripple helped or hurt your approval."
-          >i</span
-        >
-      </div>
-      <div class="ce-legend">
-        <span class="ce-leg">
-          <span class="ce-thumb sm" style="color:{BLUE}">{@html ICONS.thumbUp}</span>
-          helps approval
-        </span>
-        <span class="ce-leg">
-          <span class="ce-thumb sm" style="color:{RED}">{@html ICONS.thumbDown}</span>
-          hurts approval
-        </span>
-      </div>
+    <!-- Legend -->
+    <div class="ce-legend">
+      <span class="ce-leg">
+        <span class="ce-thumb sm" style="color:{BLUE}">{@html ICONS.thumbUp}</span>
+        helps approval
+      </span>
+      <span class="ce-leg">
+        <span class="ce-thumb sm" style="color:{RED}">{@html ICONS.thumbDown}</span>
+        hurts approval
+      </span>
     </div>
 
     <!-- Rows -->
@@ -156,6 +155,7 @@
         </div>
       {/each}
     </div>
+  {/if}
   {/if}
 </div>
 
@@ -199,15 +199,6 @@
   }
 
   /* ── Header + legend ─────────────────────────────────────────────────── */
-  .ce-head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    flex-wrap: wrap;
-    gap: 6px 18px;
-    margin-bottom: 6px;
-  }
-
   .ce-title {
     display: flex;
     align-items: center;
@@ -215,6 +206,17 @@
     font-size: 1rem;
     font-weight: 700;
     color: $gray-900;
+    cursor: pointer;
+    user-select: none;
+    margin-bottom: 8px;
+
+    .ce-chev {
+      margin-left: auto;
+      color: $gray-500;
+      flex: 0 0 auto;
+      transition: transform 150ms ease;
+      &.collapsed { transform: rotate(-90deg); }
+    }
   }
 
   .ce-info {
@@ -237,6 +239,7 @@
     display: flex;
     flex-wrap: wrap;
     gap: 4px 16px;
+    margin-bottom: 12px;
     font-size: 0.82rem;
     font-weight: 600;
     color: $gray-700;

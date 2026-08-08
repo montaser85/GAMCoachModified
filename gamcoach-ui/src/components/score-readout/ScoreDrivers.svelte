@@ -11,6 +11,8 @@
   const DOMAIN = 9; // symmetric axis half-range
   const TICKS = [-9, -7, -5, -3, 0, 3, 5, 7, 9];
 
+  let collapsed = false; // section hide/unhide (name stays visible)
+
   let plan = null;
   let unsub = null;
   $: resubscribe(planStore);
@@ -33,11 +35,17 @@
 </script>
 
 <div class="score-drivers">
-  <div class="sd-header">
+  <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
+  <div class="sd-header" on:click={() => (collapsed = !collapsed)}>
     What's driving this score
     <span class="sd-info" title="Each feature's contribution to the current score, in points.">i</span>
+    <svg class="sd-chev" class:collapsed viewBox="0 0 24 24" width="24" height="24"
+         fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M6 9l6 6l6 -6"/>
+    </svg>
   </div>
 
+  {#if !collapsed}
   <div class="sd-axis-labels">
     <span class="sd-hurts">&larr; hurts</span>
     <span class="sd-helps">helps &rarr;</span>
@@ -76,6 +84,7 @@
   {:else}
     <div class="sd-empty">No differences from the original application yet.</div>
   {/if}
+  {/if}
 </div>
 
 <style lang="scss">
@@ -99,6 +108,16 @@
     font-weight: 700;
     color: $gray-900;
     margin-bottom: 8px;
+    cursor: pointer;
+    user-select: none;
+
+    .sd-chev {
+      margin-left: auto;
+      color: $gray-500;
+      flex: 0 0 auto;
+      transition: transform 150ms ease;
+      &.collapsed { transform: rotate(-90deg); }
+    }
 
     .sd-info {
       display: inline-flex;

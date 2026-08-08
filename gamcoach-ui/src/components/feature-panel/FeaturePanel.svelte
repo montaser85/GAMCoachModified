@@ -79,6 +79,15 @@
   /** @type {FeatureGrid} */
   let featureGrid = new FeatureGrid();
 
+  // Hide/unhide each of the three feature groups (the group name stays visible;
+  // only its cards are hidden). Hidden via CSS display:none so the card columns
+  // stay in the DOM (bindings / observers unaffected).
+  let collapsedGroups = { changed: false, configured: false, other: false };
+  const toggleGroup = (g) => {
+    collapsedGroups[g] = !collapsedGroups[g];
+    collapsedGroups = collapsedGroups;
+  };
+
   // ── Link-popup explanatory text for indirectly-affected features ────────────
   // Add an entry here whenever a feature gets real calculation mechanics so the
   // popup shows an informative message instead of the default placeholder.
@@ -1937,11 +1946,16 @@
 <div class='feature-panel' bind:this={component}>
 
   <div class='card-block'>
-    <div class='row-header'>
+    <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
+    <div class='row-header' on:click={() => toggleGroup('changed')}>
       <span class='label'>Suggested Changes</span>
+      <svg class='group-chev' class:collapsed={collapsedGroups.changed} viewBox='0 0 24 24' width='16' height='16'
+           fill='none' stroke='currentColor' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'>
+        <path d='M6 9l6 6l6 -6'/>
+      </svg>
     </div>
 
-    <div class='card-row'>
+    <div class='card-row' class:collapsed-body={collapsedGroups.changed}>
 
       <div class='card-column left-column' bind:this={leftColumn}>
 
@@ -2091,11 +2105,16 @@
   </div>
 
   <div class='card-block'>
-    <div class='row-header'>
+    <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
+    <div class='row-header' on:click={() => toggleGroup('configured')}>
       <span class='label'>Configured Features</span>
+      <svg class='group-chev' class:collapsed={collapsedGroups.configured} viewBox='0 0 24 24' width='16' height='16'
+           fill='none' stroke='currentColor' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'>
+        <path d='M6 9l6 6l6 -6'/>
+      </svg>
     </div>
 
-    <div class='card-row'>
+    <div class='card-row' class:collapsed-body={collapsedGroups.configured}>
 
       <div class='card-column left-column' bind:this={leftColumn}>
 
@@ -2245,11 +2264,16 @@
   </div>
 
   <div class='card-block'>
-    <div class='row-header'>
+    <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
+    <div class='row-header' on:click={() => toggleGroup('other')}>
       <span class='label'>Other Features</span>
+      <svg class='group-chev' class:collapsed={collapsedGroups.other} viewBox='0 0 24 24' width='16' height='16'
+           fill='none' stroke='currentColor' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'>
+        <path d='M6 9l6 6l6 -6'/>
+      </svg>
     </div>
 
-    <div class='card-row'>
+    <div class='card-row' class:collapsed-body={collapsedGroups.other}>
 
       <div class='card-column left-column' bind:this={leftColumn}>
 

@@ -27,7 +27,10 @@
       "PowerShell(try { $r = Invoke-WebRequest -Uri \"http://localhost:9770/build/bundle.js\" -UseBasicParsing -TimeoutSec 5; \"bundle.js HTTP \" + $r.StatusCode + \" length=\" + $r.RawContentLength } catch { \"ERR: \" + $_.Exception.Message })",
       "PowerShell(Get-CimInstance Win32_Process -Filter \"Name='node.exe'\" | Where-Object { $_.CommandLine -match 'gam-coach' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }; Start-Sleep -Seconds 2; 'killed gam-coach node processes')",
       "Bash(grep -aiE \"Your application is ready|Local:|localhost:|port|using|http://\" /tmp/gc-dev55.log | head -8)",
-      "Bash(sleep 4; grep -aiE \"localhost|:[0-9]{4,5}|serving|ready|available\" /tmp/gc-dev55.log | grep -avE \"DEPRECATION|import|sass\" | tail -8)"
+      "Bash(sleep 4; grep -aiE \"localhost|:[0-9]{4,5}|serving|ready|available\" /tmp/gc-dev55.log | grep -avE \"DEPRECATION|import|sass\" | tail -8)",
+      "Bash(sleep 8; grep -aE \"created .*bundle|\\\\!\\\\] Error|Error:|Unused CSS\" /tmp/gc-dev55.log | tail -6)",
+      "Bash(awk '{print $5}')",
+      "Bash(sleep 7; grep -aE \"created .*bundle\" /tmp/gc-dev55.log | tail -1)"
     ]
   }
 }

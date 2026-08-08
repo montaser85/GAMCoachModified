@@ -87,8 +87,8 @@
 
 .row-header {
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
+  flex-direction: row;
+  align-items: center;
   background-color: white;
   opacity: 0.95;
   border-bottom: 1px solid $gray-200;
@@ -98,6 +98,9 @@
   position: sticky;
   top: 0px;
   z-index: 2;
+
+  cursor: pointer;
+  user-select: none;
 
   .label {
     font-size: 0.95rem;
@@ -109,4 +112,17 @@
     align-items: center;
     gap: 3px;
   }
+
+  .group-chev {
+    margin-left: auto;
+    flex: 0 0 auto;
+    color: $gray-500;
+    transition: transform 150ms ease;
+    &.collapsed { transform: rotate(-90deg); }
+  }
+}
+
+/* Hidden group body — keeps the group name (row-header) visible. */
+.card-row.collapsed-body {
+  display: none;
 }

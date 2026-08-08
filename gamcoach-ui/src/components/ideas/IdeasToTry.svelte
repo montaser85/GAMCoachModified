@@ -31,6 +31,8 @@
   }
   onDestroy(() => { if (unsubPlan) unsubPlan(); });
 
+  let collapsed = false; // section hide/unhide (name stays visible)
+
   $: curPoints = plan ? Math.round(sigmoid(plan.ebmLocal.predScore) * 100) : null;
   $: statusLine =
     curPoints === null
@@ -42,27 +44,34 @@
 
 {#if ideas.length > 0}
   <div class="ideas-to-try">
-    <div class="it-title">
+    <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
+    <div class="it-title" on:click={() => (collapsed = !collapsed)}>
       Ideas to try
       <span
         class="it-info"
         title="Directional next steps our what-if analysis suggests, strongest first. We show a direction only — the amount is up to you."
         >i</span
       >
+      <svg class="it-chev" class:collapsed viewBox="0 0 24 24" width="24" height="24"
+           fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M6 9l6 6l6 -6"/>
+      </svg>
     </div>
 
-    {#if statusLine}
-      <div class="it-status">{statusLine}</div>
+    {#if !collapsed}
+      {#if statusLine}
+        <div class="it-status">{statusLine}</div>
+      {/if}
+
+      <div class="it-chips">
+        {#each ideas as idea (idea.name)}
+          <span class="it-chip" title="{idea.verb} {idea.displayName}">
+            <span class="it-verb">{idea.verb}</span>
+            <span class="it-feat">{idea.displayName}</span>
+          </span>
+        {/each}
+      </div>
     {/if}
-
-    <div class="it-chips">
-      {#each ideas as idea (idea.name)}
-        <span class="it-chip" title="{idea.verb} {idea.displayName}">
-          <span class="it-verb">{idea.verb}</span>
-          <span class="it-feat">{idea.displayName}</span>
-        </span>
-      {/each}
-    </div>
   </div>
 {/if}
 
@@ -83,6 +92,16 @@
     font-weight: 700;
     color: $gray-900;
     margin-bottom: 8px;
+    cursor: pointer;
+    user-select: none;
+
+    .it-chev {
+      margin-left: auto;
+      color: $gray-500;
+      flex: 0 0 auto;
+      transition: transform 150ms ease;
+      &.collapsed { transform: rotate(-90deg); }
+    }
   }
 
   .it-status {
