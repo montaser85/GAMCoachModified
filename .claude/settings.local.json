@@ -16,7 +16,9 @@
       "Bash(npm run *)",
       "Bash(sleep 7; tail -c 900 /tmp/gc-dev44.log)",
       "Bash(sleep 7; grep -aE \"created .*bundle\" /tmp/gc-dev44.log | tail -1)",
-      "Bash(sleep 7; grep -aE \"created .*bundle|\\\\!\\\\] Error|Error:\" /tmp/gc-dev44.log | tail -2)"
+      "Bash(sleep 7; grep -aE \"created .*bundle|\\\\!\\\\] Error|Error:\" /tmp/gc-dev44.log | tail -2)",
+      "Bash(sleep 8; grep -aE \"created .*bundle|\\\\!\\\\] Error|Error:|not exported|is not defined|Unexpected\" /tmp/gc-dev44.log | tail -5)",
+      "Bash(tail -20 /tmp/gc-dev44.log | grep -aE \"created|ParseError|Error\")"
     ]
   }
 }

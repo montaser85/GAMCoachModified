@@ -366,7 +366,7 @@
         <div class="rc-drivers">
           <ScoreDrivers planStore={activePlanStore} />
         </div>
-        <IdeasToTry />
+        <IdeasToTry planStore={activePlanStore} />
         <div class="rc-effects">
           <ChangeEffects />
         </div>

@@ -6,12 +6,38 @@
   // values and no magnitudes (users engage their own reasoning; a specific number
   // would imply precision the model can't guarantee).
   import { onDestroy } from 'svelte';
+  import { sigmoid } from '../../ebm/ebm';
   import { ideasStore } from '../../store';
+
+  /** Active plan store (writable<Plan>) or null while loading — used for the
+   * points-based status line. */
+  export let planStore = null;
+
+  const THRESHOLD = 50; // approval threshold, in points (matches ScoreReadout)
 
   /** @type {Array<{name:string, displayName:string, verb:string, direction:string}>} */
   let ideas = [];
-  const unsub = ideasStore.subscribe((v) => (ideas = v));
-  onDestroy(unsub);
+  const unsubIdeas = ideasStore.subscribe((v) => (ideas = v));
+  onDestroy(unsubIdeas);
+
+  // Current score in "points" (probability × 100), same math as ScoreReadout.
+  let plan = null;
+  let unsubPlan = null;
+  $: resubscribe(planStore);
+  function resubscribe(store) {
+    if (unsubPlan) { unsubPlan(); unsubPlan = null; }
+    plan = null;
+    if (store) unsubPlan = store.subscribe((v) => { plan = v; });
+  }
+  onDestroy(() => { if (unsubPlan) unsubPlan(); });
+
+  $: curPoints = plan ? Math.round(sigmoid(plan.ebmLocal.predScore) * 100) : null;
+  $: statusLine =
+    curPoints === null
+      ? ''
+      : curPoints >= THRESHOLD
+      ? "You've reached approval. A few things you could still try:"
+      : `${THRESHOLD - curPoints} points to go. A few things that could help:`;
 </script>
 
 {#if ideas.length > 0}
@@ -24,6 +50,10 @@
         >i</span
       >
     </div>
+
+    {#if statusLine}
+      <div class="it-status">{statusLine}</div>
+    {/if}
 
     <div class="it-chips">
       {#each ideas as idea (idea.name)}
@@ -52,6 +82,12 @@
     font-size: 1rem;
     font-weight: 700;
     color: $gray-900;
+    margin-bottom: 8px;
+  }
+
+  .it-status {
+    font-size: 0.88rem;
+    color: $gray-700;
     margin-bottom: 10px;
   }
 

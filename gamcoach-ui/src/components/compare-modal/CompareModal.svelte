@@ -1,6 +1,7 @@
 <script>
   import { onDestroy } from 'svelte';
-  import { compareOpenStore } from '../../store';
+  import { compareOpenStore, constraintsStore } from '../../store';
+  import { computeIdeasForPlan } from '../ideas/planIdeas';
 
   /** @type {import('../coach/Coach').Plans} */
   export let plans = null;
@@ -11,6 +12,18 @@
   export let localPlansVersion = 0;
 
   let unchangedOpen = false;
+
+  // View toggle — Summarized (default) or Detailed (the existing matrix).
+  let viewMode = 'summarized';
+
+  // Summarized-view data (per plan) + shared constraints for its Ideas-to-try.
+  let summaryPlans = [];
+  let summaryScoresDiffer = false;
+  let constraints = null;
+  const _constraintsUnsub = constraintsStore.subscribe((v) => (constraints = v));
+  onDestroy(() => _constraintsUnsub());
+
+  const APPROVAL_POINTS = 50; // approval threshold in points
 
   // A change whose per-feature score contribution is within ±this (log-odds) is
   // treated as neutral — the value moved but the score didn't.
@@ -157,11 +170,70 @@
     planList = newList;
     changedRows = changed;
     unchangedList = unchanged;
+
+    buildSummary();
+  }
+
+  /**
+   * Summarized-view data. Per plan, a merged list of ALL changes (from its own
+   * per-plan state) with provenance (suggested vs you-changed), the approval
+   * score, and (only when below approval) its own Ideas-to-try chips.
+   */
+  function buildSummary() {
+    const points = (p) => Math.round(sigmoid(p.ebmLocal.predScore) * 100);
+    const list = Array.from(localPlans.keys())
+      .sort((a, b) => a - b)
+      .map((idx) => {
+        const p = localPlans.get(idx);
+        if (!p) return null;
+        const label = planLabels.find((l) => l.planIndex === idx);
+        const pts = points(p);
+        const approved = pts >= APPROVAL_POINTS;
+
+        const changes = [];
+        p.features.forEach((f) => {
+          const i = f.featureID;
+          const curD = formatVal(p.ebmLocal.sample[i], f);
+          const origD = formatVal(p.curExample[i], f);
+          if (curD === origD) return; // unchanged from the applicant's original
+          const coachD = formatVal(p.coachSample[i], f);
+          changes.push({
+            featureID: i,
+            displayName: f.data?.description?.displayName ?? f.data?.name ?? `Feature ${i}`,
+            // Suggested if the current value is exactly the system's suggestion;
+            // otherwise the user moved it (or changed a feature the coach didn't).
+            provenance: curD === coachD ? 'suggested' : 'you-changed',
+            before: origD,
+            after: curD,
+            importance: f.data?.importance ?? 0
+          });
+        });
+        changes.sort((a, b) => b.importance - a.importance);
+
+        return {
+          planIndex: idx,
+          name: label?.name ?? `Plan ${idx}`,
+          approvalPoints: pts,
+          approved,
+          isHighest: false,
+          // Ideas are only needed (and shown) for plans below approval.
+          ideas: approved ? [] : computeIdeasForPlan(p, constraints),
+          changes
+        };
+      })
+      .filter(Boolean);
+
+    // "Highest" tag only when scores actually differ (omit on an all-tie).
+    const maxPts = list.length ? Math.max(...list.map((p) => p.approvalPoints)) : 0;
+    summaryScoresDiffer = new Set(list.map((p) => p.approvalPoints)).size > 1;
+    list.forEach((p) => { p.isHighest = p.approvalPoints === maxPts; });
+    summaryPlans = list;
   }
 
   // ── Direct store subscription for modal-open trigger ─────────────────────
   const _compareUnsub = compareOpenStore.subscribe(isOpen => {
     if (isOpen) {
+      viewMode = 'summarized'; // Summarized is the default each time it opens.
       rebuildComparison();
       setTimeout(() => rebuildComparison(), 0);
     }
@@ -176,6 +248,25 @@
   <!-- svelte-ignore a11y-click-events-have-key-events -->
   <div class="cmp-overlay" on:click|self={() => compareOpenStore.set(false)} role="dialog" aria-modal="true">
     <div class="cmp-modal">
+
+      <!-- ── View toggle (Summarized · Detailed) ──────────────────── -->
+      <div class="cmp-view-toggle">
+        <div class="cvt-tabs" role="tablist">
+          <button
+            class="cvt-tab"
+            class:active={viewMode === 'summarized'}
+            on:click={() => (viewMode = 'summarized')}
+          >Summarized</button>
+          <button
+            class="cvt-tab"
+            class:active={viewMode === 'detailed'}
+            on:click={() => (viewMode = 'detailed')}
+          >Detailed</button>
+        </div>
+      </div>
+
+    {#if viewMode === 'detailed'}
+      <!-- ══ DETAILED VIEW — unchanged existing matrix ══════════════ -->
 
       <!-- ── Header ───────────────────────────────────────────────── -->
       <div class="cmp-header">
@@ -272,6 +363,81 @@
         </span>
         <button class="cmp-close-btn" on:click={() => compareOpenStore.set(false)}>Close</button>
       </div>
+
+    {:else}
+      <!-- ══ SUMMARIZED VIEW ═══════════════════════════════════════ -->
+      <div class="sum-header">
+        <div class="sum-titlebar">
+          <div class="sum-title">Compare plans</div>
+          <button class="cmp-x" on:click={() => compareOpenStore.set(false)} title="Close">✕</button>
+        </div>
+        <div class="sum-subtitle">
+          Each plan reaches approval a different way. You can adjust any plan to
+          fit your situation.
+        </div>
+        <div class="sum-legend">
+          <span class="sum-prov suggested">suggested</span>
+          <span class="sum-prov you-changed">you changed</span>
+        </div>
+      </div>
+
+      <div class="sum-scroll">
+        <div
+          class="sum-grid"
+          style="grid-template-columns: 92px repeat({summaryPlans.length}, minmax(0, 1fr));"
+        >
+          <!-- Header row: plan names -->
+          <div class="sg-corner"></div>
+          {#each summaryPlans as p (p.planIndex)}
+            <div class="sg-planhead">{p.name}</div>
+          {/each}
+
+          <!-- APPROVAL SCORE -->
+          <div class="sg-rowlabel">APPROVAL SCORE</div>
+          {#each summaryPlans as p (p.planIndex)}
+            <div class="sg-cell sg-approval-cell">
+              <div class="sg-score" class:below={!p.approved}>{p.approvalPoints}</div>
+              <div class="sg-approve-label">{p.approved ? 'approved' : 'not yet approved'}</div>
+              {#if p.isHighest && summaryScoresDiffer}
+                <span class="sg-highest">Highest</span>
+              {/if}
+            </div>
+          {/each}
+
+          <!-- CHANGED FEATURES -->
+          <div class="sg-rowlabel">CHANGED FEATURES</div>
+          {#each summaryPlans as p (p.planIndex)}
+            <div class="sg-cell sg-changes-cell">
+              {#each p.changes as c (c.featureID)}
+                <div class="sg-change">
+                  <div class="sg-feat-name">{c.displayName}</div>
+                  <span class="sum-prov {c.provenance}"
+                    >{c.provenance === 'suggested' ? 'suggested' : 'you changed'}</span
+                  >
+                  <div class="sg-vals">{c.before} &rarr; {c.after}</div>
+                </div>
+              {/each}
+            </div>
+          {/each}
+
+          <!-- IDEAS TO TRY -->
+          <div class="sg-rowlabel">IDEAS TO TRY</div>
+          {#each summaryPlans as p (p.planIndex)}
+            <div class="sg-cell sg-ideas-cell">
+              {#if p.approved}
+                <div class="sg-works">This plan works — save it, or keep exploring.</div>
+              {:else}
+                <div class="sg-chips">
+                  {#each p.ideas as idea (idea.name)}
+                    <span class="sg-chip">{idea.verb} {idea.displayName}</span>
+                  {/each}
+                </div>
+              {/if}
+            </div>
+          {/each}
+        </div>
+      </div>
+    {/if}
 
     </div>
   </div>
@@ -505,6 +671,208 @@
       background: white; border: 1px solid $gray-300; color: $gray-700;
       cursor: pointer; font-size: 0.9rem; font-weight: 600; padding: 6px 20px; border-radius: 6px;
       &:hover { background: $gray-100; }
+    }
+  }
+
+  /* ══ View toggle ═══════════════════════════════════════════════════ */
+  .cmp-view-toggle {
+    display: flex;
+    justify-content: center;
+    padding: 12px 20px 10px;
+    border-bottom: 1px solid $gray-200;
+    flex-shrink: 0;
+
+    .cvt-tabs {
+      display: inline-flex;
+      background: $gray-100;
+      border: 1px solid $gray-200;
+      border-radius: 8px;
+      padding: 2px;
+    }
+    .cvt-tab {
+      border: none;
+      background: transparent;
+      cursor: pointer;
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: $gray-600;
+      padding: 6px 20px;
+      border-radius: 6px;
+      transition: background 120ms, color 120ms;
+
+      &:hover:not(.active) { color: $gray-800; }
+      &.active {
+        background: white;
+        color: $gray-900;
+        box-shadow: 0 1px 3px hsla(0, 0%, 0%, 0.12);
+      }
+    }
+  }
+
+  /* ══ Summarized view ═══════════════════════════════════════════════ */
+  .sum-header {
+    padding: 16px 20px 12px;
+    border-bottom: 1px solid $gray-200;
+    flex-shrink: 0;
+
+    .sum-titlebar {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+    }
+    .sum-title { font-size: 1.15rem; font-weight: 700; color: $gray-900; }
+    .sum-subtitle { font-size: 0.9rem; color: gray; margin-top: 3px; max-width: 640px; }
+  }
+
+  .sum-legend {
+    display: flex;
+    gap: 10px;
+    margin-top: 12px;
+  }
+
+  /* Provenance pills — reused in the legend and per-change. */
+  .sum-prov {
+    display: inline-flex;
+    align-items: center;
+    font-size: 0.72rem;
+    font-weight: 700;
+    padding: 2px 9px;
+    border-radius: 11px;
+    line-height: 1.3;
+
+    &.suggested { color: #1f7a44; background: #e3f5ea; border: 1px solid #b7e0c6; }
+    &.you-changed { color: #185fa5; background: #e4eefb; border: 1px solid #b9d3f0; }
+  }
+
+  .sum-scroll {
+    overflow-y: auto;
+    overflow-x: hidden; // all plans must fit — never scroll sideways
+    flex: 1 1 auto;
+    padding: 4px 16px 18px;
+  }
+
+  .sum-grid {
+    display: grid;
+    align-items: start;
+    column-gap: 0; // columns touch so the vertical separators are continuous
+    width: 100%;
+  }
+
+  .sg-corner { }
+
+  /* Vertical separators between columns — a left border on every plan-column
+     cell (the label column, column 1, has none). */
+  .sg-planhead,
+  .sg-cell {
+    border-left: 1px solid $gray-200;
+  }
+
+  .sg-planhead {
+    font-size: 0.85rem;
+    font-weight: 700;
+    color: $gray-800;
+    padding: 8px 10px 6px;
+    text-align: center;
+    border-bottom: 2px solid $gray-200;
+    min-width: 0;
+  }
+
+  .sg-rowlabel {
+    font-size: 0.66rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    color: gray;
+    padding: 14px 10px 0 0;
+    align-self: start;
+  }
+
+  .sg-cell {
+    padding: 12px 10px;
+    border-bottom: 1px solid $gray-100;
+    text-align: center;
+    min-width: 0; // allow the column to shrink; content wraps instead of overflowing
+  }
+
+  /* APPROVAL SCORE */
+  .sg-approval-cell {
+    .sg-score {
+      font-size: 1.55rem;
+      font-weight: 800;
+      line-height: 1;
+      color: var(--text-primary, #000); // at/above approval → black
+      &.below { color: #888780; }        // below approval → gray
+    }
+    .sg-approve-label {
+      font-size: 0.74rem;
+      color: $gray-600;
+      margin-top: 4px;
+    }
+    .sg-highest {
+      display: inline-block;
+      margin-top: 7px;
+      font-size: 0.64rem;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      color: hsl(45, 90%, 30%);
+      background: hsl(45, 90%, 92%);
+      border: 1px solid hsl(45, 80%, 78%);
+      border-radius: 10px;
+      padding: 2px 7px;
+    }
+  }
+
+  /* CHANGED FEATURES */
+  .sg-changes-cell {
+    text-align: left;
+    display: flex;
+    flex-direction: column;
+    gap: 11px;
+
+    .sg-change { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-width: 0; }
+    .sg-feat-name {
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: $gray-800;
+      line-height: 1.2;
+      overflow-wrap: anywhere;
+    }
+    .sg-vals {
+      font-size: 0.76rem;
+      font-weight: 600;
+      color: $gray-700;
+      font-variant-numeric: tabular-nums;
+      overflow-wrap: anywhere;
+    }
+  }
+
+  /* IDEAS TO TRY */
+  .sg-ideas-cell {
+    text-align: left;
+
+    .sg-works {
+      font-size: 0.8rem;
+      font-style: italic;
+      color: $gray-600;
+      line-height: 1.35;
+    }
+    .sg-chips {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 6px;
+    }
+    .sg-chip {
+      display: inline-flex;
+      align-items: center;
+      padding: 4px 9px;
+      background: #fbf0da;
+      border: 1px solid #e8d3a0;
+      border-radius: 14px;
+      color: #000;
+      font-size: 0.76rem;
+      font-weight: 600;
+      line-height: 1.2;
+      overflow-wrap: anywhere;
     }
   }
 </style>

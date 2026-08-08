@@ -86,12 +86,20 @@
 <div class="change-effects">
   {#if events.length === 0}
     <!-- Empty state -->
+    <div class="ce-title ce-title-empty">
+      Effects of your changes
+      <span
+        class="ce-info"
+        title="How each feature you edit ripples through your application, and whether each ripple helps or hurts your approval."
+        >i</span
+      >
+    </div>
     <div class="ce-empty">
       <span class="ce-empty-icon">{@html ICONS.hand}</span>
-      <span class="ce-empty-text">
-        You haven't changed anything yet. Edit a feature on the left to see how
-        it ripples through your application.
-      </span>
+      <div class="ce-empty-text">
+        <div>You haven't changed anything yet.</div>
+        <div>Edit a feature on the left to see how it ripples through your application.</div>
+      </div>
     </div>
   {:else}
     <!-- Header + legend -->
@@ -159,20 +167,26 @@
   }
 
   /* ── Empty state ─────────────────────────────────────────────────────── */
+  .ce-title-empty {
+    margin-bottom: 10px;
+  }
+
   .ce-empty {
     display: flex;
+    flex-direction: column;
     align-items: center;
-    gap: 12px;
-    padding: 16px 14px;
+    text-align: center;
+    gap: 14px;
+    padding: 26px 20px;
     border: 1.5px dashed $gray-300;
-    border-radius: 8px;
+    border-radius: 12px;
     color: $gray-500;
 
     .ce-empty-icon {
       flex: 0 0 auto;
       width: 26px;
       height: 26px;
-      color: $gray-400;
+      color: $gray-500;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -180,7 +194,7 @@
 
     .ce-empty-text {
       font-size: 0.85rem;
-      line-height: 1.35;
+      line-height: 1.5;
     }
   }
 
