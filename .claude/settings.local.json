@@ -18,7 +18,16 @@
       "Bash(sleep 7; grep -aE \"created .*bundle\" /tmp/gc-dev44.log | tail -1)",
       "Bash(sleep 7; grep -aE \"created .*bundle|\\\\!\\\\] Error|Error:\" /tmp/gc-dev44.log | tail -2)",
       "Bash(sleep 8; grep -aE \"created .*bundle|\\\\!\\\\] Error|Error:|not exported|is not defined|Unexpected\" /tmp/gc-dev44.log | tail -5)",
-      "Bash(tail -20 /tmp/gc-dev44.log | grep -aE \"created|ParseError|Error\")"
+      "Bash(tail -20 /tmp/gc-dev44.log | grep -aE \"created|ParseError|Error\")",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:9770/)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:9770/build/bundle.js)",
+      "Read(//tmp/**)",
+      "Bash(tail -c 500 /tmp/gc-dev44.log; echo \"=== node procs ===\"; ps aux 2>/dev/null | grep -i \"rollup\\\\|sirv\\\\|node\" | grep -iv grep | head -5)",
+      "PowerShell($p = Get-CimInstance Win32_Process -Filter \"Name='node.exe'\" | Where-Object { $_.CommandLine -match 'gam-coach' }; if \\($p\\) { $p | Select-Object ProcessId, @{N='Cmd';E={$_.CommandLine.Substring\\(0,[Math]::Min\\(90,$_.CommandLine.Length\\)\\)}} | Format-Table -Auto } else { 'no gam-coach node process running' })",
+      "PowerShell(try { $r = Invoke-WebRequest -Uri \"http://localhost:9770/build/bundle.js\" -UseBasicParsing -TimeoutSec 5; \"bundle.js HTTP \" + $r.StatusCode + \" length=\" + $r.RawContentLength } catch { \"ERR: \" + $_.Exception.Message })",
+      "PowerShell(Get-CimInstance Win32_Process -Filter \"Name='node.exe'\" | Where-Object { $_.CommandLine -match 'gam-coach' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }; Start-Sleep -Seconds 2; 'killed gam-coach node processes')",
+      "Bash(grep -aiE \"Your application is ready|Local:|localhost:|port|using|http://\" /tmp/gc-dev55.log | head -8)",
+      "Bash(sleep 4; grep -aiE \"localhost|:[0-9]{4,5}|serving|ready|available\" /tmp/gc-dev55.log | grep -avE \"DEPRECATION|import|sass\" | tail -8)"
     ]
   }
 }
