@@ -34,7 +34,17 @@
       "Bash(sleep 7; grep -aE \"created .*bundle|\\\\!\\\\] Error|Error:\" /tmp/gc-dev55.log | tail -2)",
       "Bash(sleep 7; grep -aE \"created .*bundle|\\\\!\\\\] Error|Error:|Undefined variable\" /tmp/gc-dev55.log | tail -3)",
       "Bash(grep -n \"moveThumb\\\\|import.*formatter\\\\|const formatter\\\\|let formatter\\\\|round\\\\b\\\\|isCollapsed\\\\s*=\\\\|let isCollapsed\\\\|\\\\$: isCollapsed\" src/components/feature-card/FeatureCard.svelte)",
-      "Bash(sleep 8; grep -aE \"created .*bundle|\\\\!\\\\] Error|Error:|Undefined variable|is not defined\" /tmp/gc-dev55.log | tail -4)"
+      "Bash(sleep 8; grep -aE \"created .*bundle|\\\\!\\\\] Error|Error:|Undefined variable|is not defined\" /tmp/gc-dev55.log | tail -4)",
+      "Bash(node -e 'const p=require\\(\"./package.json\"\\); console.log\\(\"type:\", p.type||\"\\(commonjs\\)\"\\)')",
+      "Bash(node analyzeQ2.mjs)",
+      "Bash(node analyzeQ3.mjs)",
+      "Bash(cd \"D:/OSU/Dr B research group/GAM_Coach/gam-coach_modified/gamcoach-ui\")",
+      "Bash(sed \"s#from '../../ebm/ebm'#from './ebm.mjs'#\" src/components/score-readout/scoreDrivers.js)",
+      "Bash(echo \"copied + patched import:\")",
+      "Bash(grep -n import C:/Users/monta/AppData/Local/Temp/claude/D--OSU-Dr-B-research-group-GAM-Coach-gam-coach-modified/8c4c60b6-96b7-43c4-ae72-14fbe576e739/scratchpad/scoreDrivers.mjs)",
+      "Bash(node verifyDrivers.mjs)",
+      "Bash(sleep 5; grep -aE \"created .*bundle|\\\\!\\\\] Error|Error:\" /tmp/gc-dev55.log | tail -2)",
+      "Bash(node --input-type=module -e ' *)"
     ]
   }
 }
