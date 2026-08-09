@@ -185,6 +185,12 @@
     font-weight: 400;
     color: $gray-600;
 
+    // "New plans / can change" — stacked on two lines before the dropdown.
+    .mf-label {
+      line-height: 1.2;
+      text-align: left;
+    }
+
     .select {
       margin: 0 2px;
       line-height: 1.2;

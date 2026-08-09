@@ -338,6 +338,16 @@
             </div>
           </div>
         </div>
+
+        <!-- Editability hint — between the plan dropdown and the feature list. -->
+        <div class="edit-hint">
+          <svg class="edit-hint-icon" viewBox="0 0 24 24" width="15" height="15"
+               fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M4 20h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4"/>
+            <path d="M13.5 6.5l4 4"/>
+          </svg>
+          <span>Adjust any feature to match your situation</span>
+        </div>
       {/if}
 
       {#if plans === null}
@@ -481,6 +491,22 @@
     position: relative;
     z-index: 1;
     width: 100%;
+  }
+
+  /* Editability hint under the plan dropdown, above the feature list. */
+  .edit-hint {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 2px 2px 2px;
+    font-size: 0.82rem;
+    font-style: italic;
+    color: $gray-600;
+
+    .edit-hint-icon {
+      flex: 0 0 auto;
+      color: $blue-600;
+    }
   }
 
   /* Plan dropdown + save star — top of the left column, aligned with the

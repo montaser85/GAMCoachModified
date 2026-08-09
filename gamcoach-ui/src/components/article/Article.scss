@@ -18,6 +18,14 @@
   box-sizing: border;
 }
 
+/* The main GAM Coach panel — widened 20% (from its ~884px content width). The
+   center grid column is `auto`, so an explicit width here drives the whole
+   panel wider (the flexible right column takes the extra space). */
+.coach-wrapper {
+  width: 1061px;
+  max-width: 100%;
+}
+
 .top-fill {
   background: $teal-900;
   grid-column: start / end;

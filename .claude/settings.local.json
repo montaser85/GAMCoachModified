@@ -30,7 +30,11 @@
       "Bash(sleep 4; grep -aiE \"localhost|:[0-9]{4,5}|serving|ready|available\" /tmp/gc-dev55.log | grep -avE \"DEPRECATION|import|sass\" | tail -8)",
       "Bash(sleep 8; grep -aE \"created .*bundle|\\\\!\\\\] Error|Error:|Unused CSS\" /tmp/gc-dev55.log | tail -6)",
       "Bash(awk '{print $5}')",
-      "Bash(sleep 7; grep -aE \"created .*bundle\" /tmp/gc-dev55.log | tail -1)"
+      "Bash(sleep 7; grep -aE \"created .*bundle\" /tmp/gc-dev55.log | tail -1)",
+      "Bash(sleep 7; grep -aE \"created .*bundle|\\\\!\\\\] Error|Error:\" /tmp/gc-dev55.log | tail -2)",
+      "Bash(sleep 7; grep -aE \"created .*bundle|\\\\!\\\\] Error|Error:|Undefined variable\" /tmp/gc-dev55.log | tail -3)",
+      "Bash(grep -n \"moveThumb\\\\|import.*formatter\\\\|const formatter\\\\|let formatter\\\\|round\\\\b\\\\|isCollapsed\\\\s*=\\\\|let isCollapsed\\\\|\\\\$: isCollapsed\" src/components/feature-card/FeatureCard.svelte)",
+      "Bash(sleep 8; grep -aE \"created .*bundle|\\\\!\\\\] Error|Error:|Undefined variable|is not defined\" /tmp/gc-dev55.log | tail -4)"
     ]
   }
 }

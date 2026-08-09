@@ -740,7 +740,7 @@
     </div>
 
     <!-- "New plans can change at most [N] features" — relocated from FeaturePanel -->
-    <span class="max-feature-control">New plans can change
+    <span class="max-feature-control"><span class="mf-label">New plans<br />can change</span>
       <div class="select" id="hidden-select">
         <select>
           <option id="hidden-option"></option>

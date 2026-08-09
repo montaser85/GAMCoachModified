@@ -220,6 +220,81 @@
   };
   state.featureUpdated = featureUpdated;
 
+  // ── Direct value entry (continuous features) ────────────────────────────────
+  // The displayed value doubles as an input: for an unchanged feature the single
+  // value is editable; for a changed / suggested feature the value AFTER the
+  // arrow is editable. Typed values are validated against the feature's ORIGINAL
+  // full range (valueMin/valueMax, from the model bin edges) — not the draggable
+  // acceptable range — so a value out of range is impossible.
+
+  /** Internal curValue → display number (matches the value text rendering). */
+  const dispNum = (val) =>
+    state.feature.transform === null
+      ? val
+      : state.feature.requiresInt
+      ? round(state.feature.transformFunc(val), 0)
+      : state.feature.transformFunc(val);
+
+  /** Display number → internal curValue (inverse of dispNum). */
+  const toInternal = (disp) => {
+    if (state.feature.transform === null) {
+      return state.feature.requiresInt ? Math.round(disp) : disp;
+    }
+    // log10 features: internal is log10 of the display value.
+    return disp > 0 ? Math.log10(disp) : state.feature.valueMin;
+  };
+
+  /** The string shown in the value input (formatted like the value text). Takes
+   * the value as an argument so the template expression depends on
+   * state.feature.curValue and Svelte re-evaluates it on every change. */
+  const valueInputStr = (val) => formatter(dispNum(val));
+
+  /**
+   * Apply a typed value: strip formatting, clamp to the ORIGINAL feature range,
+   * enforce integer features, convert to internal units, move the slider, and
+   * dispatch the change (same path the slider uses).
+   */
+  const applyValueInput = (rawStr) => {
+    const cleaned = String(rawStr).replace(/[^0-9.\-]/g, '');
+    let typed = parseFloat(cleaned);
+
+    // Original full range in display units (independent of the draggable range).
+    const dA = dispNum(state.feature.valueMin);
+    const dB = dispNum(state.feature.valueMax);
+    const dLo = Math.min(dA, dB);
+    const dHi = Math.max(dA, dB);
+
+    if (isNaN(typed)) {
+      state = state; // invalid → revert the input to the current value
+      return;
+    }
+    typed = Math.max(dLo, Math.min(dHi, typed)); // clamp — no out-of-range value
+    if (state.feature.requiresInt) typed = Math.round(typed);
+
+    const internal = toInternal(typed);
+    if (internal === state.feature.curValue) {
+      state = state; // unchanged (e.g. clamped back) → just re-sync the display
+      return;
+    }
+    state.feature.curValue = internal;
+    // Keep the slider thumb in sync when visible (same guard as the override path).
+    if (histDrawn && state.tickXScale && isExpanded) {
+      moveThumb(component, state, 'slider-middle-thumb', internal);
+    }
+    state.stateUpdated('value'); // re-render + dispatch curValueUpdated → propagation
+  };
+
+  /** Keyboard: Enter commits (blur), Escape reverts. */
+  const valueInputKeydown = (e) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      e.currentTarget.blur();
+    } else if (e.key === 'Escape') {
+      e.currentTarget.value = valueInputStr(state.feature.curValue);
+      e.currentTarget.blur();
+    }
+  };
+
   /**
    * Dynamically change the font size for the feature name to make it fit the
    * size of the header
@@ -702,75 +777,89 @@
     </div>
 
     <div class="values">
-      <span class="value-old">
-        {state.feature.transform === null
-          ? formatter(state.feature.originalValue)
-          : formatter(
-              state.feature.requiresInt
-                ? round(
-                    state.feature.transformFunc(state.feature.originalValue),
-                    0
-                  )
-                : state.feature.transformFunc(state.feature.originalValue)
-            )}
-      </span>
+      {#if state.feature.originalValue === state.feature.curValue}
+        <!-- Unchanged: the single value doubles as an editable input. -->
+        <input
+          class="value-old value-input"
+          type="text"
+          inputmode="decimal"
+          value={valueInputStr(state.feature.curValue)}
+          title="Type a value within this feature's range"
+          on:change={(e) => applyValueInput(e.currentTarget.value)}
+          on:keydown|stopPropagation={valueInputKeydown}
+          on:click|stopPropagation
+          on:mousedown|stopPropagation
+        />
+      {:else}
+        <span class="value-old">
+          {state.feature.transform === null
+            ? formatter(state.feature.originalValue)
+            : formatter(
+                state.feature.requiresInt
+                  ? round(
+                      state.feature.transformFunc(state.feature.originalValue),
+                      0
+                    )
+                  : state.feature.transformFunc(state.feature.originalValue)
+              )}
+        </span>
 
-      <div
-        class="feature-arrow"
-        class:hidden={state.feature.originalValue === state.feature.curValue}
-        class:user={state.feature.curValue !== state.feature.userValue &&
-          state.feature.curValue !== state.feature.coachValue}
-      >
-        <span
-          class="value-change"
+        <div
+          class="feature-arrow"
           class:user={state.feature.curValue !== state.feature.userValue &&
             state.feature.curValue !== state.feature.coachValue}
         >
-          {(() => {
-            // Figure out the sign
-            const sign =
-              state.feature.curValue - state.feature.originalValue < 0
-                ? ''
-                : '+';
+          <span
+            class="value-change"
+            class:user={state.feature.curValue !== state.feature.userValue &&
+              state.feature.curValue !== state.feature.coachValue}
+          >
+            {(() => {
+              // Figure out the sign
+              const sign =
+                state.feature.curValue - state.feature.originalValue < 0
+                  ? ''
+                  : '+';
 
-            if (state.feature.transform === null) {
-              const diff = state.feature.curValue - state.feature.originalValue;
-              return `${sign}${formatter(diff)}`;
-            } else {
-              let curDiff =
-                state.feature.transformFunc(state.feature.curValue) -
-                state.feature.transformFunc(state.feature.originalValue);
-              if (state.feature.requiresInt) {
-                curDiff =
-                  round(
-                    state.feature.transformFunc(state.feature.curValue),
-                    0
-                  ) -
-                  round(
-                    state.feature.transformFunc(state.feature.originalValue),
-                    0
-                  );
+              if (state.feature.transform === null) {
+                const diff = state.feature.curValue - state.feature.originalValue;
+                return `${sign}${formatter(diff)}`;
+              } else {
+                let curDiff =
+                  state.feature.transformFunc(state.feature.curValue) -
+                  state.feature.transformFunc(state.feature.originalValue);
+                if (state.feature.requiresInt) {
+                  curDiff =
+                    round(
+                      state.feature.transformFunc(state.feature.curValue),
+                      0
+                    ) -
+                    round(
+                      state.feature.transformFunc(state.feature.originalValue),
+                      0
+                    );
+                }
+                return `${sign}${formatter(curDiff)}`;
               }
-              return `${sign}${formatter(curDiff)}`;
-            }
-          })()}
-        </span>
+            })()}
+          </span>
 
-        <div class="arrow-right" />
-      </div>
+          <div class="arrow-right" />
+        </div>
 
-      <span
-        class="value-new"
-        class:hidden={state.feature.originalValue === state.feature.curValue}
-      >
-        {state.feature.transform === null
-          ? formatter(state.feature.curValue)
-          : formatter(
-              state.feature.requiresInt
-                ? round(state.feature.transformFunc(state.feature.curValue), 0)
-                : state.feature.transformFunc(state.feature.curValue)
-            )}
-      </span>
+        <!-- Changed / suggested: the value AFTER the arrow is the editable input. -->
+        <input
+          class="value-new value-input"
+          type="text"
+          inputmode="decimal"
+          value={valueInputStr(state.feature.curValue)}
+          title="Type a value within this feature's range"
+          on:change={(e) => applyValueInput(e.currentTarget.value)}
+          on:keydown|stopPropagation={valueInputKeydown}
+          on:click|stopPropagation
+          on:mousedown|stopPropagation
+        />
+      {/if}
     </div>
 
     <div
