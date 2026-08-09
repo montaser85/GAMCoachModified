@@ -31,7 +31,7 @@
 
 <div class="score-readout">
   {#if curPoints !== null}
-    <div class="sr-orig-label">Your original score: <b>{origPoints}</b> points</div>
+    <div class="sr-orig-label">Original score: <b>{origPoints}</b></div>
 
     <div class="sr-main">
       <div class="sr-bar-col">
@@ -49,7 +49,15 @@
       </div>
 
       <div class="sr-readout">
-        <div class="sr-points"><b>{curPoints}</b> points</div>
+        <div class="sr-points">
+          {#if approved}
+            <span class="sr-num">{curPoints}</span>
+            <span class="sr-unit">points</span>
+          {:else}
+            <span class="sr-num">{THRESHOLD - curPoints}</span>
+            <span class="sr-unit">points to approval</span>
+          {/if}
+        </div>
         <div class="sr-status" class:approved class:rejected={!approved}>
           {#if approved}✓ Approved{:else}✗ Not approved{/if}
         </div>
@@ -153,15 +161,34 @@
 
   /* ── Right readout ───────────────────────────────────────────────── */
   .sr-readout {
-    flex: 0 0 auto;
+    // Fixed width so the score bar to its left NEVER shrinks, regardless of the
+    // readout text ("62 points" vs "28 points to approval"). The longer label
+    // wraps within this width — using vertical space, not horizontal.
+    flex: 0 0 118px;
+    width: 118px;
     text-align: right;
 
     .sr-points {
-      font-size: 1.6rem;
-      font-weight: 800;
+      // Horizontal, single line (keeps the panel short). The short labels
+      // ("50 points" / "5 pts to go") fit within the fixed readout width.
+      display: flex;
+      flex-direction: row;
+      align-items: baseline;
+      justify-content: flex-end;
+      gap: 4px;
+      white-space: nowrap;
       color: $gray-900;
-      line-height: 1;
-      b { font-weight: 800; }
+      line-height: 1.1;
+
+      .sr-num {
+        font-size: 1.6rem;
+        font-weight: 800;
+      }
+      .sr-unit {
+        font-size: 0.9rem;
+        font-weight: 600;
+        color: $gray-700;
+      }
     }
     .sr-status {
       margin-top: 4px;

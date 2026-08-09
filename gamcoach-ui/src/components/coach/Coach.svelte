@@ -473,6 +473,9 @@
     overflow-y: auto;
     overflow-x: hidden;
     padding-right: 6px;
+    // Always reserve the scrollbar's space so the column width (and the score
+    // bar inside it) never jumps when the scrollbar appears/disappears.
+    scrollbar-gutter: stable;
   }
 
   .rc-drivers {
