@@ -93,22 +93,31 @@
   // ── Link-popup explanatory text for indirectly-affected features ────────────
   // Add an entry here whenever a feature gets real calculation mechanics so the
   // popup shows an informative message instead of the default placeholder.
+  // Plain-language definition shown on the "i"-icon hover for EVERY feature card.
+  // All 20 features have an entry, so the icon (gated on membership here) appears
+  // on every card. Features that also have propagation edges add their dependency
+  // lines from FEATURE_DEPS below.
   const LINK_POPUP_TEXT = {
-    'fico_score': "FICO score is your credit score, which lenders use to judge how likely you are to repay.",
-    'dti': "Your Debt-to-Income ratio (DTI) is how much of your monthly income goes toward paying debts. A lower DTI looks better to lenders.",
-    'revol_bal':  "Revolving balance is the unpaid amount left on your credit cards. Changing it affects two things: your credit utilization and your debt-to-income ratio.",
-    'revol_util': "Credit utilization is how much of your available revolving credit you're using. It moves with your revolving balance — as the balance goes up or down, so does your utilization.",
-    'mort_acc': "Number of mortgages is how many mortgage accounts you have.",
-    'open_acc': "Number of open accounts is how many credit lines you currently have open, like credit cards and loans.",
-    'total_acc': "Number of accounts is the total number of credit lines currently in your credit file.",
-    'loan_amnt': "Loan amount is how much money you're asking to borrow.",
-    'term': "Payment period is how long you'd take to repay the loan.",
-    'purpose': "Loan purpose is what the loan is for, which sets its interest rate.",
-    'annual_inc': "Annual income is how much you earn per year.",
-    'inq_last_6mths': "Number of credit inquiries is how many hard credit checks you've had in the last 6 months.",
-    'home_ownership': "Home ownership is your housing status — rent, own, or mortgage.",
-    'pub_rec_bankruptcies': "Number of bankruptcies is how many bankruptcies appear on your public record. Because a bankruptcy is itself a derogatory public record, raising it also raises your number of derogatory records.",
-    'pub_rec': "Number of derogatory records is how many negative public records you have, such as bankruptcies, liens, or judgments. Bankruptcies are counted within it."
+    'loan_amnt': "How much money you're asking to borrow.",
+    'term': "How long you'd take to repay the loan. A longer period means smaller monthly payments but more interest overall.",
+    'emp_length': "How long you've been at your current job.",
+    'home_ownership': "Your housing situation — whether you rent, own the place, or have a mortgage.",
+    'annual_inc': "How much you earn in a year before taxes.",
+    'verification_status': "Whether the lender has checked your income. 'Verified' means they confirmed the income amount; 'Source Verified' means they confirmed where your income comes from, but not the amount. The lender decides this, but you can change it to see how it affects your approval.",
+    'purpose': "What you're borrowing the money for. It can affect the interest rate of the loan.",
+    'dti': "Your Debt-to-Income ratio (DTI) is how much of your monthly income goes toward paying debts.",
+    'delinq_2yrs': "How many times you were more than 30 days late on a payment in the last 2 years.",
+    'earliest_cr_line': "How long since you opened your first credit account.",
+    'inq_last_6mths': "How many times a lender checked your credit in the last 6 months.",
+    'open_acc': "How many credit lines you currently have open, like credit cards and loans.",
+    'pub_rec': "How many serious negative marks you have from courts or government records. For example, a bankruptcy filing, a tax lien (a government claim on your property for unpaid taxes), or a court judgment saying you owe money.",
+    'revol_bal': "The unpaid amount left on your credit cards and similar credit accounts.",
+    'revol_util': "How much of your available credit limit you are currently using.",
+    'total_acc': "How many credit accounts you have in total (credit cards and other types), open or closed.",
+    'application_type': "Whether you're applying individually or jointly with a co-borrower.",
+    'mort_acc': "How many mortgage accounts you have.",
+    'pub_rec_bankruptcies': "How many bankruptcies appear on your public record.",
+    'fico_score': "Your credit score — a single number lenders use to judge how likely you are to repay."
   };
 
   // ── Static two-way dependency lists for the info tooltip ────────────────────
@@ -2057,7 +2066,7 @@
             <FeatureCard
               feature={feature}
               logger={logger}
-              isLinked={feature.data.name in FEATURE_DEPS}
+              isLinked={feature.data.name in LINK_POPUP_TEXT}
               linkDeps={FEATURE_DEPS[feature.data.name] || null}
               modified={modifiedFeatures.has(feature.data.name)}
               linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
@@ -2077,7 +2086,7 @@
             <FeatureCardCat
               feature={feature}
               logger={logger}
-              isLinked={feature.data.name in FEATURE_DEPS}
+              isLinked={feature.data.name in LINK_POPUP_TEXT}
               linkDeps={FEATURE_DEPS[feature.data.name] || null}
               modified={modifiedFeatures.has(feature.data.name)}
               linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
@@ -2105,7 +2114,7 @@
             <FeatureCard
               feature={feature}
               logger={logger}
-              isLinked={feature.data.name in FEATURE_DEPS}
+              isLinked={feature.data.name in LINK_POPUP_TEXT}
               linkDeps={FEATURE_DEPS[feature.data.name] || null}
               modified={modifiedFeatures.has(feature.data.name)}
               linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
@@ -2125,7 +2134,7 @@
             <FeatureCardCat
               feature={feature}
               logger={logger}
-              isLinked={feature.data.name in FEATURE_DEPS}
+              isLinked={feature.data.name in LINK_POPUP_TEXT}
               linkDeps={FEATURE_DEPS[feature.data.name] || null}
               modified={modifiedFeatures.has(feature.data.name)}
               linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
@@ -2153,7 +2162,7 @@
             <FeatureCard
               feature={feature}
               logger={logger}
-              isLinked={feature.data.name in FEATURE_DEPS}
+              isLinked={feature.data.name in LINK_POPUP_TEXT}
               linkDeps={FEATURE_DEPS[feature.data.name] || null}
               modified={modifiedFeatures.has(feature.data.name)}
               linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
@@ -2173,7 +2182,7 @@
             <FeatureCardCat
               feature={feature}
               logger={logger}
-              isLinked={feature.data.name in FEATURE_DEPS}
+              isLinked={feature.data.name in LINK_POPUP_TEXT}
               linkDeps={FEATURE_DEPS[feature.data.name] || null}
               modified={modifiedFeatures.has(feature.data.name)}
               linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
@@ -2216,7 +2225,7 @@
             <FeatureCard
               feature={feature}
               logger={logger}
-              isLinked={feature.data.name in FEATURE_DEPS}
+              isLinked={feature.data.name in LINK_POPUP_TEXT}
               linkDeps={FEATURE_DEPS[feature.data.name] || null}
               modified={modifiedFeatures.has(feature.data.name)}
               linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
@@ -2236,7 +2245,7 @@
             <FeatureCardCat
               feature={feature}
               logger={logger}
-              isLinked={feature.data.name in FEATURE_DEPS}
+              isLinked={feature.data.name in LINK_POPUP_TEXT}
               linkDeps={FEATURE_DEPS[feature.data.name] || null}
               modified={modifiedFeatures.has(feature.data.name)}
               linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
@@ -2264,7 +2273,7 @@
             <FeatureCard
               feature={feature}
               logger={logger}
-              isLinked={feature.data.name in FEATURE_DEPS}
+              isLinked={feature.data.name in LINK_POPUP_TEXT}
               linkDeps={FEATURE_DEPS[feature.data.name] || null}
               modified={modifiedFeatures.has(feature.data.name)}
               linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
@@ -2284,7 +2293,7 @@
             <FeatureCardCat
               feature={feature}
               logger={logger}
-              isLinked={feature.data.name in FEATURE_DEPS}
+              isLinked={feature.data.name in LINK_POPUP_TEXT}
               linkDeps={FEATURE_DEPS[feature.data.name] || null}
               modified={modifiedFeatures.has(feature.data.name)}
               linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
@@ -2312,7 +2321,7 @@
             <FeatureCard
               feature={feature}
               logger={logger}
-              isLinked={feature.data.name in FEATURE_DEPS}
+              isLinked={feature.data.name in LINK_POPUP_TEXT}
               linkDeps={FEATURE_DEPS[feature.data.name] || null}
               modified={modifiedFeatures.has(feature.data.name)}
               linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
@@ -2332,7 +2341,7 @@
             <FeatureCardCat
               feature={feature}
               logger={logger}
-              isLinked={feature.data.name in FEATURE_DEPS}
+              isLinked={feature.data.name in LINK_POPUP_TEXT}
               linkDeps={FEATURE_DEPS[feature.data.name] || null}
               modified={modifiedFeatures.has(feature.data.name)}
               linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
@@ -2375,7 +2384,7 @@
             <FeatureCard
               feature={feature}
               logger={logger}
-              isLinked={feature.data.name in FEATURE_DEPS}
+              isLinked={feature.data.name in LINK_POPUP_TEXT}
               linkDeps={FEATURE_DEPS[feature.data.name] || null}
               modified={modifiedFeatures.has(feature.data.name)}
               linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
@@ -2395,7 +2404,7 @@
             <FeatureCardCat
               feature={feature}
               logger={logger}
-              isLinked={feature.data.name in FEATURE_DEPS}
+              isLinked={feature.data.name in LINK_POPUP_TEXT}
               linkDeps={FEATURE_DEPS[feature.data.name] || null}
               modified={modifiedFeatures.has(feature.data.name)}
               linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
@@ -2423,7 +2432,7 @@
             <FeatureCard
               feature={feature}
               logger={logger}
-              isLinked={feature.data.name in FEATURE_DEPS}
+              isLinked={feature.data.name in LINK_POPUP_TEXT}
               linkDeps={FEATURE_DEPS[feature.data.name] || null}
               modified={modifiedFeatures.has(feature.data.name)}
               linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
@@ -2443,7 +2452,7 @@
             <FeatureCardCat
               feature={feature}
               logger={logger}
-              isLinked={feature.data.name in FEATURE_DEPS}
+              isLinked={feature.data.name in LINK_POPUP_TEXT}
               linkDeps={FEATURE_DEPS[feature.data.name] || null}
               modified={modifiedFeatures.has(feature.data.name)}
               linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
@@ -2471,7 +2480,7 @@
             <FeatureCard
               feature={feature}
               logger={logger}
-              isLinked={feature.data.name in FEATURE_DEPS}
+              isLinked={feature.data.name in LINK_POPUP_TEXT}
               linkDeps={FEATURE_DEPS[feature.data.name] || null}
               modified={modifiedFeatures.has(feature.data.name)}
               linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
@@ -2491,7 +2500,7 @@
             <FeatureCardCat
               feature={feature}
               logger={logger}
-              isLinked={feature.data.name in FEATURE_DEPS}
+              isLinked={feature.data.name in LINK_POPUP_TEXT}
               linkDeps={FEATURE_DEPS[feature.data.name] || null}
               modified={modifiedFeatures.has(feature.data.name)}
               linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
