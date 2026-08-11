@@ -10,6 +10,13 @@
   export let localPlans = null;
   /** Incremented by CoachPanel whenever any plan store updates — triggers reactive rebuild. */
   export let localPlansVersion = 0;
+  /** Called with a plan index when the user clicks a plan name — switches the
+   *  active plan (like the main dropdown) and closes the modal. */
+  export let onSelectPlan = null;
+
+  const selectPlan = (planIndex) => {
+    if (onSelectPlan) onSelectPlan(planIndex);
+  };
 
   let unchangedOpen = false;
 
@@ -302,7 +309,15 @@
               <th class="th-feature">FEATURE</th>
               {#each planList as plan}
                 <th class="th-plan" class:th-best={plan.isBest}>
-                  <div class="plan-name">
+                  <!-- svelte-ignore a11y-click-events-have-key-events -->
+                  <div
+                    class="plan-name plan-name-link"
+                    role="button"
+                    tabindex="0"
+                    title="Open {plan.name} in the main view"
+                    on:click={() => selectPlan(plan.planIndex)}
+                    on:keydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); selectPlan(plan.planIndex); } }}
+                  >
                     {#if plan.isBest}<span class="star">★</span>{/if}
                     {plan.name}
                   </div>
@@ -383,8 +398,14 @@
           fit your situation.
         </div>
         <div class="sum-legend">
-          <span class="sum-prov suggested" title={provTip('suggested')}>suggested</span>
-          <span class="sum-prov you-changed" title={provTip('you-changed')}>you changed</span>
+          <span class="sum-legend-item">
+            <span class="sum-prov suggested">suggested</span>
+            <span class="sum-legend-desc">{provTip('suggested')}</span>
+          </span>
+          <span class="sum-legend-item">
+            <span class="sum-prov you-changed">you changed</span>
+            <span class="sum-legend-desc">{provTip('you-changed')}</span>
+          </span>
         </div>
       </div>
 
@@ -393,10 +414,18 @@
           class="sum-grid"
           style="grid-template-columns: 92px repeat({summaryPlans.length}, minmax(0, 1fr));"
         >
-          <!-- Header row: plan names -->
+          <!-- Header row: plan names (click to open that plan in the main view) -->
           <div class="sg-corner"></div>
           {#each summaryPlans as p (p.planIndex)}
-            <div class="sg-planhead">{p.name}</div>
+            <!-- svelte-ignore a11y-click-events-have-key-events -->
+            <div
+              class="sg-planhead sg-planhead-link"
+              role="button"
+              tabindex="0"
+              title="Open {p.name} in the main view"
+              on:click={() => selectPlan(p.planIndex)}
+              on:keydown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); selectPlan(p.planIndex); } }}
+            >{p.name}</div>
           {/each}
 
           <!-- APPROVAL SCORE -->
@@ -731,8 +760,24 @@
 
   .sum-legend {
     display: flex;
-    gap: 10px;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
     margin-top: 12px;
+
+    .sum-legend-item {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    // Explanation shown inline to the right of each pill (no hover needed here).
+    .sum-legend-desc {
+      font-size: 0.72rem;
+      font-weight: 500;
+      color: $gray-600;
+      line-height: 1.3;
+    }
   }
 
   /* Provenance pills — reused in the legend and per-change. */
@@ -746,10 +791,15 @@
     line-height: 1.3;
     white-space: nowrap;
 
-    &.suggested,
+    &.suggested {
+      color: #000;
+      background: transparent; // white
+      border: 1px solid #000;
+    }
+
     &.you-changed {
       color: #000;
-      background: transparent;
+      background: #dcdcdc; // light gray — distinct from the white "suggested" pill
       border: 1px solid #000;
     }
   }
@@ -788,6 +838,16 @@
     text-align: center;
     border-bottom: 2px solid $gray-200;
     min-width: 0;
+  }
+
+  /* Clickable plan names (both views) — open that plan in the main view. */
+  .sg-planhead-link,
+  .plan-name-link {
+    cursor: pointer;
+    transition: color 100ms ease-in-out;
+
+    &:hover { color: $blue-600; text-decoration: underline; }
+    &:focus-visible { outline: 2px solid $blue-500; outline-offset: 1px; border-radius: 3px; }
   }
 
   .sg-rowlabel {

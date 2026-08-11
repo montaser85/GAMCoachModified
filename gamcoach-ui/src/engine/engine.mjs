@@ -83,9 +83,16 @@ export const FICO_WARN_THRESHOLD = 670;
  *                                 (signed: profile → user-set value). Summed with
  *                                 the utilization-driven balance so a Credit
  *                                 Utilization change no longer discards it.
+ * @param {string} [userDerogIndependent]  The provenance-tracked "independent
+ *                                 part" of Number of Derogatory Records — the
+ *                                 user's own (non-bankruptcy) marks, as a bin
+ *                                 label ('0'..'2+'). The Bankruptcies → Derogatory
+ *                                 edge computes min(2+, independent + bankruptcy).
+ *                                 When null, the rule falls back to the
+ *                                 baseline-derived split.
  * @returns {{ state: object, warnings: Array, log: Array }}
  */
-export function propagate(editedFeature, oldState, newState, baseline, modifiedFeatures, appliedHomeMortgage = 0, userOpenDelta = 0, userTotalDelta = 0, userFicoDelta = 0, userDtiDelta = 0, userRevolDelta = 0) {
+export function propagate(editedFeature, oldState, newState, baseline, modifiedFeatures, appliedHomeMortgage = 0, userOpenDelta = 0, userTotalDelta = 0, userFicoDelta = 0, userDtiDelta = 0, userRevolDelta = 0, userDerogIndependent = null) {
   const base = baseline || oldState;
   const working = { ...newState };
   const log = [];
@@ -103,6 +110,7 @@ export function propagate(editedFeature, oldState, newState, baseline, modifiedF
     userOpenDelta,
     userTotalDelta,
     revolManualDelta: userRevolDelta,
+    derogIndependentPart: userDerogIndependent,
     editedFeature
   };
   for (const edge of edges) {

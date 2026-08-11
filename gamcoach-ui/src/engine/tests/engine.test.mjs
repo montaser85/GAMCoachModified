@@ -7,7 +7,7 @@
  */
 
 import assert from 'assert';
-import { propagate } from '../index.mjs';
+import { propagate, derogAdd, derogSubtract } from '../index.mjs';
 import {
   creditLimitFromBaseline,
   masterFico,
@@ -259,11 +259,74 @@ test('9b. Total cannot be set below Open on a direct total edit', () => {
 
 // Extra invariants (Brief Sections 4/8)
 test('X1. Bankruptcy edit no longer affects FICO (channel removed)', () => {
-  const base = makeBaseline({ pub_rec_bankruptcies: 0 }); // fico 700
-  const next = edit(base, 'pub_rec_bankruptcies', 1);
+  const base = makeBaseline({ pub_rec_bankruptcies: '0' }); // fico 700
+  const next = edit(base, 'pub_rec_bankruptcies', '1');
   const { state, log } = propagate('pub_rec_bankruptcies', base, next, base);
   approx(state.fico_score, 700); // no bankruptcy → FICO edge; FICO unchanged
-  assert.strictEqual(log.length, 0); // pub_rec_bankruptcies has no outgoing edges
+  // Its only outgoing edge is to Number of Derogatory Records, never FICO.
+  assert.ok(log.every((l) => l.dependent !== 'fico_score'), 'no bankruptcy→FICO edge');
+  assert.deepStrictEqual([...new Set(log.map((l) => l.dependent))], ['pub_rec']);
+});
+
+// ── Bankruptcies -> Derogatory Records (provenance-aware additive rule) ───────
+// Rule: derogatory = min(2+, independent_part + current_bankruptcy). The engine
+// takes independent_part as the 12th arg; when omitted it falls back to the
+// baseline split max(0, base_derog − base_bankruptcy). `pb` runs a bankruptcy
+// edit and returns the resulting pub_rec, with an optional explicit indep part.
+const pb = (base, newBank, indep) =>
+  propagate(
+    'pub_rec_bankruptcies', base, edit(base, 'pub_rec_bankruptcies', newBank), base,
+    undefined, 0, 0, 0, 0, 0, 0, indep
+  ).state.pub_rec;
+
+// Ordinal-arithmetic helpers used by the rule.
+test('B0. Ordinal bin add caps at 2+, subtract floors at 0', () => {
+  assert.strictEqual(derogAdd('0', '2'), '2');   // 0+2 = 2
+  assert.strictEqual(derogAdd('1', '2'), '2+');  // 1+2 = 3 -> cap
+  assert.strictEqual(derogAdd('2+', '1'), '2+'); // already at ceiling
+  assert.strictEqual(derogSubtract('2', '1'), '1');
+  assert.strictEqual(derogSubtract('1', '2'), '0'); // floors at 0
+  assert.strictEqual(derogSubtract('2+', '1'), '2'); // rank 3 − 1 = 2 -> '2'
+});
+
+test('B1. Case 1 — derog all from bankruptcy, no double-count', () => {
+  // indep=0 (base derog=0, bank=0). bank 0->1 => 1;  bank 0->2 => 2 (not 2+)
+  const base = makeBaseline({ pub_rec: '0', pub_rec_bankruptcies: '0' });
+  assert.strictEqual(pb(base, '1'), '1');
+  assert.strictEqual(pb(base, '2'), '2');
+});
+
+test('B2. Case 2 — real lien stacks on top of bankruptcy', () => {
+  // indep=1 (base derog=1, bank=0). bank 0->2 => min(2+,1+2)=2+
+  const base = makeBaseline({ pub_rec: '1', pub_rec_bankruptcies: '0' });
+  assert.strictEqual(pb(base, '2'), '2+');
+});
+
+test('B3. Case 3 — reversal returns to the independent part', () => {
+  const c1 = makeBaseline({ pub_rec: '0', pub_rec_bankruptcies: '0' }); // indep 0
+  assert.strictEqual(pb(c1, '0'), '0'); // all-bankruptcy derog collapses to 0
+  const c2 = makeBaseline({ pub_rec: '1', pub_rec_bankruptcies: '0' }); // indep 1
+  assert.strictEqual(pb(c2, '0'), '1'); // the lien stays
+});
+
+test('B4. Case 4 — 2+ ceiling never drops when bankruptcy rises', () => {
+  // user-set derog=2+ (indep passed explicitly as '2+'), bank 0 -> 1 => stays 2+
+  const base = makeBaseline({ pub_rec: '2+', pub_rec_bankruptcies: '0' });
+  assert.strictEqual(pb(base, '1', '2+'), '2+'); // min(2+, 2+ + 1) = 2+, not 1
+});
+
+test('B5. Case 5 — baseline subset split (derog 2, bank 1 -> indep 1)', () => {
+  // fallback indep = max(0, 2 − 1) = 1; bank 1 -> 2 => min(2+, 1+2) = 2+
+  const base = makeBaseline({ pub_rec: '2', pub_rec_bankruptcies: '1' });
+  assert.strictEqual(pb(base, '2'), '2+');
+});
+
+test('B6. Strictly one-way: editing derog does not touch bankruptcies', () => {
+  const base = makeBaseline({ pub_rec: '0', pub_rec_bankruptcies: '0' });
+  const next = edit(base, 'pub_rec', '2');
+  const { state, log } = propagate('pub_rec', base, next, base);
+  assert.strictEqual(state.pub_rec_bankruptcies, '0'); // unchanged
+  assert.strictEqual(log.length, 0); // pub_rec remains a sink (no outgoing edges)
 });
 
 test('D3. FICO never drops below 662, however many accounts open', () => {

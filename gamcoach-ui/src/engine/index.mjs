@@ -9,6 +9,7 @@
 
 export { propagate, DTI_WARN_THRESHOLD, FICO_WARN_THRESHOLD } from './engine.mjs';
 export { EDGES, LEAF_FEATURES, computeDtiParts, DTI_USER_EDITS_ONLY } from './edges.mjs';
+export { DEROG_BINS, derogRank, derogBin, derogAdd, derogSubtract } from './edges.mjs';
 export {
   computeParams,
   masterFico,

@@ -13,7 +13,7 @@
 
   import { onMount, onDestroy, tick } from 'svelte';
   import { fade } from 'svelte/transition';
-  import { tooltipConfigStore, featureValueOverrideStore, cardToggleStore, propagatedFeaturesStore, historySidebarOpenStore, changeEffectsStore, ideasStore } from '../../store';
+  import { tooltipConfigStore, featureValueOverrideStore, cardToggleStore, propagatedFeaturesStore, historySidebarOpenStore, changeEffectsStore, ideasStore, derogFloorHintStore } from '../../store';
   import { sigmoid } from '../../ebm/ebm';
   import {
     STRUCTURAL_EXCLUSIONS,
@@ -37,7 +37,9 @@
     FICO_FLOOR,
     FICO_CEIL,
     MODEL_BOUNDS,
-    EDGES
+    EDGES,
+    derogRank,
+    derogSubtract
   } from '../../engine/index.mjs';
 
   export let windowLoaded = false;
@@ -104,7 +106,9 @@
     'purpose': "Loan purpose is what the loan is for, which sets its interest rate.",
     'annual_inc': "Annual income is how much you earn per year.",
     'inq_last_6mths': "Number of credit inquiries is how many hard credit checks you've had in the last 6 months.",
-    'home_ownership': "Home ownership is your housing status — rent, own, or mortgage."
+    'home_ownership': "Home ownership is your housing status — rent, own, or mortgage.",
+    'pub_rec_bankruptcies': "Number of bankruptcies is how many bankruptcies appear on your public record. Because a bankruptcy is itself a derogatory public record, raising it also raises your number of derogatory records.",
+    'pub_rec': "Number of derogatory records is how many negative public records you have, such as bankruptcies, liens, or judgments. Bankruptcies are counted within it."
   };
 
   // ── Static two-way dependency lists for the info tooltip ────────────────────
@@ -127,7 +131,11 @@
                         canChange: 'Number of Open Accounts, Number of Accounts, FICO Score' },
     'dti':            { changedBy: 'Loan Amount, Payment Period, Loan Purpose, Annual Income, Revolving Balance, Credit Utilization' },
     'fico_score':     { changedBy: 'Number of Open Accounts, Number of Mortgages, Home Ownership, Number of Credit Inquiries' },
-    'total_acc':      { changedBy: 'Number of Open Accounts, Number of Mortgages, Home Ownership' }
+    'total_acc':      { changedBy: 'Number of Open Accounts, Number of Mortgages, Home Ownership' },
+    // One-way edge: Number of Bankruptcies -> Number of Derogatory Records
+    // (a bankruptcy is a subset of derogatory records). Not reversed.
+    'pub_rec_bankruptcies': { canChange: 'Number of Derogatory Records' },
+    'pub_rec':              { changedBy: 'Number of Bankruptcies' }
   };
 
   // Reactive calculations displayed in popup once propagation has been applied.
@@ -239,6 +247,14 @@
   // source change never discards it. Cleared only on that feature's own reset.
   let userDtiDelta = 0;    // DTI: newDTI = computedDTI + userDtiDelta
   let userRevolDelta = 0;  // Revolving Balance: newBal = profile + userRevolDelta + util-driven
+  // Provenance for Number of Derogatory Records: the "independent part" — the
+  // user's OWN (non-bankruptcy) derogatory marks, tracked as a bin label
+  // ('0'..'2+'). Number of Derogatory Records = min(2+, independentPart +
+  // current_bankruptcy). Initialized at baseline to max(0, base_derog −
+  // base_bankruptcy); recomputed after a direct edit to Derogatory Records
+  // (backing out the current bankruptcy contribution). Cleared to the baseline
+  // value on a reset of either feature.
+  let derogIndependentPart = '0';
 
   /**
    * Recompute the tracked manual account deltas from the current model state
@@ -255,6 +271,25 @@
       userTotalDelta =
         (cur.total_acc || 0) - (applicantBaselineState.total_acc || 0) - userOpenDelta - mortDelta;
     }
+  };
+
+  /** The current Number of Bankruptcies as a bin label ('0'..'2+'). */
+  const currentBankruptcyLabel = () => {
+    const f = plan?.features.find((ff) => ff.data.name === 'pub_rec_bankruptcies');
+    const v = f ? plan.ebmLocal.sample[f.featureID] : '0';
+    return v == null ? '0' : v;
+  };
+
+  /** Flash the transient floor-guard hint on the Derogatory Records card. */
+  const flashDerogFloorHint = () => {
+    derogFloorHintStore.set({
+      feature: 'pub_rec',
+      message: "Can't be lower than your number of bankruptcies.",
+      token: Date.now()
+    });
+    setTimeout(() => {
+      derogFloorHintStore.update((h) => (h.feature === 'pub_rec' ? {} : h));
+    }, 2600);
   };
 
   /**
@@ -422,6 +457,25 @@
       }
     }
 
+    // Floor guard: a direct edit to Number of Derogatory Records can never be set
+    // below the current Number of Bankruptcies (bankruptcies are a subset). Reject
+    // such a click entirely — the value must NOT change wherever the user clicks
+    // below the bankruptcy bin. Keep the current value, snap the card back to it,
+    // flash the hint, and stop (no model write, no propagation).
+    if (
+      feature.data.name === 'pub_rec' &&
+      derogRank(newValue) < derogRank(currentBankruptcyLabel())
+    ) {
+      const currentDerog = plan.ebmLocal.sample[feature.featureID];
+      feature.hypotheticalValue = currentDerog;
+      flashDerogFloorHint();
+      // Revert the card's selection (it moved to the clicked level on interaction)
+      // back to the unchanged current value.
+      featureValueOverrideStore.set({ pub_rec: currentDerog });
+      setTimeout(() => featureValueOverrideStore.set({}), 400);
+      return;
+    }
+
     // Update the local EBM
     plan.ebmLocal.updateFeature(feature.data.name, newValue);
 
@@ -451,6 +505,15 @@
       // Credit Utilization edit.
       if (featureName === 'revol_util') revolUtilIsInput = true;
       else if (featureName === 'revol_bal') revolUtilIsInput = false;
+
+      // Number of Derogatory Records is a propagation SINK (no outgoing edge) —
+      // recompute its provenance split from the just-applied (clamped) value so a
+      // later Bankruptcies change backs out the right contribution. Runs only on a
+      // real edit (this block), never on the expand-replay, so a capped propagated
+      // value can't corrupt the independent part.
+      if (featureName === 'pub_rec') {
+        derogIndependentPart = derogSubtract(newValue, currentBankruptcyLabel());
+      }
 
       // Capture manual account-counter deltas here (Number of Accounts is a
       // leaf, so triggerPropagation returns early for it and can't do this).
@@ -591,6 +654,16 @@
     // Clear the DTI manual delta when DTI is restored (its sources are restored
     // to load-time alongside it, so no contribution should linger).
     if (unmodify.has('dti')) userDtiDelta = 0;
+    // Restore the derogatory provenance split to its baseline ONLY when Number of
+    // Derogatory Records itself is reset (its own edit is being undone). Resetting
+    // Bankruptcies alone must NOT erase the user's independent (non-bankruptcy)
+    // marks — the recompute below just backs the bankruptcy contribution out.
+    if (unmodify.has('pub_rec')) {
+      derogIndependentPart = derogSubtract(
+        applicantBaselineState.pub_rec,
+        applicantBaselineState.pub_rec_bankruptcies
+      );
+    }
 
     // ── 2. Recompute affected dependents from the remaining modified state ────
     // Restoring a SOURCE (e.g. Open Accounts / Mortgages) changes that source's
@@ -604,7 +677,7 @@
       const { state: next, log } = propagate(
         src, baseline, current, baseline,
         modifiedFeatures, appliedHomeMortgage, userOpenDelta, userTotalDelta, userFicoDelta,
-        userDtiDelta, userRevolDelta
+        userDtiDelta, userRevolDelta, derogIndependentPart
       );
       log.filter(l => !l.note).forEach(l => {
         if (!unmodify.has(l.dependent)) recomputed[l.dependent] = next[l.dependent];
@@ -677,6 +750,15 @@
     // units). Uses feature.originalValue (the applicant's real starting profile),
     // NOT the coach-suggested values.
     applicantBaselineState = buildEngineState(f => f.originalValue);
+
+    // Provenance init (Reading A — subset): the applicant's baseline derogatory
+    // count already includes their baseline bankruptcies, so the user's OWN
+    // (non-bankruptcy) marks are the remainder. For applicant #126 both are 0 →
+    // independent part = 0.
+    derogIndependentPart = derogSubtract(
+      applicantBaselineState.pub_rec,
+      applicantBaselineState.pub_rec_bankruptcies
+    );
 
     // RESET_TO_LOAD_STATE: capture the load-time snapshot once (the sample here
     // holds exactly what the cards display on first load, before any edit).
@@ -1576,7 +1658,7 @@
       const res = propagate(
         candidateName, baseline, perturbed, baseline,
         specModified, appliedHomeMortgage, userOpenDelta, userTotalDelta,
-        userFicoDelta, userDtiDelta, userRevolDelta
+        userFicoDelta, userDtiDelta, userRevolDelta, derogIndependentPart
       );
       next = res.state;
     }
@@ -1724,7 +1806,7 @@
     const { state: next, log } = propagate(
       featureName, baseline, current, baseline,
       modifiedFeatures, appliedHomeMortgage, userOpenDelta, userTotalDelta, userFicoDelta,
-      userDtiDelta, userRevolDelta
+      userDtiDelta, userRevolDelta, derogIndependentPart
     );
 
     // Record the home's now-applied contribution so the NEXT Home Ownership

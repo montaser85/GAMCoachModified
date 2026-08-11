@@ -139,3 +139,11 @@ export const changeEffectsStore = writable([]);
 // FeaturePanel computes it via the side-effect-free what-if evaluation and
 // publishes it here; IdeasToTry.svelte renders the amber lever chips.
 export const ideasStore = writable([]);
+
+// Transient inline hint for the Derogatory-Records floor guard: when the user
+// tries to set Number of Derogatory Records below their current Number of
+// Bankruptcies, the edit is clamped and a brief message is shown on that card.
+// Shape: { feature: string, message: string, token: number } — token changes on
+// each trigger so the card re-shows/re-times even for an identical message.
+// Empty object = no hint.
+export const derogFloorHintStore = writable({});

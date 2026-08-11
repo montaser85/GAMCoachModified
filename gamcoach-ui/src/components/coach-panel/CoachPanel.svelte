@@ -770,6 +770,7 @@
     {planLabels}
     {localPlans}
     {localPlansVersion}
+    onSelectPlan={(idx) => { planSelected(idx); compareOpenStore.set(false); }}
   />
 
   <ExampleModal open={exampleOpen} onClose={() => { exampleOpen = false; }} />

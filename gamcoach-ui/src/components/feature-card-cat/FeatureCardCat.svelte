@@ -6,7 +6,7 @@
   import { onMount, onDestroy, tick, createEventDispatcher } from 'svelte';
   import { fade, fly, scale } from 'svelte/transition';
   import { cubicInOut } from 'svelte/easing';
-  import { tooltipConfigStore, diffPickerConfigStore, featureValueOverrideStore } from '../../store';
+  import { tooltipConfigStore, diffPickerConfigStore, featureValueOverrideStore, derogFloorHintStore } from '../../store';
 
   import {
     initHist,
@@ -561,6 +561,13 @@
     }
   }
 
+  // Transient floor-guard hint (Derogatory Records only): shown when the user
+  // tries to set the value below their current bankruptcy count and it clamps.
+  $: floorHint =
+    feature?.data?.name && $derogFloorHintStore.feature === feature.data.name
+      ? $derogFloorHintStore.message
+      : '';
+
   $: feature && mounted && !initialized && initFeatureCard();
 </script>
 
@@ -686,6 +693,10 @@
         </span>
       {/if}
     </div>
+
+    {#if floorHint}
+      <div class="floor-hint" in:fade={{ duration: 150 }}>{floorHint}</div>
+    {/if}
   </div>
 
   <div

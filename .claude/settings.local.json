@@ -48,7 +48,11 @@
       "Bash(sleep 7; grep -aE \"created .*bundle|\\\\!\\\\] Error|Error:|is not defined|Unused CSS\" /tmp/gc-dev55.log | tail -3)",
       "Bash(sleep 7; grep -aE \"created .*bundle|\\\\!\\\\] Error|Error:|is not defined\" /tmp/gc-dev55.log | tail -2)",
       "Bash(sleep 7; grep -aE \"created .*bundle|\\\\!\\\\] Error|Error:|Unused CSS\" /tmp/gc-dev55.log | tail -3)",
-      "Bash(sleep 7; grep -aE \"created .*bundle|\\\\!\\\\] Error\" /tmp/gc-dev55.log | tail -1)"
+      "Bash(sleep 7; grep -aE \"created .*bundle|\\\\!\\\\] Error\" /tmp/gc-dev55.log | tail -1)",
+      "Bash(sleep 7; grep -aE \"created .*bundle|\\\\!\\\\] Error|is not defined\" /tmp/gc-dev55.log | tail -2)",
+      "Bash(python -c ' *)",
+      "Bash(node engine.test.mjs)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:5005)"
     ]
   }
 }

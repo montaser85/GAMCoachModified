@@ -10,6 +10,15 @@ $card-h-padding: 16px;
   padding: $card-v-padding $card-h-padding 5px $card-h-padding;
 }
 
+// Transient floor-guard hint for Number of Derogatory Records — shown when a
+// direct edit is clamped up to the current bankruptcy count.
+.floor-hint {
+  margin-top: 4px;
+  font-size: 0.72rem;
+  line-height: 1.3;
+  color: $red-600;
+}
+
 .link-icon {
   display: flex;
   align-items: center;

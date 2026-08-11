@@ -236,6 +236,59 @@ function ficoMaster(state, params) {
   return masterFico(params);
 }
 
+// ── Number of Bankruptcies -> Number of Derogatory Records (provenance-aware) ─
+// Empirical fact (LendingClub, 10k rows): pub_rec_bankruptcies <= pub_rec in
+// 100% of rows — a bankruptcy is a proper subset of derogatory records. So the
+// derogatory bin is the applicant's OWN (non-bankruptcy) marks PLUS the current
+// bankruptcy count, capped at the top bin:
+//     derogatory = min( 2+ , independent_part + current_bankruptcy )
+//
+// Both features are BINNED ordinal categoricals with the SAME levels
+//   '0' < '1' < '2' < '2+'   ('2+' = "more than 2", the ceiling)
+// so ALL arithmetic here is ordinal on the bin index, never raw integers. The
+// two share one label encoder, so any result bin is a valid derogatory bin.
+export const DEROG_BINS = ['0', '1', '2', '2+'];
+// Ordinal rank of a bin. Accepts the app's label strings ('0'..'2+') and,
+// defensively, raw numeric counts (tests / unbinned data): any count above 2
+// maps to the top '2+' bin.
+export function derogRank(v) {
+  const i = DEROG_BINS.indexOf(String(v));
+  if (i !== -1) return i;
+  const n = Number(v);
+  if (!Number.isFinite(n)) return 0;
+  return n <= 0 ? 0 : n >= 3 ? 3 : n; // 1 -> 1, 2 -> 2, >=3 -> '2+'
+}
+/** Bin label for an ordinal rank, clamped into ['0' .. '2+']. */
+export function derogBin(rank) {
+  return DEROG_BINS[Math.max(0, Math.min(DEROG_BINS.length - 1, rank))];
+}
+/** Ordinal add, capped at the '2+' ceiling:  min(2+, a + b). */
+export function derogAdd(a, b) {
+  return derogBin(derogRank(a) + derogRank(b));
+}
+/** Ordinal subtract, floored at '0':  max(0, a - b). */
+export function derogSubtract(a, b) {
+  return derogBin(derogRank(a) - derogRank(b));
+}
+// Derogatory Records = min( 2+ , independent_part + current_bankruptcy ).
+//   independent_part — the derogatory marks the user set THEMSELVES (real liens /
+//     judgments), EXCLUDING anything bankruptcy propagation contributed. It is
+//     tracked by the caller (provenance) and passed as ctx.derogIndependentPart.
+//     When absent (engine tests / standalone callers) it falls back to the
+//     baseline-derived value  max(0, baseline_derog - baseline_bankruptcy),
+//     which is the correct initial provenance split (Reading A — subset).
+// Raising bankruptcy raises derogatory up to the cap; lowering bankruptcy lowers
+// derogatory, but never below independent_part (the user's own marks are never
+// removed by a bankruptcy change). Strictly one-way: there is NO
+// pub_rec -> pub_rec_bankruptcies edge (a derogatory record need not be a
+// bankruptcy).
+function pubRecFromBankruptcies(state, ctx) {
+  const indep = ctx.derogIndependentPart != null
+    ? ctx.derogIndependentPart
+    : derogSubtract(ctx.baseline.pub_rec, ctx.baseline.pub_rec_bankruptcies);
+  return derogAdd(indep, state.pub_rec_bankruptcies);
+}
+
 /**
  * The complete edge set. Keys are edited-feature internal names; each value is
  * the list of that feature's outgoing edges. Features absent from this table
@@ -273,8 +326,12 @@ export const EDGES = {
   inq_last_6mths: [
     { dependent: 'fico_score', tag: 'E', phase: 'value', rule: ficoMaster }
   ],
-  // pub_rec_bankruptcies has NO outgoing edge: the bankruptcy → FICO channel was
-  // removed. FICO's only channel is the shared hard-inquiry counter.
+  // Number of Bankruptcies has ONE outgoing edge — to Number of Derogatory
+  // Records (max/floor, ordinal bins). There is deliberately NO bankruptcy → FICO
+  // channel (removed): FICO's only channel is the shared hard-inquiry counter.
+  pub_rec_bankruptcies: [
+    { dependent: 'pub_rec', tag: 'E', phase: 'structural', rule: pubRecFromBankruptcies }
+  ],
   annual_inc: [
     { dependent: 'dti', tag: 'E', phase: 'value', rule: dtiFull }
   ],
@@ -293,7 +350,8 @@ export const EDGES = {
 export const LEAF_FEATURES = [
   'dti',
   'fico_score',
-  'pub_rec_bankruptcies',
+  // pub_rec_bankruptcies is NO LONGER a leaf — it has an outgoing edge to
+  // pub_rec (Number of Derogatory Records). pub_rec itself remains a sink.
   'earliest_cr_line',
   'total_acc',
   'emp_length',
