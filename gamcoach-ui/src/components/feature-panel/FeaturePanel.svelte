@@ -1502,10 +1502,10 @@
   /**
    * Record (or refresh) the "Effects of your changes" row for one source edit.
    * Collapses by source: the newest edit of a source replaces its prior row and
-   * moves to the top (newest first).
+   * moves to the top (newest first). An empty `effects` array records a
+   * "no effect" row (the user changed this feature but it propagated to nothing).
    */
   const recordChangeEffects = (sourceName, sourceValueRaw, effects) => {
-    if (effects.length === 0) return;
     const event = {
       sourceName,
       sourceDisplayName: DISPLAY_NAMES[sourceName] || sourceName,
@@ -1701,12 +1701,21 @@
    * is the single source of truth for which features change and by how much.
    */
   const triggerPropagation = async (featureName) => {
-    if (!featureHasOutgoingEdges(featureName)) return;
     if (!applicantBaselineState || !plan) return;
+
+    const current = buildCurrentEngineState();
+
+    // Leaf feature (no outgoing edges): a direct edit ripples to nothing — still
+    // record a row so the user sees the change registered ("Nothing else
+    // changed"). Only user-directly-edited features reach triggerPropagation, so
+    // this never fires for a feature that changed via propagation.
+    if (!featureHasOutgoingEdges(featureName)) {
+      recordChangeEffects(featureName, current[featureName], []);
+      return;
+    }
 
     // ── 1. Run the engine against the frozen applicant baseline ──────────────
     const baseline = applicantBaselineState;
-    const current  = buildCurrentEngineState();
 
     // DTI_USER_EDITS_ONLY: pass the set of user-edited features so DTI counts
     // only touched inputs (unedited suggested values fall back to profile).
@@ -1751,9 +1760,11 @@
     // Populate the link-popup calculation blocks from the engine's parameters.
     populateLinkCalculations(featureName, baseline, current, next, changedSet);
 
-    // Nothing actually propagated (e.g. a home-ownership change that is not a
-    // mortgage transition) — stop.
+    // Has outgoing edges but nothing actually propagated (e.g. a Home Ownership
+    // change that is not a mortgage transition) — record a "no effect" row so the
+    // change still registers, then stop.
     if (activeTargets.length === 0) {
+      recordChangeEffects(featureName, current[featureName], []);
       return;
     }
 

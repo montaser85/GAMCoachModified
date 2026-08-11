@@ -16,6 +16,12 @@
   // View toggle — Summarized (default) or Detailed (the existing matrix).
   let viewMode = 'summarized';
 
+  // Hover explanations for the provenance tags (legend + per-row).
+  const provTip = (prov) =>
+    prov === 'suggested'
+      ? 'GAM Coach suggested this change'
+      : 'You changed this feature, or it changed because of another change you made';
+
   // Summarized-view data (per plan) + shared constraints for its Ideas-to-try.
   let summaryPlans = [];
   let summaryScoresDiffer = false;
@@ -216,8 +222,9 @@
           approvalPoints: pts,
           approved,
           isHighest: false,
-          // Ideas are only needed (and shown) for plans below approval.
-          ideas: approved ? [] : computeIdeasForPlan(p, constraints),
+          // "Ideas to try" chips for every plan — including approved ones, where
+          // they're further tweaks the user could still make.
+          ideas: computeIdeasForPlan(p, constraints),
           changes
         };
       })
@@ -376,8 +383,8 @@
           fit your situation.
         </div>
         <div class="sum-legend">
-          <span class="sum-prov suggested">suggested</span>
-          <span class="sum-prov you-changed">you changed</span>
+          <span class="sum-prov suggested" title={provTip('suggested')}>suggested</span>
+          <span class="sum-prov you-changed" title={provTip('you-changed')}>you changed</span>
         </div>
       </div>
 
@@ -410,10 +417,12 @@
             <div class="sg-cell sg-changes-cell">
               {#each p.changes as c (c.featureID)}
                 <div class="sg-change">
-                  <div class="sg-feat-name">{c.displayName}</div>
-                  <span class="sum-prov {c.provenance}"
-                    >{c.provenance === 'suggested' ? 'suggested' : 'you changed'}</span
-                  >
+                  <div class="sg-feat-line">
+                    <span class="sg-feat-name">{c.displayName}</span>
+                    <span class="sum-prov {c.provenance}" title={provTip(c.provenance)}
+                      >{c.provenance === 'suggested' ? 'suggested' : 'you changed'}</span
+                    >
+                  </div>
                   <div class="sg-vals">{c.before} &rarr; {c.after}</div>
                 </div>
               {/each}
@@ -424,15 +433,11 @@
           <div class="sg-rowlabel">IDEAS TO TRY</div>
           {#each summaryPlans as p (p.planIndex)}
             <div class="sg-cell sg-ideas-cell">
-              {#if p.approved}
-                <div class="sg-works">This plan works — save it, or keep exploring.</div>
-              {:else}
-                <div class="sg-chips">
-                  {#each p.ideas as idea (idea.name)}
-                    <span class="sg-chip">{idea.verb} {idea.displayName}</span>
-                  {/each}
-                </div>
-              {/if}
+              <div class="sg-chips">
+                {#each p.ideas as idea (idea.name)}
+                  <span class="sg-chip">{idea.verb} {idea.displayName}</span>
+                {/each}
+              </div>
             </div>
           {/each}
         </div>
@@ -467,7 +472,7 @@
     background: white;
     border-radius: 10px;
     box-shadow: 0 8px 48px hsla(0, 0%, 0%, 0.24);
-    max-width: 940px;
+    max-width: 1040px;
     width: 100%;
     max-height: 88vh;
     display: flex;
@@ -734,14 +739,19 @@
   .sum-prov {
     display: inline-flex;
     align-items: center;
-    font-size: 0.72rem;
+    font-size: 0.68rem;
     font-weight: 700;
-    padding: 2px 9px;
-    border-radius: 11px;
+    padding: 1px 7px;
+    border-radius: 10px;
     line-height: 1.3;
+    white-space: nowrap;
 
-    &.suggested { color: #1f7a44; background: #e3f5ea; border: 1px solid #b7e0c6; }
-    &.you-changed { color: #185fa5; background: #e4eefb; border: 1px solid #b9d3f0; }
+    &.suggested,
+    &.you-changed {
+      color: #000;
+      background: transparent;
+      border: 1px solid #000;
+    }
   }
 
   .sum-scroll {
@@ -753,7 +763,10 @@
 
   .sum-grid {
     display: grid;
-    align-items: start;
+    // Stretch every cell to fill its grid row so each row's bottom border lines
+    // up across all plans — one straight separator, not one per column at a
+    // different height. Cell CONTENT still sits at the top (see .sg-cell).
+    align-items: stretch;
     column-gap: 0; // columns touch so the vertical separators are continuous
     width: 100%;
   }
@@ -793,6 +806,14 @@
     min-width: 0; // allow the column to shrink; content wraps instead of overflowing
   }
 
+  /* Thicker separators at the two section boundaries: APPROVAL SCORE | CHANGED
+     FEATURES, and CHANGED FEATURES | IDEAS TO TRY. */
+  .sg-approval-cell,
+  .sg-changes-cell {
+    border-bottom-width: 2px;
+    border-bottom-color: $gray-300;
+  }
+
   /* APPROVAL SCORE */
   .sg-approval-cell {
     .sg-score {
@@ -828,14 +849,33 @@
     flex-direction: column;
     gap: 11px;
 
-    .sg-change { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; min-width: 0; }
+    .sg-change { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; min-width: 0; }
+    /* Name + provenance tag on one row — tag stays to the RIGHT of the name,
+       never below it. A long name uses vertical space, wrapping onto up to TWO
+       lines (kept in full), while the tag holds its place on the right. */
+    .sg-feat-line {
+      display: flex;
+      flex-direction: row;
+      flex-wrap: nowrap;
+      align-items: flex-start;
+      gap: 6px;
+      min-width: 0;
+    }
     .sg-feat-name {
+      flex: 1 1 auto;
+      min-width: 0;
       font-size: 0.78rem;
       font-weight: 600;
       color: $gray-800;
       line-height: 1.2;
       overflow-wrap: anywhere;
+      // up to two lines, then it stops (names here fit within two)
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
     }
+    .sum-prov { flex: 0 0 auto; }
     .sg-vals {
       font-size: 0.76rem;
       font-weight: 600;
@@ -849,12 +889,6 @@
   .sg-ideas-cell {
     text-align: left;
 
-    .sg-works {
-      font-size: 0.8rem;
-      font-style: italic;
-      color: $gray-600;
-      line-height: 1.35;
-    }
     .sg-chips {
       display: flex;
       flex-direction: column;

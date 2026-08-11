@@ -37,7 +37,7 @@
 <div class="score-drivers">
   <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
   <div class="sd-header" on:click={() => (collapsed = !collapsed)}>
-    What's driving this score
+    How much each change helped or hurt
     <span class="sd-info" title="Each feature's contribution to the current score, in points.">i</span>
     <svg class="sd-chev" class:collapsed viewBox="0 0 24 24" width="24" height="24"
          fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">

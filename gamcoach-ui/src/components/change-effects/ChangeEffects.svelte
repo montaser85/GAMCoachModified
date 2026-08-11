@@ -17,41 +17,6 @@
 
   let collapsed = false; // section hide/unhide (name stays visible)
 
-  // Short, friendly labels for the compact row layout.
-  const SHORT_NAMES = {
-    home_ownership: 'Home Ownership',
-    annual_inc: 'Annual Income',
-    loan_amnt: 'Loan Amount',
-    revol_bal: 'Revolving Balance',
-    revol_util: 'Credit Utilization',
-    term: 'Payment Period',
-    purpose: 'Loan Purpose',
-    inq_last_6mths: 'Credit Inquiries',
-    mort_acc: 'Mortgages',
-    open_acc: 'Open Accts',
-    total_acc: 'All Accts',
-    fico_score: 'FICO',
-    dti: 'Debt to Income'
-  };
-  const shortName = (name, fallback) => SHORT_NAMES[name] || fallback || name;
-
-  // Source feature → neutral icon key. Money → dollar, home ownership → home,
-  // then a sensible icon per feature type.
-  const SOURCE_ICON = {
-    loan_amnt: 'dollar',
-    annual_inc: 'dollar',
-    revol_bal: 'dollar',
-    home_ownership: 'home',
-    revol_util: 'percent',
-    term: 'calendar',
-    purpose: 'tag',
-    inq_last_6mths: 'hash',
-    open_acc: 'hash',
-    mort_acc: 'hash',
-    total_acc: 'hash'
-  };
-  const iconFor = (name) => SOURCE_ICON[name] || 'dollar';
-
   // Tabler-style outline SVGs (stroke = currentColor; color set by the wrapper).
   const A =
     'viewBox="0 0 24 24" width="100%" height="100%" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"';
@@ -59,18 +24,6 @@
   const T =
     'viewBox="0 0 24 24" width="100%" height="100%" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"';
   const ICONS = {
-    // ti-currency-dollar
-    dollar: `<svg ${A}><path d="M16.7 8a3 3 0 0 0 -2.7 -2h-4a3 3 0 0 0 0 6h4a3 3 0 0 1 0 6h-4a3 3 0 0 1 -2.7 -2"/><path d="M12 3v3m0 12v3"/></svg>`,
-    // ti-home
-    home: `<svg ${A}><path d="M5 12l-2 0l9 -9l9 9l-2 0"/><path d="M5 12v7a2 2 0 0 0 2 2h10a2 2 0 0 0 2 -2v-7"/><path d="M9 21v-6a2 2 0 0 1 2 -2h2a2 2 0 0 1 2 2v6"/></svg>`,
-    // ti-percentage
-    percent: `<svg ${A}><path d="M17 5l-10 14"/><path d="M6.5 6.5m-1.5 0a1.5 1.5 0 1 0 3 0a1.5 1.5 0 1 0 -3 0"/><path d="M17.5 17.5m-1.5 0a1.5 1.5 0 1 0 3 0a1.5 1.5 0 1 0 -3 0"/></svg>`,
-    // ti-calendar
-    calendar: `<svg ${A}><path d="M4 7a2 2 0 0 1 2 -2h12a2 2 0 0 1 2 2v12a2 2 0 0 1 -2 2h-12a2 2 0 0 1 -2 -2v-12z"/><path d="M16 3v4"/><path d="M8 3v4"/><path d="M4 11h16"/></svg>`,
-    // ti-tag
-    tag: `<svg ${A}><path d="M7.5 7.5m-1 0a1 1 0 1 0 2 0a1 1 0 1 0 -2 0"/><path d="M3 6v5.172a2 2 0 0 0 .586 1.414l7.71 7.71a2.41 2.41 0 0 0 3.408 0l5.592 -5.592a2.41 2.41 0 0 0 0 -3.408l-7.71 -7.71a2 2 0 0 0 -1.414 -.586h-5.172a3 3 0 0 0 -3 3z"/></svg>`,
-    // ti-hash
-    hash: `<svg ${A}><path d="M5 9l14 0"/><path d="M5 15l14 0"/><path d="M11 4l-4 16"/><path d="M17 4l-4 16"/></svg>`,
     // ti-arrow-narrow-right (connector)
     arrow: `<svg ${A}><path d="M5 12l14 0"/><path d="M15 16l4 -4"/><path d="M15 8l4 4"/></svg>`,
     // ti-thumb-up (outline, thick border)
@@ -82,13 +35,16 @@
   };
 
   // Combined causal explanation for the per-row info hover.
-  const rowTooltip = (ev) => ev.effects.map((e) => e.tooltip).join('\n\n');
+  const rowTooltip = (ev) =>
+    ev.effects.length === 0
+      ? `Changing ${ev.sourceDisplayName} didn't change any other feature.`
+      : ev.effects.map((e) => e.tooltip).join('\n\n');
 </script>
 
 <div class="change-effects">
   <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
   <div class="ce-title" class:ce-title-empty={events.length === 0} on:click={() => (collapsed = !collapsed)}>
-    Effects of your changes
+    Which features your changes affected
     <span
       class="ce-info"
       title="How each feature you edit ripples through your application, and whether each ripple helps or hurts your approval."
@@ -130,27 +86,30 @@
           <!-- Per-row causal-link info (left) -->
           <span class="ce-info ce-row-info" title={rowTooltip(ev)}>i</span>
 
-          <!-- Source -->
+          <!-- Source: full feature name + its new value (no icon) -->
           <div class="ce-source">
-            <span class="ce-src-icon">{@html ICONS[iconFor(ev.sourceName)]}</span>
-            <div class="ce-src-name">{shortName(ev.sourceName, ev.sourceDisplayName)}</div>
+            <div class="ce-src-name">{ev.sourceDisplayName}</div>
             <div class="ce-src-val">{ev.sourceValueDisplay}</div>
           </div>
 
           <!-- Connector -->
           <span class="ce-arrow">{@html ICONS.arrow}</span>
 
-          <!-- Effect(s) -->
+          <!-- Effect(s), or a neutral no-effect message -->
           <div class="ce-effects">
-            {#each ev.effects as ef}
-              <div class="ce-effect">
-                <span class="ce-thumb" style="color:{ef.helps ? BLUE : RED}">
-                  {@html ef.helps ? ICONS.thumbUp : ICONS.thumbDown}
-                </span>
-                <div class="ce-eff-name">{shortName(ef.depName, ef.depDisplayName)}</div>
-                <div class="ce-eff-val">{ef.beforeDisplay} &rarr; {ef.afterDisplay}</div>
-              </div>
-            {/each}
+            {#if ev.effects.length === 0}
+              <span class="ce-none">Nothing else changed</span>
+            {:else}
+              {#each ev.effects as ef}
+                <div class="ce-effect">
+                  <span class="ce-thumb" style="color:{ef.helps ? BLUE : RED}">
+                    {@html ef.helps ? ICONS.thumbUp : ICONS.thumbDown}
+                  </span>
+                  <div class="ce-eff-name">{ef.depDisplayName}</div>
+                  <div class="ce-eff-val">{ef.beforeDisplay} &rarr; {ef.afterDisplay}</div>
+                </div>
+              {/each}
+            {/if}
           </div>
         </div>
       {/each}
@@ -289,33 +248,19 @@
 
   .ce-source {
     flex: 0 0 auto;
-    width: 88px;
+    width: 112px;
     display: flex;
     flex-direction: column;
-    align-items: center;
-    text-align: center;
-    gap: 4px;
-
-    .ce-src-icon {
-      width: 46px;
-      height: 46px;
-      border-radius: 50%;
-      background: $gray-100;
-      color: $gray-500;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-
-      :global(svg) {
-        width: 23px;
-        height: 23px;
-      }
-    }
+    align-items: flex-start;
+    text-align: left;
+    gap: 2px;
 
     .ce-src-name {
-      font-size: 0.82rem;
-      color: $gray-700;
+      font-size: 0.84rem;
+      font-weight: 600;
+      color: $gray-800;
       line-height: 1.2;
+      overflow-wrap: anywhere;
     }
 
     .ce-src-val {
@@ -324,6 +269,7 @@
       color: $gray-900;
       line-height: 1.2;
       font-variant-numeric: tabular-nums;
+      overflow-wrap: anywhere;
     }
   }
 
@@ -352,20 +298,36 @@
     gap: 14px 20px;
   }
 
+  /* No-effect row: neutral text where the thumbs would be — reads as an absence,
+     not a positive or negative outcome. */
+  .ce-none {
+    align-self: center;
+    font-size: 0.82rem;
+    font-style: italic;
+    color: $gray-500;
+  }
+
   .ce-effect {
     flex: 0 0 auto;
-    min-width: 58px;
-    max-width: 110px;
+    min-width: 64px;
+    max-width: 116px;
     display: flex;
     flex-direction: column;
     align-items: center;
     text-align: center;
     gap: 3px;
 
+    // Full feature name — wraps onto up to TWO lines (uses vertical space),
+    // never more.
     .ce-eff-name {
       font-size: 0.8rem;
       color: $gray-700;
       line-height: 1.2;
+      overflow-wrap: anywhere;
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
     }
 
     .ce-eff-val {
