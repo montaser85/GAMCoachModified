@@ -315,6 +315,19 @@
     }
   };
 
+  // Unit suffix appended to the LEFT-PANEL card title only (not values, not any
+  // other place the name appears). Features not listed get no suffix. Payment
+  // Period and Employment Length are intentionally omitted (per design / values
+  // already carry the unit).
+  const CARD_NAME_UNIT = {
+    loan_amnt: ' ($)',
+    annual_inc: ' ($)',
+    revol_bal: ' ($)',
+    dti: ' (%)',
+    revol_util: ' (%)',
+    earliest_cr_line: ' (years)'
+  };
+
   /**
    * Init the states of different elements. Some functions require bbox,
    * which is only accurate after content is loaded
@@ -325,7 +338,15 @@
 
     // Initialize the feature data from the prop
     state.feature = {
-      name: featureInfo.description.displayName,
+      // Left-panel card title only. FICO Score is clarified with "(Credit
+      // score)"; six features get a unit suffix (CARD_NAME_UNIT). Scoped to this
+      // card — every other place (right-panel sections, Compare Plans, dependency
+      // hovers) keeps the plain name. Feature VALUES are untouched.
+      name:
+        featureInfo.name === 'fico_score'
+          ? 'FICO Score (Credit score)'
+          : featureInfo.description.displayName +
+            (CARD_NAME_UNIT[featureInfo.name] || ''),
       featureName: featureInfo.name,
       description: featureInfo.description.description,
       requiresInt: feature.requiresInt,
