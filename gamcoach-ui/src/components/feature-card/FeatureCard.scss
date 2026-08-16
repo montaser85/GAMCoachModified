@@ -335,8 +335,11 @@ $card-h-padding: 16px;
     font-size: 0.9rem;
     font-family: inherit;
     color: inherit;
-    width: 5.5em;
-    max-width: 55%;
+    width: 6.5em;
+    // Wide enough for the largest formatted amounts (e.g. "11,000,000") so the
+    // value never clips; capped at the container so the changed (old → new)
+    // layout still fits.
+    max-width: 100%;
     box-sizing: border-box;
     padding: 1px 4px;
     margin: 0;

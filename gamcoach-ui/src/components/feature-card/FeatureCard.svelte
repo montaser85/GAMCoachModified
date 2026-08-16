@@ -562,12 +562,20 @@
     const rightThumbID = 'slider-right-thumb';
     const middleThumbID = 'slider-middle-thumb';
 
-    // Move two range thumbs to the left and right ends
-    moveThumb(component, state, leftThumbID, state.feature.valueMin);
-    moveThumb(component, state, rightThumbID, state.feature.valueMax);
+    // Move two range thumbs to the left and right ends — ONLY when the slider has
+    // finished initializing. The reset button becomes visible the instant a card
+    // starts expanding (isCollapsed flips immediately), but the histogram/slider
+    // is drawn later, in the expand animation's onfinish (histDrawn). Clicking
+    // reset in that window would otherwise throw inside moveThumb and silently
+    // abort the reset. The value restoration does not depend on these calls — it
+    // happens via the dispatch below and the override store, which re-syncs the
+    // thumb once the slider is drawn.
+    if (histDrawn) {
+      moveThumb(component, state, leftThumbID, state.feature.valueMin);
+      moveThumb(component, state, rightThumbID, state.feature.valueMax);
+      syncRangeTrack(component, state);
+    }
     feature.acceptableRange = null;
-
-    syncRangeTrack(component, state);
 
     // Change difficulty to default
     feature.difficulty = 'neutral';
@@ -705,18 +713,23 @@
                 {/if}
               {:else if linkCalculation?.type === 'dti'}
                 <div class="link-calculation dti-calc">
-                  <!-- <div class="dti-title">What makes up your DTI?</div> -->
-                  <div class="dti-line">Your DTI is your total monthly debt divided by your monthly income of <b>{linkCalculation.monthlyIncome}</b>.</div>
-                  <div class="dti-subhead">Your debt breakdown</div>
-                  <div class="dti-row">Existing debt (from your profile): <b>{linkCalculation.baseDebt}/month</b></div>
-                  {#if linkCalculation.showLoanRow}
-                    <div class="dti-row">Loan you&rsquo;re applying for ({linkCalculation.loanAmount}): <b>+{linkCalculation.loanPayment}/month</b></div>
+                  <div class="dti-subhead">How your DTI is calculated:</div>
+                  <div class="dti-row">Your monthly income: {linkCalculation.annualIncome} &divide; 12 = <b>{linkCalculation.monthlyIncome}</b></div>
+                  <div class="dti-row">Your current DTI is {linkCalculation.currentDti}%, so your current monthly debt is: {linkCalculation.monthlyIncome} &times; {linkCalculation.currentDti}% = <b>{linkCalculation.currentMonthlyDebt}</b></div>
+                  {#if linkCalculation.incomeChanged}
+                    <div class="dti-row">Your changed monthly income now: {linkCalculation.newAnnualIncome} &divide; 12 = <b>{linkCalculation.newMonthlyIncome}</b></div>
                   {/if}
-                  {#if linkCalculation.showRevolRow}
-                    <div class="dti-row">Revolving balance change:<br /><b>{linkCalculation.revolvingDelta}/month</b></div>
+                  {#if linkCalculation.loanChanged}
+                    <div class="dti-row">Your changed loan of {linkCalculation.loanAmount} {linkCalculation.loanIncreased ? 'raises' : 'lowers'} its monthly payment from <b>{linkCalculation.originalLoanPayment}</b> to <b>{linkCalculation.newLoanPayment}</b>, a change of <b>{linkCalculation.loanPaymentDelta}</b> to your monthly debt (calculated based on your <b>{linkCalculation.paymentPeriod}</b>-month payment period and the <b>{linkCalculation.aprPercent}%</b> interest rate for your loan purpose, <b>{linkCalculation.loanPurpose}</b>).</div>
                   {/if}
-                  <div class="dti-line final">Total monthly debt: {#if linkCalculation.hasContributors}{linkCalculation.debtSumExpr} = {/if}<b>{linkCalculation.totalDebt}</b> &rarr; DTI = {#if linkCalculation.showManualDti}{linkCalculation.computedDTI}% {linkCalculation.dtiManualDelta}% (you adjusted) = {/if}<b>{linkCalculation.newDTI}%</b>, i.e., {linkCalculation.newDTI}% of your income goes to debt payment.</div>
-                  <div class="dti-footnote">Your loan&rsquo;s monthly payment also depends on its purpose (for the interest rate), payment period (loan length), and Credit utilization which rises and falls with your revolving balance.</div>
+                  {#if linkCalculation.revolChanged}
+                    <div class="dti-row">Your revolving-balance change adjusts monthly debt by <b>{linkCalculation.revolDelta}</b>.</div>
+                  {/if}
+                  {#if linkCalculation.debtChanged}
+                    <div class="dti-row">New total monthly debt: <b>{linkCalculation.totalDebt}</b></div>
+                  {/if}
+                  <div class="dti-row">New DTI: {linkCalculation.totalDebt} &divide; {linkCalculation.finalIncome} = <b>{linkCalculation.newDTI}%</b></div>
+                  <div class="dti-line final">So {linkCalculation.newDTI}% of your income would go toward debt payments.</div>
                 </div>
               {:else if linkCalculation?.type === 'revol_bal'}
                 {#if linkCalculation.engaged}

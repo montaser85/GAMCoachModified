@@ -80,6 +80,11 @@
   /** @type {Plans} */
   let plans = null;
 
+  // True while plan generation is in flight (initial or regenerate) — drives the
+  // "Generating your plans…" loading state so a participant never faces an
+  // unexplained blank/frozen panel during a slow (regeneration-heavy) generation.
+  let generating = false;
+
   /** @type {Constraints} */
   let constraints = null;
 
@@ -129,15 +134,20 @@
       })
     );
 
-    // Initialize the plans
-    await initPlans(
-      curModelData,
-      ebm,
-      curExample,
-      constraints,
-      plansUpdated,
-      logger
-    );
+    // Initialize the plans (show the "Generating your plans…" state meanwhile).
+    generating = true;
+    try {
+      await initPlans(
+        curModelData,
+        ebm,
+        curExample,
+        constraints,
+        plansUpdated,
+        logger
+      );
+    } finally {
+      generating = false;
+    }
 
     // Initialize the input form
     // inputFormConfig.ebm = ebm;
@@ -293,19 +303,34 @@
       {logger}
       {ebm}
       modelData={curModelData}
-      on:regenerateClicked={() =>
-        regeneratePlans(
-          constraints,
-          curModelData,
-          curExample,
-          plans,
-          plansUpdated,
-          logger
-        )}
+      on:regenerateClicked={async () => {
+        generating = true;
+        try {
+          await regeneratePlans(
+            constraints,
+            curModelData,
+            curExample,
+            plans,
+            plansUpdated,
+            logger
+          );
+        } finally {
+          generating = false;
+        }
+      }}
     />
   </div>
 
   <div class="two-column">
+    {#if generating}
+      <!-- Plan generation in flight — honest progress feedback so the panel is
+           never an unexplained blank/frozen screen. -->
+      <div class="plan-loading">
+        <div class="plan-loading-spinner" />
+        <div class="plan-loading-text">Generating your plans…</div>
+        <div class="plan-loading-sub">This can take a few moments.</div>
+      </div>
+    {:else}
     <!-- Left panel: plan dropdown + save star (aligned with the feature cards,
          parallel to the right-column score readout), then the feature list.
          Scrolls independently. -->
@@ -382,6 +407,7 @@
         </div>
       {/if}
     </div>
+    {/if}
   </div>
 </div>
 
@@ -393,6 +419,44 @@
 
 <style lang="scss">
   @import '../../define';
+
+  .plan-loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+    width: 100%;
+    min-height: 340px;
+    padding: 60px 20px;
+    text-align: center;
+
+    .plan-loading-spinner {
+      width: 40px;
+      height: 40px;
+      border: 4px solid $gray-200;
+      border-top-color: $blue-600;
+      border-radius: 50%;
+      animation: plan-loading-spin 0.9s linear infinite;
+    }
+
+    .plan-loading-text {
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: $gray-900;
+    }
+
+    .plan-loading-sub {
+      font-size: 0.85rem;
+      color: $gray-500;
+    }
+  }
+
+  @keyframes plan-loading-spin {
+    to {
+      transform: rotate(360deg);
+    }
+  }
 
   .main-content-wrapper {
     display: flex;

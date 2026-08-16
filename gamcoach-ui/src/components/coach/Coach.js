@@ -2,7 +2,13 @@ import '../../typedef';
 import { EBMLocal } from '../../ebm/ebmLocal';
 import { EBM } from '../../ebm/ebm';
 import { round } from '../../utils/utils';
-import { GAMCoach } from '../../ebm/gamcoach';
+import {
+  GAMCoach,
+  foldedApprovalProb,
+  PROPAGATION_AWARE_DTI_CONSTRAINT,
+  APPROVAL_PROB,
+  MAX_FILTER_ATTEMPTS
+} from '../../ebm/gamcoach';
 import { writable } from 'svelte/store';
 import { Logger } from '../../utils/logger';
 
@@ -404,6 +410,42 @@ export class Constraints {
  *  trigger an update on the plans variable
  * @param {Logger} [logger] Logger object
  */
+
+/**
+ * Post-fold approval FILTER (propagation-aware only). Each generated plan is
+ * checked against its TRUE post-fold score — foldedApprovalProb == the displayed
+ * score, verified empirically — and any plan below approval is muted and
+ * regenerated until a passing plan is found or the attempt bound is hit. If none
+ * pass, the best-achievable (highest post-fold score) plan is returned so the UI
+ * can honestly surface a "best below approval" plan rather than nothing. No-op
+ * (returns the plan unchanged) when the flag is off.
+ * @param {GAMCoach} coach
+ * @param {object} modelData
+ * @param {object[]} curExample
+ * @param {object} cfsIn  the initial cfs result to filter
+ * @returns {Promise<object>} a passing cfs, or the best-below-approval cfs
+ */
+const filterToPassing = async (coach, modelData, curExample, cfsIn) => {
+  if (!PROPAGATION_AWARE_DTI_CONSTRAINT) return cfsIn;
+  let cfs = cfsIn;
+  let best = null;
+  let attempts = 0;
+  while (cfs.isSuccessful && attempts < MAX_FILTER_ATTEMPTS) {
+    let prob;
+    try {
+      prob = foldedApprovalProb(modelData, curExample, cfs.data[0]);
+    } catch (e) {
+      return cfs; // never let the filter break generation
+    }
+    if (prob >= APPROVAL_PROB) return cfs; // passes → show it
+    if (!best || prob > best.prob) best = { cfs, prob };
+    attempts += 1;
+    cfs = await coach.generateSubCfs(cfs.nextCfConfig); // mute + next candidate
+  }
+  // Exhausted / infeasible: surface the best-below-approval plan if we have one.
+  return best ? best.cfs : cfs;
+};
+
 export const initPlans = async (
   modelData,
   ebm,
@@ -486,6 +528,10 @@ export const initPlans = async (
   });
   console.timeEnd(`Plan ${tempPlans.nextPlanIndex} generated`);
 
+  // Post-fold approval filter: replace a below-approval plan with a passing one
+  // (or the best-achievable if none pass).
+  cfs = await filterToPassing(coach, modelData, curExample, cfs);
+
   // If the plan only uses one feature, we store it to a set and avoid future
   // plans that only uses that feature
   if (cfs.isSuccessful && cfs.activeVariables[0].length === 1) {
@@ -505,7 +551,6 @@ export const initPlans = async (
       cfs.isSuccessful ? cfs.data[0] : curExample,
       tempPlans.nextPlanIndex
     );
-
     // Log the current plan
     logger?.addRecord(
       `plan${tempPlans.nextPlanIndex}`,
@@ -561,6 +606,9 @@ export const initPlans = async (
     console.time(`Plan ${tempPlans.nextPlanIndex + i} generated`);
     cfs = await coach.generateSubCfs(cfs.nextCfConfig);
     console.timeEnd(`Plan ${tempPlans.nextPlanIndex + i} generated`);
+
+    // Post-fold approval filter for this candidate.
+    cfs = await filterToPassing(coach, modelData, curExample, cfs);
 
     // If the new plan uses only one feature, we mute it and repeat again
     if (cfs.isSuccessful && cfs.activeVariables[0].length === 1) {
@@ -744,6 +792,9 @@ export const regeneratePlans = async (
     console.time(`Plan ${plans.nextPlanIndex + i} generated`);
     cfs = await coach.generateSubCfs(cfs.nextCfConfig);
     console.timeEnd(`Plan ${plans.nextPlanIndex + i} generated`);
+
+    // Post-fold approval filter for this candidate.
+    cfs = await filterToPassing(coach, modelData, curExample, cfs);
 
     // If the new plan uses only one feature, we mute it and repeat again
     if (cfs.isSuccessful && cfs.activeVariables[0].length === 1) {

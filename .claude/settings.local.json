@@ -52,7 +52,22 @@
       "Bash(sleep 7; grep -aE \"created .*bundle|\\\\!\\\\] Error|is not defined\" /tmp/gc-dev55.log | tail -2)",
       "Bash(python -c ' *)",
       "Bash(node engine.test.mjs)",
-      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:5005)"
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:5005)",
+      "Bash(python3 -c ' *)",
+      "Bash(node --check src/ebm/gamcoach.js)",
+      "Bash(echo \"EXIT: $?\")",
+      "Bash(cd \"D:/OSU/Dr B research group/GAM_Coach/gam-coach_modified/gamcoach-ui\" && echo \"bundle has computeDtiPropagation:\" && grep -c \"computeDtiPropagation\" public/build/bundle.js && echo \"bundle has __foldInfo:\" && grep -c \"__foldInfo\" public/build/bundle.js && echo \"---rollup procs---\" && ps aux 2>/dev/null | grep -i rollup | grep -v grep | head -3 || echo \"no ps\"; echo \"---bundle mtime vs now---\"; date; stat -c '%y' public/build/bundle.js 2>/dev/null)",
+      "Bash(cd \"D:/OSU/Dr B research group/GAM_Coach/gam-coach_modified/gamcoach-ui\" && echo \"revol_util coef in bundle:\" && grep -c \"revol_util:\" public/build/bundle.js && echo \"__solverDtiProp in bundle:\" && grep -c \"__solverDtiProp\" public/build/bundle.js && echo \"__preScore \\(should be 0\\):\" && grep -c \"__preScore\" public/build/bundle.js && stat -c 'bundle mtime: %y' public/build/bundle.js)",
+      "Bash(node --check src/components/coach/Coach.js)",
+      "Bash(node src/engine/tests/engine.test.mjs)",
+      "Bash(netstat -ano)",
+      "Bash(timeout 300 npm run build)",
+      "PowerShell($pub = \"D:\\\\OSU\\\\Dr B research group\\\\GAM_Coach\\\\gam-coach_modified\\\\gamcoach-ui\\\\public\"; $link = Join-Path $pub \"gam-coach\"; if \\(-not \\(Test-Path $link\\)\\) { New-Item -ItemType Junction -Path $link -Target $pub | Out-Null }; Test-Path \\(Join-Path $link \"data\\\\lc-classifier.json\"\\))",
+      "PowerShell($link = \"D:\\\\OSU\\\\Dr B research group\\\\GAM_Coach\\\\gam-coach_modified\\\\gamcoach-ui\\\\public\\\\gam-coach\"; if \\(Test-Path $link\\) { \\(Get-Item $link\\).Delete\\(\\); \"removed junction\" } else { \"already gone\" }; Test-Path $link)",
+      "Bash(ROLLUP_WATCH=true npm run build)",
+      "PowerShell($procs = Get-CimInstance Win32_Process -Filter \"Name='node.exe'\" | Select-Object ProcessId, CommandLine; $roll = $procs | Where-Object { $_.CommandLine -match 'rollup' -and $_.CommandLine -notmatch 'sirv' }; if \\($roll\\) { $roll | ForEach-Object { \"Stopping PID $\\($_.ProcessId\\): $\\($_.CommandLine.Substring\\(0,[Math]::Min\\(90,$_.CommandLine.Length\\)\\)\\)\"; Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue } } else { \"no rollup process found\" }; \"--- remaining node procs ---\"; \\(Get-CimInstance Win32_Process -Filter \"Name='node.exe'\" | Where-Object { $_.CommandLine -match 'sirv|rollup' } | Measure-Object\\).Count)",
+      "Bash(curl -s -o /dev/null -w \"root: %{http_code}\\\\n\" http://localhost:5005/)",
+      "Bash(curl -s -o /dev/null -w \"model: %{http_code}\\\\n\" http://localhost:5005/data/lc-classifier.json)"
     ]
   }
 }

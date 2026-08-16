@@ -96,9 +96,19 @@ export function computeDtiParts(state, params) {
   const loanAmount = state.loan_amnt || 0;
   const loanPurpose = state.purpose;
   const paymentPeriod = state.term || 0;
-  const loanPayment = loanEngaged
-    ? loanMonthlyPayment(loanAmount, aprForPurpose(loanPurpose) / 12, paymentPeriod)
-    : 0;
+  // Model B: the baseline DTI EXCLUDES the applied-for loan (its loan contribution
+  // is $0). So propagate the CHANGE in the loan's monthly payment relative to the
+  // ORIGINAL applied-for loan — not the full new payment. Lower loan → negative
+  // delta → DTI goes down; higher loan → DTI up; same loan → 0. This keeps the
+  // baseline loan-excluded (scores untouched) while moving DTI in the right
+  // direction on a loan change.
+  const newLoanPayment = loanMonthlyPayment(
+    loanAmount, aprForPurpose(loanPurpose) / 12, paymentPeriod
+  );
+  const originalLoanPayment = loanMonthlyPayment(
+    base.loan_amnt || 0, aprForPurpose(base.purpose) / 12, base.term || 0
+  );
+  const loanPaymentDelta = loanEngaged ? (newLoanPayment - originalLoanPayment) : 0;
 
   // Revolving row: engaged when the user edited Revolving Balance or Credit
   // Utilization (utilization drives the balance).
@@ -110,7 +120,7 @@ export function computeDtiParts(state, params) {
   const monthlyIncome =
     ((isEdited('annual_inc') ? state.annual_inc : base.annual_inc) || 0) / 12;
 
-  const newMonthlyDebt = baseDebt + loanPayment + revolDelta;
+  const newMonthlyDebt = baseDebt + loanPaymentDelta + revolDelta;
   // The computed DTI from the contribution rows (loan + revolving), before the
   // user's own manual DTI adjustment.
   const computedDti = monthlyIncome ? (newMonthlyDebt / monthlyIncome) * 100 : base.dti;
@@ -122,7 +132,13 @@ export function computeDtiParts(state, params) {
 
   return {
     baseDebt,
-    loanPayment,
+    // Model B: what the loan actually contributes to the DTI math is the delta vs.
+    // the original loan's payment (signed). `loanPayment` keeps the delta so any
+    // consumer summing debt rows stays consistent with the scored value.
+    loanPayment: loanPaymentDelta,
+    loanPaymentDelta,
+    newLoanPayment,
+    originalLoanPayment,
     revolDelta,
     monthlyIncome,
     newMonthlyDebt,

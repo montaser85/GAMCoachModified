@@ -5,6 +5,164 @@
  * License: MIT
  */
 
+// Same loan-payment / APR functions the load-fold propagation engine uses, so the
+// MILP's DTI arithmetic is byte-for-byte the fold's (the acceptance-criterion-#1
+// crux: both paths MUST source DTI from the same computation).
+import { loanMonthlyPayment, aprForPurpose } from '../engine/params.mjs';
+// The SAME propagation engine the load-fold uses — the post-generation approval
+// filter runs it to compute each plan's TRUE post-fold score (identical to the
+// displayed score), so no plan below approval is ever shown.
+import { propagate, featureHasOutgoingEdges } from '../engine/index.mjs';
+
+/**
+ * PROPAGATION_AWARE_DTI_CONSTRAINT — single source of truth for the
+ * propagation-aware plan generation (Partial Option 2). When true, createMILP()
+ * encodes the loan/revolving-balance → Debt-to-Income propagation as linear
+ * constraints, so generated plans reach the target approval AFTER the load-time
+ * DTI fold is applied (instead of dropping ~7–8pp below). Stage 1 encodes the
+ * loan_amnt + revol_bal paths with income fixed to baseline (approach a).
+ * Flip to false to return to the exact prior (un-propagation-aware) generation —
+ * createMILP() then behaves byte-identically to before.
+ */
+const PROPAGATION_AWARE_DTI_CONSTRAINT = true;
+
+// Safety margin (propagation-aware generation only). The solver targets this
+// approval probability instead of exactly 0.50, so plans robustly clear 50% AFTER
+// the load-fold despite a ~±1% approximation from two sources: (a) the
+// income×revol_bal cross-term left by approach (a), and (b) an INHERENT
+// additive-vs-interaction gap in GAMCoach itself (the MILP optimizes additive
+// per-bin scores while the true post-fold score includes interaction terms —
+// cannot be encoded away). Tunable; validated to clear ≥50% without over-shooting.
+const APPROVAL_TARGET_PROB = 0.52;
+
+// Realism cap on income recourse (propagation-aware only). Crediting income→DTI
+// makes income a very strong lever, so far-from-approval profiles otherwise get
+// absurd asks (e.g. $140k→$505k). Cap the suggested income at this multiple of the
+// applicant's baseline — a 1.5× ceiling is a plausible strong raise / career move,
+// and it forces the solver onto a realistic mix of levers instead of one extreme
+// income ask. A profile that can't reach ≥50% within this cap is a signal to use
+// another lever (the solver will) or is genuinely hard (reported, never forced).
+const INCOME_INCREASE_CAP_MULTIPLE = 1.5;
+
+// Approval threshold (probability). A plan is "approving" iff its post-fold
+// probability is ≥ this.
+const APPROVAL_PROB = 0.5;
+// Bound on filter regeneration so a hard applicant can't loop forever.
+const MAX_FILTER_ATTEMPTS = 30;
+
+/**
+ * TRUE post-fold approval probability of a candidate plan — computed by the SAME
+ * arithmetic and SAME propagation engine as the load-time fold that produces the
+ * displayed score, so this equals what the participant will see (verified
+ * empirically). Used by the post-generation filter to drop any plan below
+ * approval. Because it runs the ACTUAL fold (including the safe-overshoot
+ * revol_util path and the true new-income denominator), it is exact — not a
+ * conservative estimate that could diverge.
+ *
+ * @param {object} model      the EBM model data
+ * @param {Array}  curExample the applicant's baseline sample (internal units)
+ * @param {Array}  cfData     the candidate plan's sample (internal units)
+ * @returns {number} post-fold approval probability in [0, 1]
+ */
+function foldedApprovalProb(model, curExample, cfData) {
+  // Feature metadata keyed by name, and name→sample-index.
+  const featByName = {};
+  model.features.forEach((f) => {
+    if (f.type === 'interaction') return;
+    featByName[f.name] = {
+      isCont: f.type === 'continuous',
+      transform: f.config ? f.config.usesTransform : null,
+      requiresInt: f.config ? f.config.requiresInt : false
+    };
+  });
+  const names = model.featureNames;
+  const idxOf = (n) => names.indexOf(n);
+  const parseTermMonths = (l) => {
+    const m = String(l || '').match(/(\d+)/);
+    return m ? parseInt(m[1], 10) : 36;
+  };
+  const eq = (a, b) =>
+    typeof a === 'number' && typeof b === 'number' ? Math.abs(a - b) < 1e-6 : a === b;
+
+  // Build the engine's DISPLAY-unit state from an internal sample (matches the
+  // panel's buildEngineState exactly: log10 → dollars; categorical labels; the
+  // count-categoricals term/mort_acc/inq_last_6mths mapped to their integers).
+  const buildState = (sample) => {
+    const st = {};
+    names.forEach((name, idx) => {
+      const feat = featByName[name];
+      const raw = sample[idx];
+      if (!feat) return;
+      if (feat.isCont) {
+        st[name] = feat.transform === 'log10' ? Math.pow(10, raw) : raw;
+      } else {
+        const label = typeof raw === 'number' ? model.labelEncoder[name][raw] : raw;
+        if (name === 'term') st[name] = parseTermMonths(label);
+        else if (name === 'mort_acc') st[name] = label === '7+' ? 8 : parseInt(label, 10) || 0;
+        else if (name === 'inq_last_6mths') st[name] = label === '3+' ? 4 : parseInt(label, 10) || 0;
+        else st[name] = label;
+      }
+    });
+    return st;
+  };
+  // Convert a propagated display value back to the sample's internal units.
+  const toInternal = (name, display) => {
+    const feat = featByName[name];
+    if (!feat.isCont) {
+      if (name === 'mort_acc') {
+        const n = Math.round(display);
+        const labels = Object.values(model.labelEncoder[name]);
+        const exact = String(n);
+        return labels.includes(exact) ? exact : labels[labels.length - 1];
+      }
+      return display; // other categoricals: pass the label through
+    }
+    let d = feat.requiresInt ? Math.round(display) : display;
+    return feat.transform === 'log10' ? (d > 0 ? Math.log10(d) : 0) : d;
+  };
+
+  const baseline = buildState(curExample);
+  const suggested = buildState(cfData);
+  const changedInputs = names.filter((n) => !eq(suggested[n], baseline[n]));
+  if (changedInputs.length === 0) {
+    // No changes → score the sample as-is.
+    return new EBMLocal(model, cfData).predProb;
+  }
+  const changedSet = new Set(changedInputs);
+
+  // Seed the panel's delta trackers exactly as propagateSuggestedChangesAtLoad does.
+  const mortDelta = Math.max(0, (suggested.mort_acc || 0) - (baseline.mort_acc || 0));
+  const userFicoDelta = changedSet.has('fico_score') ? suggested.fico_score - baseline.fico_score : 0;
+  const userDtiDelta = changedSet.has('dti') ? suggested.dti - baseline.dti : 0;
+  const userRevolDelta = changedSet.has('revol_bal') ? suggested.revol_bal - baseline.revol_bal : 0;
+  const userOpenDelta = changedSet.has('open_acc')
+    ? (suggested.open_acc || 0) - (baseline.open_acc || 0) - mortDelta : 0;
+  const userTotalDelta = changedSet.has('total_acc')
+    ? (suggested.total_acc || 0) - (baseline.total_acc || 0) - userOpenDelta - mortDelta : 0;
+  const appliedHomeMortgage =
+    suggested.home_ownership === 'MORTGAGE' && baseline.home_ownership !== 'MORTGAGE' ? 1 : 0;
+
+  // Accumulate the propagation across every suggested input with outgoing edges.
+  let working = { ...suggested };
+  changedInputs.forEach((name) => {
+    if (!featureHasOutgoingEdges(name)) return;
+    working = propagate(
+      name, baseline, working, baseline,
+      changedSet, appliedHomeMortgage, userOpenDelta, userTotalDelta,
+      userFicoDelta, userDtiDelta, userRevolDelta, null
+    ).state;
+  });
+
+  // Fold the propagated DEPENDENTS into a copy of the sample and score it.
+  const folded = cfData.slice();
+  names.forEach((name) => {
+    if (changedSet.has(name)) return; // inputs untouched
+    if (eq(working[name], suggested[name])) return; // not propagated
+    folded[idxOf(name)] = toInternal(name, working[name]);
+  });
+  return new EBMLocal(model, folded).predProb;
+}
+
 /**
  * Find the lower bound of a pair between where inserting `value` into `sorted`
  * would keep `sorted` in order.
@@ -2052,7 +2210,8 @@ class MILP {
     options,
     maxNumFeaturesToVary = null,
     mutedVariables = [],
-    verbose = 0
+    verbose = 0,
+    dtiPropagation = null
   ) {
     // Init attributes
     this.cfDirection = cfDirection;
@@ -2062,6 +2221,9 @@ class MILP {
     this.maxNumFeaturesToVary = maxNumFeaturesToVary;
     this.mutedVariables = new Set(mutedVariables);
     this.verbose = verbose;
+    // PROPAGATION_AWARE_DTI_CONSTRAINT: loan/revol → DTI linear-encoding data
+    // (from GAMCoach.computeDtiPropagation), or null to keep the prior behavior.
+    this.dtiPropagation = dtiPropagation || null;
   }
 
   async initGLPK() {
@@ -2117,8 +2279,18 @@ class MILP {
     // Collect all variables
     let variables = {};
 
+    // PROPAGATION_AWARE_DTI_CONSTRAINT: when active, DTI is NOT a free lever — its
+    // value (and score) is DETERMINED by the chosen loan/revol bins (see the
+    // sub-model added after this loop). Collect the loan/revol var→DTI-coefficient
+    // terms as we build those features' variables.
+    const dtiProp = this.dtiPropagation;
+    const dtiInputTerms = []; // [{ name: varName, coef: dtiPercentagePoints }]
+
     // Iterate through all the main effect features
     this.featuresToVary.forEach((f) => {
+      // DTI is now a dependent, not a lever — skip its free variables entirely.
+      if (dtiProp && f === 'dti') return;
+
       let curVariables = [];
       // There is at most one active variable for one feature
       let curBoundConstraint = {
@@ -2145,6 +2317,11 @@ class MILP {
 
           // Add to the model-level distance objective
           objective.vars.push({ name: varName, coef: option[2] });
+
+          // Record this variable's DTI-propagation coefficient (loan/revol only).
+          if (dtiProp && dtiProp.coefByVarName[varName] !== undefined) {
+            dtiInputTerms.push({ name: varName, coef: dtiProp.coefByVarName[varName] });
+          }
         }
       });
 
@@ -2257,6 +2434,54 @@ class MILP {
       }
     });
 
+    // ── PROPAGATION_AWARE_DTI_CONSTRAINT: loan/revol → DTI sub-model ───────────
+    // Forces DTI's score contribution in the CF constraint to reflect the DTI the
+    // load-fold will actually propagate to, instead of a freely-chosen DTI bin.
+    //   DTI_PROP = baseDti + Σ coef(loan/revol bin)·x        (linear; income fixed)
+    // A one-hot family of bin-selection vars y_k picks the DTI bin containing
+    // DTI_PROP (Σ y = 1; Σ lo_k·y_k ≤ DTI_PROP ≤ Σ hi_k·y_k), and the CF constraint
+    // gains Σ (additive_k − baseAdditive)·y_k — the true propagated DTI score delta.
+    if (dtiProp) {
+      const dtiPropVar = '__dti_prop';
+      // DTI_PROP is a bounded continuous auxiliary variable.
+      model.bounds.push({
+        name: dtiPropVar,
+        type: this.glpk.GLP_DB,
+        lb: dtiProp.dtiBins[0].lo,
+        ub: dtiProp.dtiBins[dtiProp.dtiBins.length - 1].hi
+      });
+
+      // Defining equality: DTI_PROP − Σ coef·x = baseDti.
+      const dtiDefConstraint = {
+        name: 'dti-prop-def',
+        vars: [{ name: dtiPropVar, coef: 1.0 }],
+        bnds: { type: this.glpk.GLP_FX, lb: dtiProp.baseDti, ub: dtiProp.baseDti }
+      };
+      dtiInputTerms.forEach((t) => {
+        dtiDefConstraint.vars.push({ name: t.name, coef: -t.coef });
+      });
+      model.subjectTo.push(dtiDefConstraint);
+
+      // One-hot bin-selection variables + lower/upper linking + Σ y = 1.
+      const oneHot = { name: 'dti-bin-onehot', vars: [], bnds: { type: this.glpk.GLP_FX, lb: 1.0, ub: 1.0 } };
+      const lowerCons = { name: 'dti-bin-lower', vars: [{ name: dtiPropVar, coef: -1.0 }], bnds: { type: this.glpk.GLP_UP, ub: 0.0 } };
+      const upperCons = { name: 'dti-bin-upper', vars: [{ name: dtiPropVar, coef: 1.0 }], bnds: { type: this.glpk.GLP_UP, ub: 0.0 } };
+      dtiProp.dtiBins.forEach((b, bi) => {
+        const yName = `__dti_bin:${bi}`;
+        model.binaries.push(yName);
+        oneHot.vars.push({ name: yName, coef: 1.0 });
+        // Σ lo_k·y_k ≤ DTI_PROP  →  Σ lo_k·y_k − DTI_PROP ≤ 0
+        lowerCons.vars.push({ name: yName, coef: b.lo });
+        // DTI_PROP ≤ Σ hi_k·y_k  →  DTI_PROP − Σ hi_k·y_k ≤ 0
+        upperCons.vars.push({ name: yName, coef: -b.hi });
+        // DTI's propagated score delta vs. the applicant's current DTI bin.
+        cfConstraint.vars.push({ name: yName, coef: b.additive - dtiProp.baseAdditive });
+      });
+      model.subjectTo.push(oneHot);
+      model.subjectTo.push(lowerCons);
+      model.subjectTo.push(upperCons);
+    }
+
     // Register the model-level CF constraint and objective
     model.subjectTo.push(cfConstraint);
     model.objective = objective;
@@ -2281,7 +2506,10 @@ class MILP {
         }
 
         Object.keys(result.result.vars).forEach((varName) => {
-          if (result.result.vars[varName] === 1) {
+          // Skip the propagation sub-model's auxiliary variables (DTI_PROP and the
+          // DTI bin-selection one-hot) — they are internal, not feature changes,
+          // and must not be reported as CF changes or muted for diversity.
+          if (result.result.vars[varName] === 1 && !varName.startsWith('__')) {
             activeVariables.push(varName);
           }
         });
@@ -2391,6 +2619,13 @@ class GAMCoach {
     if (this.ebm.isClassifier) {
       cfDirection = this.ebm.pred * -2 + 1;
       neededScoreGain = -1 * totalScore;
+      // Safety margin: aim past 0.50 so plans clear approval after the load-fold
+      // (see APPROVAL_TARGET_PROB). Only for approval-seeking CFs (cfDirection 1)
+      // and only when the propagation-aware flag is on — otherwise unchanged.
+      if (PROPAGATION_AWARE_DTI_CONSTRAINT && cfDirection === 1) {
+        neededScoreGain +=
+          Math.log(APPROVAL_TARGET_PROB / (1 - APPROVAL_TARGET_PROB));
+      }
     } else {
       // Regression
       // Increase => +1
@@ -2600,6 +2835,28 @@ class GAMCoach {
     let mutedVariables = [];
     let isSuccessful = true;
 
+    // PROPAGATION_AWARE_DTI_CONSTRAINT: realism cap on income recourse. Drop income
+    // options above INCOME_INCREASE_CAP_MULTIPLE × the applicant's baseline income so
+    // the solver can't reach approval with an absurd income ask. Applied before the
+    // DTI coefficients are computed, so both the MILP and the propagation model see
+    // only the capped income options.
+    if (PROPAGATION_AWARE_DTI_CONSTRAINT && options['annual_inc']) {
+      const incIdx = this.ebm.featureNames.indexOf('annual_inc');
+      if (incIdx >= 0) {
+        const capValue =
+          Math.pow(10, curExample[0][incIdx]) * INCOME_INCREASE_CAP_MULTIPLE;
+        options['annual_inc'] = options['annual_inc'].filter(
+          (opt) => Math.pow(10, opt[0]) <= capValue
+        );
+      }
+    }
+
+    // PROPAGATION_AWARE_DTI_CONSTRAINT: precompute the loan/revolving → DTI linear
+    // coefficients once (they don't depend on muting), then feed them to each MILP.
+    const dtiPropagation = PROPAGATION_AWARE_DTI_CONSTRAINT
+      ? this.computeDtiPropagation(options, curExample[0])
+      : null;
+
     for (let i = 0; i < totalCfs; i++) {
       let milp = new MILP(
         cfDirection,
@@ -2608,7 +2865,8 @@ class GAMCoach {
         options,
         maxNumFeaturesToVary,
         mutedVariables,
-        verbose
+        verbose,
+        dtiPropagation
       );
 
       await milp.initGLPK();
@@ -2638,10 +2896,156 @@ class GAMCoach {
       options,
       maxNumFeaturesToVary,
       mutedVariables,
-      verbose
+      verbose,
+      // Carry the propagation data forward so generateNextCfs's plans (the study's
+      // Plans 2–5) are propagation-aware too, not just generateCfs's Plan 1.
+      dtiPropagation
     };
 
     return cfs;
+  }
+
+  /**
+   * PROPAGATION_AWARE_DTI_CONSTRAINT (Partial Option 2, Stage 1) — precompute the
+   * data the MILP needs to encode the loan/revolving-balance → Debt-to-Income
+   * propagation as linear constraints. The propagated DTI the load-fold produces is
+   *   dti = ( baseDebt + loanPayment(loan) + (revolBal − baseRevolBal)*2% ) / income * 100
+   * With income (and purpose/term) fixed to the applicant's baseline (approach a),
+   * every term is a constant per loan/revol bin, so DTI is a linear function of the
+   * chosen bins:  DTI_PROP = baseDti + Σ coef(loanBin)·x + Σ coef(revolBin)·x .
+   * Uses the SAME loanMonthlyPayment/aprForPurpose the fold uses (criterion #1).
+   *
+   * Units: loan_amnt is stored raw (dollars); revol_bal and annual_inc are stored
+   * log10, so display = 10^value; dti is stored raw (percent).
+   *
+   * @param {object} options  per-feature option lists [target, gain, dist, binIdx]
+   * @param {Array} curExample  the applicant's raw feature vector
+   * @returns {object|null} { baseDti, baseAdditive, coefByVarName, dtiBins } or null
+   */
+  computeDtiPropagation(options, curExample) {
+    const names = this.ebm.featureNames;
+    const idxOf = (n) => names.indexOf(n);
+    const dtiIdx = idxOf('dti');
+    const loanIdx = idxOf('loan_amnt');
+    const revolIdx = idxOf('revol_bal');
+    const incIdx = idxOf('annual_inc');
+    const purpIdx = idxOf('purpose');
+    const termIdx = idxOf('term');
+
+    // Only applicable to the LendingClub model (has these features).
+    if (dtiIdx < 0 || loanIdx < 0 || incIdx < 0) return null;
+    if (this.ebm.featureTypes[dtiIdx] !== 'continuous') return null;
+
+    const baseDti = curExample[dtiIdx];
+    const monthlyIncome = Math.pow(10, curExample[incIdx]) / 12; // 10^log10 → $/yr → $/mo
+    if (!(monthlyIncome > 0)) return null;
+    const baseRevolBal = revolIdx >= 0 ? Math.pow(10, curExample[revolIdx]) : 0;
+    const apr = purpIdx >= 0 ? aprForPurpose(curExample[purpIdx]) : aprForPurpose(null);
+    const termMonths = termIdx >= 0 ? (parseInt(String(curExample[termIdx]), 10) || 0) : 0;
+
+    const dtiAdditives = this.ebm.scores[dtiIdx];
+    const dtiBinEdges = this.ebm.binEdges[dtiIdx];
+    const baseBin = searchSortedLowerIndex(dtiBinEdges, baseDti);
+    const baseAdditive = dtiAdditives[baseBin];
+
+    // Per-bin DTI coefficients (percentage-point change to DTI if that bin is picked).
+    const coefByVarName = {};
+    let maxLoanCoef = 0; // most a loan CHANGE can RAISE DTI (a loan increase)
+    let minLoanCoef = 0; // most a loan CHANGE can LOWER DTI (a loan decrease, ≤ 0)
+    let minOtherCoef = 0; // revolving/income can lower (−) or raise (+) DTI
+    let maxOtherCoef = 0;
+    const noteOther = (c) => {
+      if (c < minOtherCoef) minOtherCoef = c;
+      if (c > maxOtherCoef) maxOtherCoef = c;
+    };
+
+    // Model B: the loan's DTI coefficient is the CHANGE in its monthly payment vs.
+    // the ORIGINAL applied-for loan — not the full new payment. Baseline DTI already
+    // excludes the loan, so a lower loan gives a negative coefficient (DTI down), a
+    // higher loan a positive one (DTI up), and the original loan → 0. This mirrors
+    // the fold's delta (edges.mjs computeDtiParts) so predicted DTI == folded DTI.
+    const baseLoanAmount = curExample[loanIdx];
+    const originalLoanPayment = loanMonthlyPayment(baseLoanAmount, apr / 12, termMonths);
+    (options['loan_amnt'] || []).forEach((opt) => {
+      const target = opt[0];
+      const payment = loanMonthlyPayment(target, apr / 12, termMonths);
+      const coef = ((payment - originalLoanPayment) / monthlyIncome) * 100;
+      coefByVarName[`loan_amnt:${opt[3]}`] = coef;
+      if (coef > maxLoanCoef) maxLoanCoef = coef;
+      if (coef < minLoanCoef) minLoanCoef = coef;
+    });
+
+    if (revolIdx >= 0) {
+      (options['revol_bal'] || []).forEach((opt) => {
+        const balDisplay = Math.pow(10, opt[0]); // log10 → dollars
+        const coef = (((balDisplay - baseRevolBal) * 0.02) / monthlyIncome) * 100;
+        coefByVarName[`revol_bal:${opt[3]}`] = coef;
+        noteOther(coef);
+      });
+    }
+
+    // Income → DTI (denominator). DTI = debt / income, so raising income lowers DTI.
+    // Approach (b)-lite: a linear per-income-bin term for the DTI change that income
+    // alone causes (debt held at baseline):  base_dti·(inc_base/inc_m − 1). This is
+    // EXACT for plans whose only DTI-affecting change is income (the dominant case
+    // once the solver avoids loan); the omitted income×(loan+revol) cross-term is
+    // negligible here (loan is avoided, the revolving 2% effect is a few $/mo).
+    const baseAnnualInc = Math.pow(10, curExample[incIdx]);
+    (options['annual_inc'] || []).forEach((opt) => {
+      const incM = Math.pow(10, opt[0]); // log10 → $/yr
+      const coef = incM > 0 ? baseDti * (baseAnnualInc / incM - 1) : 0;
+      coefByVarName[`annual_inc:${opt[3]}`] = coef;
+      noteOther(coef);
+    });
+
+    // Highest DTI_PROP the solver can reach (loan raises DTI; the two "other"
+    // contributors — revol_bal and income — could each add their max). Include DTI
+    // bins from the lowest (bin 0) up to the bin containing that value.
+    const maxReach = baseDti + maxLoanCoef + 2 * Math.max(0, maxOtherCoef) + 1e-6;
+    const topBin = Math.min(
+      dtiAdditives.length - 1,
+      searchSortedLowerIndex(dtiBinEdges, maxReach)
+    );
+    // Build the DTI bin-selection variables, minimizing their count (each is a MILP
+    // binary → solve time). Two reductions, both score-exact where it matters:
+    //   1. Merge consecutive bins with the SAME additive (the EBM's DTI shape repeats
+    //      its score across adjacent bins) — a DTI value anywhere in a run scores
+    //      identically, so this is exact.
+    //   2. ABOVE the applicant's current DTI, only a loan INCREASE gets there, and
+    //      the propagation-aware solver avoids raising the loan (it adds distance
+    //      AND raises DTI → hurts). So fine resolution there is wasted: cover the
+    //      [0, current-DTI] reduction region (where every real plan lands — now
+    //      including loan DECREASES, which lower DTI under Model B) at full
+    //      resolution, and collapse only the higher loan-increase region.
+    // Only DTI more than ~2 points above baseline requires a real loan increase
+    // (a revolving change moves DTI far less), so collapse only there.
+    const loanRegionFloor = baseDti + 2;
+    const dtiBins = [];
+    for (let k = 0; k <= topBin; k++) {
+      const add = dtiAdditives[k];
+      const inLoanRegion = dtiBinEdges[k] >= loanRegionFloor;
+      const last = dtiBins[dtiBins.length - 1];
+      // Merge into the previous run when scores match, OR when we're in the
+      // rarely-selected loan region (collapse aggressively there).
+      if (last && (last.additive === add || (inLoanRegion && last.loanRegion))) {
+        last.hi = dtiBinEdges[k + 1];
+        if (add < last.additive) last.additive = add; // keep the strongest penalty
+      } else {
+        dtiBins.push({ lo: dtiBinEdges[k], hi: dtiBinEdges[k + 1], additive: add, loanRegion: inLoanRegion });
+      }
+    }
+    if (dtiBins.length === 0) return null;
+    // The LINEAR DTI_PROP can fall below 0 when reductions (income + revolving)
+    // combine — but real DTI clamps at 0, and searchSortedLowerIndex maps any such
+    // value to bin 0. So the lowest bin catches everything below its edge and the
+    // highest catches everything above, guaranteeing exactly one bin is always
+    // selectable (never infeasible) and matching the fold's clamped binning. Use
+    // MODEST sentinels just outside the reachable DTI_PROP range (not ±1e9, which
+    // badly scales the constraint matrix and cripples the MILP solver).
+    dtiBins[0].lo = baseDti + minLoanCoef + 2 * Math.min(0, minOtherCoef) - 1;
+    dtiBins[dtiBins.length - 1].hi = maxReach + 1;
+
+    return { baseDti, baseAdditive, coefByVarName, dtiBins };
   }
 
   /**
@@ -2664,7 +3068,8 @@ class GAMCoach {
     options,
     maxNumFeaturesToVary,
     mutedVariables,
-    verbose
+    verbose,
+    dtiPropagation = null
   }) {
     let milp = new MILP(
       cfDirection,
@@ -2673,7 +3078,8 @@ class GAMCoach {
       options,
       maxNumFeaturesToVary,
       mutedVariables,
-      verbose
+      verbose,
+      dtiPropagation
     );
 
     await milp.initGLPK();
@@ -2705,7 +3111,8 @@ class GAMCoach {
       options,
       maxNumFeaturesToVary,
       mutedVariables,
-      verbose
+      verbose,
+      dtiPropagation
     };
 
     return cfs;
@@ -3356,4 +3763,10 @@ class GAMCoach {
   }
 }
 
-export { GAMCoach };
+export {
+  GAMCoach,
+  foldedApprovalProb,
+  PROPAGATION_AWARE_DTI_CONSTRAINT,
+  APPROVAL_PROB,
+  MAX_FILTER_ATTEMPTS
+};

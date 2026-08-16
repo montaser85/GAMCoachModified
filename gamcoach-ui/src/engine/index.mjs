@@ -7,6 +7,16 @@
  * concerns such as the linked-feature icon.
  */
 
+// ── Load-time propagation of the coach's suggested changes ──────────────────
+// When true, each plan runs the SAME causal-propagation engine on its
+// coach-suggested changes at load, so dependent features display their
+// propagated values immediately (instead of only after the user's first edit).
+// When false, the app behaves exactly as before: suggestions are shown
+// un-propagated at load and propagation begins on the first user edit.
+// Flip this single value to return to the current behavior. The load-time pass
+// is routed exclusively through this flag (see FeaturePanel.propagateSuggestedChangesAtLoad).
+export const PROPAGATE_SUGGESTED_ON_LOAD = true;
+
 export { propagate, DTI_WARN_THRESHOLD, FICO_WARN_THRESHOLD } from './engine.mjs';
 export { EDGES, LEAF_FEATURES, computeDtiParts, DTI_USER_EDITS_ONLY } from './edges.mjs';
 export { DEROG_BINS, derogRank, derogBin, derogAdd, derogSubtract } from './edges.mjs';

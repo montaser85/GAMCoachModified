@@ -39,7 +39,10 @@
     MODEL_BOUNDS,
     EDGES,
     derogRank,
-    derogSubtract
+    derogSubtract,
+    loanMonthlyPayment,
+    aprForPurpose,
+    PROPAGATE_SUGGESTED_ON_LOAD
   } from '../../engine/index.mjs';
 
   export let windowLoaded = false;
@@ -182,6 +185,21 @@
   // A feature stays "modified" even if its value coincidentally returns to the
   // load-time value — only a reset clears it.
   let modifiedFeatures = new Set();
+  // Features whose values came from LOAD-TIME propagation of the coach's
+  // suggestions (PROPAGATE_SUGGESTED_ON_LOAD). They are put in modifiedFeatures
+  // so the DTI/FICO gate keeps their contributions engaged on later user edits,
+  // but they are NOT user-caused — this set excludes them from the blue "you
+  // modified" outline and keeps their provenance "suggested". A real user edit of
+  // such a feature removes it from here (it then becomes a genuine user change).
+  // Always empty when the flag is off, so every gate below is a no-op then.
+  let suggestedAtLoad = new Set();
+  // Frozen record of the load-time propagation state, captured once per plan when
+  // the flag is on (null otherwise). A reset uses it to return to the PROPAGATED
+  // load snapshot — re-establishing the suggested inputs' gate engagement, their
+  // seeded deltas, and their "suggested" provenance — instead of falling back to
+  // the profile baseline. Null when the flag is off, so the reset re-establishment
+  // is entirely skipped and reset behaves byte-identically to today.
+  let loadSnapshot = null;
   // Display names for all features — used in arrow labels
   const DISPLAY_NAMES = {
     'loan_amnt': 'Loan Amount', 'dti': 'Debt to Income Ratio',
@@ -423,6 +441,12 @@
     // the propagation helpers have baseline data even before the user moves any slider.
     initLastKnownValues();
 
+    // PROPAGATE_SUGGESTED_ON_LOAD: run causal propagation on this plan's suggested
+    // changes so dependents display their propagated values immediately. Runs
+    // per-plan (this whole init re-runs on each plan switch via Coach.svelte's
+    // {#key} remount). No-op when the flag is off.
+    propagateSuggestedChangesAtLoad();
+
     // Start the "Effects of your changes" section empty on (re)init — a fresh
     // mount happens on plan switch / regenerate / history restore, matching the
     // FeaturePanel's own per-mount reset of propagation tracking.
@@ -508,6 +532,9 @@
       // value; only a reset clears it.
       modifiedFeatures.add(featureName);
       modifiedFeatures = modifiedFeatures;
+      // A real user edit reclaims a load-time suggested feature: it is now a
+      // genuine user change (gets the outline; reads "you changed").
+      if (suggestedAtLoad.delete(featureName)) suggestedAtLoad = suggestedAtLoad;
 
       // Track which side of the two-way pair is the input (last edited), so the
       // Revolving Balance hover knows whether its value was derived from a
@@ -618,12 +645,33 @@
     // user's manual FICO delta and re-settles the score from the remaining
     // penalties (never touches the source cards).
     if (featureName === 'fico_score') {
+      // PROPAGATE_SUGGESTED_ON_LOAD: a FICO that was the coach's SUGGESTED input
+      // returns to its load-snapshot value + seeded delta (re-engaged, "suggested",
+      // no outline) instead of clearing to the profile penalty.
+      const suggestedFico = !!(loadSnapshot && loadSnapshot.suggestedInputs.has('fico_score'));
+      const ficoFeat = plan.features.find(ff => ff.data.name === 'fico_score');
+      if (suggestedFico) {
+        userFicoDelta = loadSnapshot.userFicoDelta;
+        const loadVal = loadTimeSample[ficoFeat.featureID];
+        plan.ebmLocal.updateFeature('fico_score', loadVal);
+        if (ficoFeat) ficoFeat.hypotheticalValue = loadVal;
+        lastKnownValues['fico_score'] = loadVal;
+        modifiedFeatures.add('fico_score');
+        suggestedAtLoad.add('fico_score');
+        modifiedFeatures = modifiedFeatures;
+        suggestedAtLoad = suggestedAtLoad;
+        planStore.set(plan);
+        featureValueOverrideStore.set({ fico_score: loadVal });
+        setTimeout(() => featureValueOverrideStore.set({}), 400);
+        ficoLinkCalculation = buildFicoBreakdown(applicantBaselineState, buildCurrentEngineState());
+        dismissArrows();
+        return;
+      }
       userFicoDelta = 0;
       const settled = settleFico(0); // profile − active penalty, clamped
       const profileFico = applicantBaselineState.fico_score || 0;
       plan.ebmLocal.updateFeature('fico_score', settled);
-      const f = plan.features.find(ff => ff.data.name === 'fico_score');
-      if (f) f.hypotheticalValue = settled;
+      if (ficoFeat) ficoFeat.hypotheticalValue = settled;
       lastKnownValues['fico_score'] = settled;
       // Stays modified (outline) only while a penalty still moves it off profile.
       if (Math.round(settled) !== Math.round(profileFico)) modifiedFeatures.add('fico_score');
@@ -674,6 +722,32 @@
       );
     }
 
+    // ── 1b. PROPAGATE_SUGGESTED_ON_LOAD — re-establish the LOAD SNAPSHOT ──────
+    // The steps above cleared the restored features' gate engagement and deltas
+    // (which is correct for USER edits). But with the flag on, a restored feature
+    // that was part of the coach's load-time suggestions must return to its
+    // SUGGESTED state: re-engaged in the gate, its seeded delta restored, and its
+    // "suggested" provenance re-marked — so the recompute below rebuilds the
+    // propagated dependents rather than dropping them to the profile. No-op (and
+    // therefore byte-identical to today) when loadSnapshot is null (flag off).
+    if (loadSnapshot) {
+      unmodify.forEach((name) => {
+        if (loadSnapshot.suggestedInputs.has(name)) {
+          modifiedFeatures.add(name);   // undo restoreToLoadTime's delete
+          suggestedAtLoad.add(name);    // suggested, not user-caused
+          // Restore this input's seeded delta (undo the clears above).
+          if (name === 'revol_bal') { userRevolDelta = loadSnapshot.userRevolDelta; revolUtilIsInput = loadSnapshot.revolUtilIsInput; }
+          if (name === 'revol_util') revolUtilIsInput = loadSnapshot.revolUtilIsInput;
+          if (name === 'open_acc') userOpenDelta = loadSnapshot.userOpenDelta;
+          if (name === 'total_acc') userTotalDelta = loadSnapshot.userTotalDelta;
+          if (name === 'dti') userDtiDelta = loadSnapshot.userDtiDelta;
+        }
+        // Folded dependents keep their "suggested" provenance (outline suppressed).
+        if (loadSnapshot.suggestedAll.has(name)) suggestedAtLoad.add(name);
+      });
+      suggestedAtLoad = suggestedAtLoad;
+    }
+
     // ── 2. Recompute affected dependents from the remaining modified state ────
     // Restoring a SOURCE (e.g. Open Accounts / Mortgages) changes that source's
     // OTHER dependents (e.g. FICO, Number of Accounts). So recompute the
@@ -704,8 +778,7 @@
       overrides[dep] = internal;
 
       // A recomputed dependent stays modified (outline stays) only while at
-      // least one of its sources is still modified; otherwise it is back to its
-      // profile value and un-modifies.
+      // least one of its sources is still modified; otherwise it un-modifies.
       if (sourcesOf(dep).some(s => modifiedFeatures.has(s))) {
         modifiedFeatures.add(dep);
       } else {
@@ -713,6 +786,35 @@
       }
     });
     modifiedFeatures = modifiedFeatures;
+
+    // ── 2b. PROPAGATE_SUGGESTED_ON_LOAD — snap fully-suggested dependents ─────
+    // A folded dependent whose sources are ALL still suggested (none user-edited)
+    // belongs exactly at its load-snapshot value. Restore it directly from
+    // loadTimeSample — overriding any small recompute drift (e.g. the two-way
+    // revol_bal/util inverse re-applying the seeded delta) — and re-mark it
+    // "suggested" (no user outline). Dependents that still have a user-edited
+    // source keep their recomputed value. No-op when the flag is off.
+    if (loadSnapshot) {
+      plan.features.forEach((f) => {
+        const dep = f.data.name;
+        if (!loadSnapshot.suggestedAll.has(dep)) return;
+        if (loadSnapshot.suggestedInputs.has(dep)) return; // inputs handled above
+        const anyUserSource = sourcesOf(dep).some(
+          (s) => modifiedFeatures.has(s) && !suggestedAtLoad.has(s)
+        );
+        if (anyUserSource) return; // a user edit still affects it — keep recomputed
+        const loadVal = loadTimeSample[f.featureID];
+        if (loadVal === undefined) return;
+        plan.ebmLocal.updateFeature(dep, loadVal);
+        f.hypotheticalValue = loadVal;
+        lastKnownValues[dep] = loadVal;
+        overrides[dep] = loadVal;
+        suggestedAtLoad.add(dep);
+        modifiedFeatures.delete(dep);
+      });
+      modifiedFeatures = modifiedFeatures;
+      suggestedAtLoad = suggestedAtLoad;
+    }
 
     // Push all restored/recomputed values to the store and the cards.
     planStore.set(plan);
@@ -777,6 +879,119 @@
 
     // Make the DTI breakdown available on hover before any edit (base row only).
     refreshDtiBreakdown();
+  };
+
+  /** Categorical CODE for a level LABEL (inverse of labelEncoder). */
+  const codeFromLabel = (label, labelEncoder) => {
+    if (!labelEncoder) return label;
+    const entry = Object.entries(labelEncoder).find(([, lbl]) => lbl === label);
+    return entry ? +entry[0] : label;
+  };
+
+  /**
+   * PROPAGATE_SUGGESTED_ON_LOAD — run the causal-propagation engine on the coach's
+   * suggested changes at load, so dependent features show their propagated values
+   * immediately (as if the user had manually entered the suggestions). Reuses the
+   * SAME engine + panel helpers — no second propagation path.
+   *
+   * Provenance handling (folded, per design): each propagated dependent is written
+   * into BOTH ebmLocal.sample AND coachSample, so it reads as "suggested" (never
+   * "you changed") and isChangedByUser stays false. The coach's own INPUT
+   * suggestions are left byte-exact. The suggested inputs are engaged in the
+   * DTI/FICO gate (added to modifiedFeatures, so later edits keep their
+   * contributions) but recorded in suggestedAtLoad so they carry NO user-modified
+   * outline and never enter "Which features your changes affected" (that section
+   * is left untouched here). Entirely gated by the flag — a no-op when off.
+   */
+  const propagateSuggestedChangesAtLoad = () => {
+    if (!PROPAGATE_SUGGESTED_ON_LOAD) return;
+    if (!plan || !applicantBaselineState) return;
+
+    const baseline = applicantBaselineState;
+    // At load ebmLocal.sample === coachSample, so this is the coach-suggested state.
+    const suggested = buildCurrentEngineState();
+
+    // The coach's suggested INPUT changes (values differing from the profile).
+    const changedInputs = plan.features
+      .map((f) => f.data.name)
+      .filter((name) => !engineValuesEqual(suggested[name], baseline[name]));
+    if (changedInputs.length === 0) return;
+    const changedSet = new Set(changedInputs);
+
+    // Seed the panel's delta trackers from the suggested state, exactly as they
+    // would be had the user entered those values — so later user edits keep the
+    // suggested contributions engaged (consistent with the folded results).
+    const mortDelta = Math.max(0, (suggested.mort_acc || 0) - (baseline.mort_acc || 0));
+    userFicoDelta = changedSet.has('fico_score') ? (suggested.fico_score - baseline.fico_score) : 0;
+    userDtiDelta = changedSet.has('dti') ? (suggested.dti - baseline.dti) : 0;
+    userRevolDelta = changedSet.has('revol_bal') ? (suggested.revol_bal - baseline.revol_bal) : 0;
+    userOpenDelta = changedSet.has('open_acc')
+      ? ((suggested.open_acc || 0) - (baseline.open_acc || 0) - mortDelta) : 0;
+    userTotalDelta = changedSet.has('total_acc')
+      ? ((suggested.total_acc || 0) - (baseline.total_acc || 0) - userOpenDelta - mortDelta) : 0;
+    appliedHomeMortgage = homeMortgageContribution(suggested.home_ownership);
+    if (changedSet.has('revol_util')) revolUtilIsInput = true;
+    else if (changedSet.has('revol_bal')) revolUtilIsInput = false;
+
+    // Engage the suggested inputs in the gate, but flag them as suggested (not
+    // user-caused): keeps their "suggested" provenance and suppresses the outline.
+    changedInputs.forEach((name) => { modifiedFeatures.add(name); suggestedAtLoad.add(name); });
+
+    // Run the engine for each suggested input with outgoing edges, accumulating so
+    // dependents fed by multiple inputs (e.g. DTI) settle from the full state.
+    let working = { ...suggested };
+    changedInputs.forEach((name) => {
+      if (!featureHasOutgoingEdges(name)) return;
+      const { state } = propagate(
+        name, baseline, working, baseline,
+        modifiedFeatures, appliedHomeMortgage, userOpenDelta, userTotalDelta, userFicoDelta,
+        userDtiDelta, userRevolDelta, derogIndependentPart
+      );
+      working = state;
+    });
+
+    // Fold the propagated DEPENDENTS (features the coach did not change directly,
+    // whose value moved) into ebmLocal.sample AND coachSample → "suggested".
+    const overrides = {};
+    let foldedAny = false;
+    plan.features.forEach((f) => {
+      const name = f.data.name;
+      if (changedSet.has(name)) return;                          // never touch inputs
+      if (engineValuesEqual(working[name], suggested[name])) return; // no propagation
+      const internal = displayToInternal(name, working[name]);
+      plan.ebmLocal.updateFeature(name, internal);               // current value
+      plan.coachSample[f.featureID] = internal;                  // → suggested provenance
+      f.coachValue = f.isCont ? internal : codeFromLabel(internal, f.labelEncoder);
+      f.myValue = f.coachValue;
+      f.isChanged = engineValuesEqual(working[name], baseline[name]) ? 0 : 1;
+      f.hypotheticalValue = internal;
+      lastKnownValues[name] = internal;
+      suggestedAtLoad.add(name);   // a propagated dependent is also not user-caused
+      overrides[name] = internal;
+      foldedAny = true;
+    });
+
+    modifiedFeatures = modifiedFeatures;
+    suggestedAtLoad = suggestedAtLoad;
+
+    // Freeze the load snapshot so a later reset can return to THIS state (values +
+    // engagement + seeded deltas), not the profile baseline. suggestedInputs is
+    // the coach's changed inputs (frozen); suggestedAll adds the folded dependents.
+    loadSnapshot = {
+      suggestedInputs: new Set(changedInputs),
+      suggestedAll: new Set(suggestedAtLoad),
+      userFicoDelta, userDtiDelta, userRevolDelta, userOpenDelta, userTotalDelta,
+      appliedHomeMortgage, derogIndependentPart, revolUtilIsInput
+    };
+
+    if (foldedAny) {
+      // Reset now restores to the propagated suggested state, not the raw cfData.
+      loadTimeSample = plan.ebmLocal.sample.slice();
+      planStore.set(plan);
+      featureValueOverrideStore.set(overrides);
+      setTimeout(() => featureValueOverrideStore.set({}), 400);
+      refreshDtiBreakdown();
+    }
   };
 
   /**
@@ -915,46 +1130,92 @@
   };
 
   /**
-   * Format the engine's DTI parts into the itemized hover-breakdown object.
-   * Row visibility flags come straight from the gated engine computation, so the
-   * shown rows sum exactly to the displayed DTI (DTI_USER_EDITS_ONLY).
+   * Build the DTI hover breakdown. The hover MIRRORS the engine's DTI value
+   * (parts.newDti) — it never re-derives DTI with its own formula. In particular
+   * it does NOT invent a monthly payment for the applied-for loan: a loan line
+   * appears ONLY when the loan was actually changed (parts.loanEngaged), because
+   * the model scores DTI as a value and the engine (via the DTI_USER_EDITS_ONLY
+   * gate) only folds a loan payment into DTI when the loan itself changed. Same
+   * for the revolving-balance line. The displayed final DTI equals the engine's
+   * DTI for the plan, by construction — one source of truth, no divergence.
+   *
+   * @param {object} parts     computeDtiParts() output (the engine's own values)
+   * @param {object} baseline  frozen applicant profile (annual_inc, dti)
+   * @param {number} scoredDti the ACTUAL DTI the engine wrote to the sample and
+   *   scored (the DTI card's value). The hover's final DTI IS this value — the one
+   *   source of truth — so it always equals the displayed/scored DTI, even for the
+   *   two-way revolving pair where a fresh computeDtiParts recompute would drift.
    */
-  const formatDtiBreakdown = (parts) => {
+  const formatDtiBreakdown = (parts, baseline, scoredDti) => {
     const money = (n) => '$' + Math.round(n).toLocaleString();
     const pct = (n) => Number(n).toFixed(2);
-    const signed = (n) =>
-      (n < 0 ? '−$' : '+$') + Math.round(Math.abs(n)).toLocaleString();
+    const signedMoney = (n) =>
+      (n < 0 ? '−$' : '+$') + Math.abs(Math.round(n)).toLocaleString();
+    // The engine's scored DTI is authoritative; fall back to parts.newDti only if a
+    // caller omits it.
+    const finalDti = scoredDti != null ? scoredDti : parts.newDti;
 
-    // Build the total as an addition of the active contributors, e.g.
-    // "$1,041 + $571 + $434" (or "− $434" for a revolving paydown).
-    const pieces = [money(parts.baseDebt)];
-    if (parts.loanEngaged) pieces.push('+ ' + money(parts.loanPayment));
-    if (parts.revolEngaged) {
-      pieces.push((parts.revolDelta < 0 ? '− ' : '+ ') + money(Math.abs(parts.revolDelta)));
-    }
+    const origMonthlyIncomeRaw = (baseline?.annual_inc || 0) / 12; // profile income
+    const currentDti = baseline?.dti || 0;                         // profile DTI %
+    // Current monthly debt is the engine's baseDebt (profile income × profile DTI).
+    const currentMonthlyDebtRaw = parts.baseDebt || 0;
+
+    // Income the engine used (reflects an Annual Income edit via the gate).
+    const newMonthlyIncomeRaw = parts.monthlyIncome || 0;
+
+    const origMonthlyIncome = Math.round(origMonthlyIncomeRaw);
+    const newMonthlyIncome = Math.round(newMonthlyIncomeRaw);
+    const incomeChanged = newMonthlyIncome !== origMonthlyIncome;
+    const currentMonthlyDebt = Math.round(currentMonthlyDebtRaw);
+
+    // Loan / revolving contributions to monthly debt — shown ONLY when the engine
+    // actually applied them (the loan/revolving was changed). This is the fix:
+    // for a plan that leaves the loan unchanged, no loan payment is added.
+    // Model B: the loan contributes the CHANGE in its monthly payment vs. the
+    // original loan (parts.loanPaymentDelta), which is negative when the loan is
+    // lowered. Show the loan row only when that change is non-trivial, so setting
+    // the loan back to its original value shows nothing and leaves DTI unmoved.
+    const loanChanged =
+      !!parts.loanEngaged && Math.abs(parts.loanPaymentDelta || 0) >= 0.5;
+    const loanIncreased = (parts.loanPaymentDelta || 0) > 0;
+    const revolChanged = !!parts.revolEngaged && Math.abs(parts.revolDelta || 0) >= 0.5;
+    const revolDeltaRaw = revolChanged ? (parts.revolDelta || 0) : 0;
+    const debtChanged = loanChanged || revolChanged;
+    const denomIncome = incomeChanged ? newMonthlyIncome : origMonthlyIncome;
+    // New monthly debt IMPLIED by the engine's scored DTI (debt = DTI × income), so
+    // the final "debt ÷ income = DTI" equation chains exactly to the scored value —
+    // one source of truth even in the two-way revolving case (where summing the
+    // shown current-debt + contributions would drift from what the engine scored).
+    const totalDebt = Math.round((finalDti / 100) * denomIncome);
+
+    const aprFraction = aprForPurpose(parts.loanPurpose);
 
     return {
       type: 'dti',
-      monthlyIncome: money(parts.monthlyIncome),
-      baseDebt: money(parts.baseDebt),
-      showLoanRow: parts.loanEngaged,
-      loanAmount: money(parts.loanAmount),
+      annualIncome: money(baseline?.annual_inc || 0),
+      monthlyIncome: '$' + origMonthlyIncome.toLocaleString(),
+      currentDti: pct(currentDti),
+      currentMonthlyDebt: '$' + currentMonthlyDebt.toLocaleString(),
+      incomeChanged,
+      newAnnualIncome: money(newMonthlyIncomeRaw * 12),
+      newMonthlyIncome: '$' + newMonthlyIncome.toLocaleString(),
+      loanChanged,
+      loanIncreased,
+      loanAmount: money(parts.loanAmount || 0),
+      originalLoanPayment: money(parts.originalLoanPayment || 0),
+      newLoanPayment: money(parts.newLoanPayment || 0),
+      loanPaymentDelta: signedMoney(parts.loanPaymentDelta || 0),
+      paymentPeriod: parts.paymentPeriod || 0,
+      aprPercent: pct(aprFraction * 100),
       loanPurpose: String(parts.loanPurpose || '').replace(/_/g, ' '),
-      paymentPeriod: parts.paymentPeriod,
-      loanPayment: money(parts.loanPayment),
-      showRevolRow: parts.revolEngaged,
-      revolvingBalance: money(parts.revolvingBalance),
-      creditUtilization: pct(parts.creditUtilization),
-      revolvingDelta: signed(parts.revolDelta),
-      hasContributors: parts.loanEngaged || parts.revolEngaged,
-      debtSumExpr: pieces.join(' '),
-      totalDebt: money(parts.newMonthlyDebt),
-      // Computed DTI (from the debt rows) plus the user's own manual adjustment,
-      // folded into the result line: "DTI = computed% ±manual% = new%".
-      computedDTI: pct(parts.computedDti),
-      showManualDti: Math.abs(parts.dtiManualDelta || 0) > 1e-9,
-      dtiManualDelta: (parts.dtiManualDelta < 0 ? '−' : '+') + pct(Math.abs(parts.dtiManualDelta || 0)),
-      newDTI: pct(parts.newDti)
+      revolChanged,
+      revolDelta: signedMoney(revolDeltaRaw),
+      debtChanged,
+      totalDebt: '$' + totalDebt.toLocaleString(),
+      finalIncome: '$' + denomIncome.toLocaleString(),
+      // The final DTI is the ENGINE's scored value — the single source of truth. The
+      // hover reflects it; it does not compute its own.
+      newDTI: pct(finalDti)
     };
   };
 
@@ -1199,7 +1460,7 @@
     const params = computeParams(
       applicantBaselineState, current, modifiedFeatures, userFicoDelta, userDtiDelta, userRevolDelta
     );
-    dtiLinkCalculation = formatDtiBreakdown(computeDtiParts(current, params));
+    dtiLinkCalculation = formatDtiBreakdown(computeDtiParts(current, params), applicantBaselineState, current.dti);
     ficoLinkCalculation = buildFicoBreakdown(applicantBaselineState, current);
     revolUtilLinkCalculation = buildRevolUtilBreakdown(applicantBaselineState, current);
     revolBalLinkCalculation = buildRevolBalBreakdown(applicantBaselineState, current);
@@ -1222,9 +1483,8 @@
     // reconciled account/mortgage counts driving the counter.
     ficoLinkCalculation = buildFicoBreakdown(baseline, next);
 
-    // DTI breakdown — always refreshed from the engine's post-propagation state
-    // (base row + whichever contributor rows are engaged).
-    dtiLinkCalculation = formatDtiBreakdown(computeDtiParts(next, params));
+    // DTI breakdown — the loan-centric narrative (profile debt + applied loan).
+    dtiLinkCalculation = formatDtiBreakdown(computeDtiParts(next, params), baseline, next.dti);
 
     // Credit Utilization + Revolving Balance breakdowns — always refreshed from
     // the live post-propagation state (`next`); credit limit from the profile.
@@ -1877,6 +2137,12 @@
     modifiedFeatures.add(featureName);
     activeTargets.forEach(name => modifiedFeatures.add(name));
     modifiedFeatures = modifiedFeatures;
+    // A user edit that (re)computes these dependents makes them user-affected —
+    // drop them from the load-time suggested set so the outline/provenance now
+    // reflect the user's action.
+    let reclaimed = suggestedAtLoad.delete(featureName);
+    activeTargets.forEach(name => { reclaimed = suggestedAtLoad.delete(name) || reclaimed; });
+    if (reclaimed) suggestedAtLoad = suggestedAtLoad;
 
     // ── 4. Push computed values into the EBM and move the sliders ───────────
     Object.entries(computedUpdates).forEach(([name, internalValue]) => {
@@ -2068,7 +2334,7 @@
               logger={logger}
               isLinked={feature.data.name in LINK_POPUP_TEXT}
               linkDeps={FEATURE_DEPS[feature.data.name] || null}
-              modified={modifiedFeatures.has(feature.data.name)}
+              modified={modifiedFeatures.has(feature.data.name) && !suggestedAtLoad.has(feature.data.name)}
               linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
               linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation
                              : feature.data.name === 'dti'        ? dtiLinkCalculation
@@ -2088,7 +2354,7 @@
               logger={logger}
               isLinked={feature.data.name in LINK_POPUP_TEXT}
               linkDeps={FEATURE_DEPS[feature.data.name] || null}
-              modified={modifiedFeatures.has(feature.data.name)}
+              modified={modifiedFeatures.has(feature.data.name) && !suggestedAtLoad.has(feature.data.name)}
               linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
               linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation
                              : feature.data.name === 'dti'        ? dtiLinkCalculation
@@ -2116,7 +2382,7 @@
               logger={logger}
               isLinked={feature.data.name in LINK_POPUP_TEXT}
               linkDeps={FEATURE_DEPS[feature.data.name] || null}
-              modified={modifiedFeatures.has(feature.data.name)}
+              modified={modifiedFeatures.has(feature.data.name) && !suggestedAtLoad.has(feature.data.name)}
               linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
               linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation
                              : feature.data.name === 'dti'        ? dtiLinkCalculation
@@ -2136,7 +2402,7 @@
               logger={logger}
               isLinked={feature.data.name in LINK_POPUP_TEXT}
               linkDeps={FEATURE_DEPS[feature.data.name] || null}
-              modified={modifiedFeatures.has(feature.data.name)}
+              modified={modifiedFeatures.has(feature.data.name) && !suggestedAtLoad.has(feature.data.name)}
               linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
               linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation
                              : feature.data.name === 'dti'        ? dtiLinkCalculation
@@ -2164,7 +2430,7 @@
               logger={logger}
               isLinked={feature.data.name in LINK_POPUP_TEXT}
               linkDeps={FEATURE_DEPS[feature.data.name] || null}
-              modified={modifiedFeatures.has(feature.data.name)}
+              modified={modifiedFeatures.has(feature.data.name) && !suggestedAtLoad.has(feature.data.name)}
               linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
               linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation
                              : feature.data.name === 'dti'        ? dtiLinkCalculation
@@ -2184,7 +2450,7 @@
               logger={logger}
               isLinked={feature.data.name in LINK_POPUP_TEXT}
               linkDeps={FEATURE_DEPS[feature.data.name] || null}
-              modified={modifiedFeatures.has(feature.data.name)}
+              modified={modifiedFeatures.has(feature.data.name) && !suggestedAtLoad.has(feature.data.name)}
               linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
               linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation
                              : feature.data.name === 'dti'        ? dtiLinkCalculation
@@ -2227,7 +2493,7 @@
               logger={logger}
               isLinked={feature.data.name in LINK_POPUP_TEXT}
               linkDeps={FEATURE_DEPS[feature.data.name] || null}
-              modified={modifiedFeatures.has(feature.data.name)}
+              modified={modifiedFeatures.has(feature.data.name) && !suggestedAtLoad.has(feature.data.name)}
               linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
               linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation
                              : feature.data.name === 'dti'        ? dtiLinkCalculation
@@ -2247,7 +2513,7 @@
               logger={logger}
               isLinked={feature.data.name in LINK_POPUP_TEXT}
               linkDeps={FEATURE_DEPS[feature.data.name] || null}
-              modified={modifiedFeatures.has(feature.data.name)}
+              modified={modifiedFeatures.has(feature.data.name) && !suggestedAtLoad.has(feature.data.name)}
               linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
               linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation
                              : feature.data.name === 'dti'        ? dtiLinkCalculation
@@ -2275,7 +2541,7 @@
               logger={logger}
               isLinked={feature.data.name in LINK_POPUP_TEXT}
               linkDeps={FEATURE_DEPS[feature.data.name] || null}
-              modified={modifiedFeatures.has(feature.data.name)}
+              modified={modifiedFeatures.has(feature.data.name) && !suggestedAtLoad.has(feature.data.name)}
               linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
               linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation
                              : feature.data.name === 'dti'        ? dtiLinkCalculation
@@ -2295,7 +2561,7 @@
               logger={logger}
               isLinked={feature.data.name in LINK_POPUP_TEXT}
               linkDeps={FEATURE_DEPS[feature.data.name] || null}
-              modified={modifiedFeatures.has(feature.data.name)}
+              modified={modifiedFeatures.has(feature.data.name) && !suggestedAtLoad.has(feature.data.name)}
               linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
               linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation
                              : feature.data.name === 'dti'        ? dtiLinkCalculation
@@ -2323,7 +2589,7 @@
               logger={logger}
               isLinked={feature.data.name in LINK_POPUP_TEXT}
               linkDeps={FEATURE_DEPS[feature.data.name] || null}
-              modified={modifiedFeatures.has(feature.data.name)}
+              modified={modifiedFeatures.has(feature.data.name) && !suggestedAtLoad.has(feature.data.name)}
               linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
               linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation
                              : feature.data.name === 'dti'        ? dtiLinkCalculation
@@ -2343,7 +2609,7 @@
               logger={logger}
               isLinked={feature.data.name in LINK_POPUP_TEXT}
               linkDeps={FEATURE_DEPS[feature.data.name] || null}
-              modified={modifiedFeatures.has(feature.data.name)}
+              modified={modifiedFeatures.has(feature.data.name) && !suggestedAtLoad.has(feature.data.name)}
               linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
               linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation
                              : feature.data.name === 'dti'        ? dtiLinkCalculation
@@ -2386,7 +2652,7 @@
               logger={logger}
               isLinked={feature.data.name in LINK_POPUP_TEXT}
               linkDeps={FEATURE_DEPS[feature.data.name] || null}
-              modified={modifiedFeatures.has(feature.data.name)}
+              modified={modifiedFeatures.has(feature.data.name) && !suggestedAtLoad.has(feature.data.name)}
               linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
               linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation
                              : feature.data.name === 'dti'        ? dtiLinkCalculation
@@ -2406,7 +2672,7 @@
               logger={logger}
               isLinked={feature.data.name in LINK_POPUP_TEXT}
               linkDeps={FEATURE_DEPS[feature.data.name] || null}
-              modified={modifiedFeatures.has(feature.data.name)}
+              modified={modifiedFeatures.has(feature.data.name) && !suggestedAtLoad.has(feature.data.name)}
               linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
               linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation
                              : feature.data.name === 'dti'        ? dtiLinkCalculation
@@ -2434,7 +2700,7 @@
               logger={logger}
               isLinked={feature.data.name in LINK_POPUP_TEXT}
               linkDeps={FEATURE_DEPS[feature.data.name] || null}
-              modified={modifiedFeatures.has(feature.data.name)}
+              modified={modifiedFeatures.has(feature.data.name) && !suggestedAtLoad.has(feature.data.name)}
               linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
               linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation
                              : feature.data.name === 'dti'        ? dtiLinkCalculation
@@ -2454,7 +2720,7 @@
               logger={logger}
               isLinked={feature.data.name in LINK_POPUP_TEXT}
               linkDeps={FEATURE_DEPS[feature.data.name] || null}
-              modified={modifiedFeatures.has(feature.data.name)}
+              modified={modifiedFeatures.has(feature.data.name) && !suggestedAtLoad.has(feature.data.name)}
               linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
               linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation
                              : feature.data.name === 'dti'        ? dtiLinkCalculation
@@ -2482,7 +2748,7 @@
               logger={logger}
               isLinked={feature.data.name in LINK_POPUP_TEXT}
               linkDeps={FEATURE_DEPS[feature.data.name] || null}
-              modified={modifiedFeatures.has(feature.data.name)}
+              modified={modifiedFeatures.has(feature.data.name) && !suggestedAtLoad.has(feature.data.name)}
               linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
               linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation
                              : feature.data.name === 'dti'        ? dtiLinkCalculation
@@ -2502,7 +2768,7 @@
               logger={logger}
               isLinked={feature.data.name in LINK_POPUP_TEXT}
               linkDeps={FEATURE_DEPS[feature.data.name] || null}
-              modified={modifiedFeatures.has(feature.data.name)}
+              modified={modifiedFeatures.has(feature.data.name) && !suggestedAtLoad.has(feature.data.name)}
               linkPopupText={LINK_POPUP_TEXT[feature.data.name] || ''}
               linkCalculation={feature.data.name === 'fico_score' ? ficoLinkCalculation
                              : feature.data.name === 'dti'        ? dtiLinkCalculation

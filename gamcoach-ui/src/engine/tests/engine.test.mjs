@@ -63,9 +63,11 @@ function makeBaseline(overrides = {}) {
 const edit = (base, feature, value) => ({ ...base, [feature]: value });
 const dtiEdge = (log) => log.find((l) => l.dependent === 'dti' && !l.note);
 
-// Independent reference implementation of the full-state DTI, used to assert
-// the engine settles derived DTI from ALL of its inputs (base debt + applied
-// loan payment + 2%-of-revolving-delta) over current income.
+// Independent reference implementation of the full-state DTI (Model B), used to
+// assert the engine settles derived DTI from ALL of its inputs. The baseline DTI
+// EXCLUDES the applied-for loan, so the loan contributes the CHANGE in its monthly
+// payment vs. the ORIGINAL applied-for loan — not the full new payment. (When the
+// loan is unchanged this term is 0, so DTI stays at the loan-excluded baseline.)
 function expectedDti(base, current) {
   const monthlyIncome = current.annual_inc / 12;
   const baseDebt = (base.dti * (base.annual_inc / 12)) / 100;
@@ -74,8 +76,13 @@ function expectedDti(base, current) {
     aprForPurpose(current.purpose) / 12,
     current.term
   );
+  const origLoanPay = loanMonthlyPayment(
+    base.loan_amnt,
+    aprForPurpose(base.purpose) / 12,
+    base.term
+  );
   const revolDelta = (current.revol_bal - base.revol_bal) * 0.02;
-  return ((baseDebt + loanPay + revolDelta) / monthlyIncome) * 100;
+  return ((baseDebt + (loanPay - origLoanPay) + revolDelta) / monthlyIncome) * 100;
 }
 
 console.log('Causal Propagation Engine — Section 10 tests');
@@ -116,15 +123,16 @@ test('1d. Loan DTI is path-independent (no stacking across edits)', () => {
 });
 
 // 2. Revolving Balance edit -> Utilization tracks; DTI recomputes from the FULL
-//    state (includes the applied loan payment) and moves with the balance.
-test('2a. Revolving Balance down -> Utilization down; DTI includes loan payment', () => {
+//    state (Model B: loan contributes its payment delta, 0 when unchanged) and
+//    moves with the balance.
+test('2a. Revolving Balance down -> Utilization down; DTI moves with the balance', () => {
   const base = makeBaseline();
   const next = edit(base, 'revol_bal', 2000);
   const { state } = propagate('revol_bal', base, next, base);
   const limit = creditLimitFromBaseline(base); // 20000
   approx(state.revol_util, (2000 / limit) * 100); // 10
   assert.ok(state.revol_util < base.revol_util);
-  // DTI still includes the current loan's payment (loan is always in DTI).
+  // DTI recomputes from the full state (loan unchanged -> loan delta is 0).
   approx(state.dti, expectedDti(base, next));
 });
 
@@ -377,28 +385,48 @@ test('G1. Editing revolving balance ignores an untouched suggested loan', () => 
   assert.ok(state.dti < full);
 });
 
-test('G2. Editing loan includes the entered loan payment', () => {
+test('G2. Editing loan up applies the loan-payment DELTA (raises DTI)', () => {
   const base = makeBaseline();
   const current = { ...base, loan_amnt: 20000 };
   const modified = new Set(['loan_amnt']);
   const { state } = propagate('loan_amnt', base, current, base, modified);
   const income = base.annual_inc / 12;
   const baseDebt = (base.dti * income) / 100;
+  // Model B: the DELTA vs. the original $10k loan's payment, not the full payment.
   const pay = loanMonthlyPayment(20000, aprForPurpose(base.purpose) / 12, base.term);
-  approx(state.dti, ((baseDebt + pay) / income) * 100);
-  assert.ok(state.dti > base.dti);
+  const origPay = loanMonthlyPayment(base.loan_amnt, aprForPurpose(base.purpose) / 12, base.term);
+  approx(state.dti, ((baseDebt + (pay - origPay)) / income) * 100);
+  assert.ok(state.dti > base.dti); // loan increase -> DTI up
 });
 
-test('G3. Editing both loan and revolving balance includes both', () => {
+// Model B core fix: LOWERING the applied loan must LOWER DTI (previously the full
+// new-loan payment was added on a loan-excluded baseline, so a decrease wrongly
+// RAISED DTI). No change -> DTI holds; decrease -> down; increase -> up.
+test('G2b. Lowering the loan lowers DTI; same loan holds; higher loan raises', () => {
+  const base = makeBaseline();
+  const mod = new Set(['loan_amnt']);
+  const dtiAt = (loan) =>
+    propagate('loan_amnt', base, { ...base, loan_amnt: loan }, base, mod).state.dti;
+  const same = dtiAt(base.loan_amnt);
+  const lower = dtiAt(base.loan_amnt - 5000);
+  const higher = dtiAt(base.loan_amnt + 5000);
+  approx(same, base.dti);       // no real change -> DTI unchanged
+  assert.ok(lower < base.dti);  // lower loan -> DTI DOWN (the fix)
+  assert.ok(higher > base.dti); // higher loan -> DTI up
+});
+
+test('G3. Editing both loan and revolving balance applies both deltas', () => {
   const base = makeBaseline();
   const current = { ...base, loan_amnt: 20000, revol_bal: 8000 };
   const modified = new Set(['loan_amnt', 'revol_bal']);
   const { state } = propagate('revol_bal', base, current, base, modified);
   const income = base.annual_inc / 12;
   const baseDebt = (base.dti * income) / 100;
+  // Model B: loan contributes the DELTA vs. the original loan's payment.
   const pay = loanMonthlyPayment(20000, aprForPurpose(base.purpose) / 12, base.term);
+  const origPay = loanMonthlyPayment(base.loan_amnt, aprForPurpose(base.purpose) / 12, base.term);
   const revolDelta = (8000 - base.revol_bal) * 0.02;
-  approx(state.dti, ((baseDebt + pay + revolDelta) / income) * 100);
+  approx(state.dti, ((baseDebt + (pay - origPay) + revolDelta) / income) * 100);
 });
 
 test('G4. No user edits -> DTI holds the profile value despite a suggested loan', () => {
@@ -610,7 +638,7 @@ test('F6. Manual Revolving Balance edit sums with a utilization change', () => {
   approx(state.revol_bal, (50 / 100) * limit + 3000); // util-driven 10000 + manual 3000
 });
 
-test('X4. Annual income up -> DTI down; numerator still includes loan payment', () => {
+test('X4. Annual income up -> DTI down (full-state numerator over new income)', () => {
   const base = makeBaseline();
   const next = edit(base, 'annual_inc', 120000); // double income
   const { state, log } = propagate('annual_inc', base, next, base);
@@ -620,19 +648,20 @@ test('X4. Annual income up -> DTI down; numerator still includes loan payment', 
   assert.strictEqual(dtiEdge(log).tag, 'E');
 });
 
-// Design principle: any DTI input edit recomputes DTI from the FULL state.
-test('D1. Editing Revolving Balance still includes the current loan payment', () => {
+// Design principle: any DTI input edit recomputes DTI from the FULL state. Under
+// Model B the loan contributes only its payment DELTA, so with the loan unchanged
+// a revolving edit moves DTI by the revolving delta alone (no full loan payment).
+test('D1. Editing Revolving Balance recomputes DTI (loan unchanged -> no loan term)', () => {
   const base = makeBaseline();
   const next = edit(base, 'revol_bal', 3000);
   const { state } = propagate('revol_bal', base, next, base);
-  // DTI must reflect base debt + the applied loan's payment + the revolving delta.
+  // DTI = base debt + revolving delta over income; the loan's delta is 0 here.
   approx(state.dti, expectedDti(base, next));
-  // ...and it must be strictly above a hypothetical no-loan DTI, proving the
-  // loan payment is present even though we edited a different feature.
+  // It equals the loan-excluded DTI exactly — no full loan payment is baked in.
   const monthlyIncome = base.annual_inc / 12;
-  const noLoanDti =
+  const loanExcludedDti =
     (((base.dti * monthlyIncome) / 100 + (3000 - base.revol_bal) * 0.02) / monthlyIncome) * 100;
-  assert.ok(state.dti > noLoanDti);
+  approx(state.dti, loanExcludedDti);
 });
 
 test('D2. DTI is order-independent (same final state -> same DTI)', () => {
