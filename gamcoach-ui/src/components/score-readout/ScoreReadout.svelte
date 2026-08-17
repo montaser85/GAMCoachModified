@@ -26,7 +26,13 @@
   $: origPoints = origProb === null ? null : Math.round(origProb * 100);
   // Bar position (0–100), clamped.
   $: curPct = curPoints === null ? 0 : Math.max(0, Math.min(100, curPoints));
-  $: approved = curPoints !== null && curPoints >= THRESHOLD;
+  // Approval keys off the TRUE probability (0.5 threshold), never the rounded
+  // points — otherwise a score in [0.495, 0.50) would round to 50 and falsely read
+  // "Approved". A plan below 0.5 must read "Not approved."
+  $: approved = curProb !== null && curProb >= 0.5;
+  // Points still to reach approval, never 0 when not approved (a 0.4966 score rounds
+  // to 50 points, so THRESHOLD − curPoints would be 0 while still below threshold).
+  $: pointsToApproval = curPoints === null ? null : Math.max(1, THRESHOLD - curPoints);
 </script>
 
 <div class="score-readout">
@@ -54,7 +60,7 @@
             <span class="sr-num">{curPoints}</span>
             <span class="sr-unit">points</span>
           {:else}
-            <span class="sr-num">{THRESHOLD - curPoints}</span>
+            <span class="sr-num">{pointsToApproval}</span>
             <span class="sr-unit">points to approval</span>
           {/if}
         </div>

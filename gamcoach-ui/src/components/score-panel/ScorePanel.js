@@ -203,11 +203,15 @@ export class ScorePanel {
       if (!this.onDelta) return;
       if (deltaPP === 0) { this.onDelta(null); return; } // back at the original
       const thrPP = Math.round(this.maxThreshold * 100); // 50 for the classifier
+      // Approval keys off the TRUE probability, not the rounded points — and when it
+      // is NOT met the distance is floored at 1pp so a sub-threshold score that
+      // rounds to 50 never reads "0pp to approval".
+      const met = cur >= this.maxThreshold;
       this.onDelta({
         deltaPP,
         direction: deltaPP > 0 ? 'up' : 'down',
-        distancePP: Math.max(0, thrPP - Math.round(cur * 100)),
-        thresholdMet: cur >= this.maxThreshold,
+        distancePP: met ? 0 : Math.max(1, thrPP - Math.round(cur * 100)),
+        thresholdMet: met,
         ...(this.getDeltaLabelPos() || { screenX: 0, screenY: 0 })
       });
     }, 600);

@@ -69,6 +69,13 @@
     if (isOutRange) return;
     inputFormConfig.show = false;
 
+    // Recompute directly from the live input lists at save time. The reactive
+    // recompute of newCurExample is gated on `ebm` and only fires when contList/
+    // catList are reassigned, so a value change can be missed if that reactive
+    // hasn't run (e.g. `ebm` not ready). Reading the bound values here guarantees
+    // the latest inputs are captured.
+    newCurExample = getNewCurExample(contList, catList);
+
     // Check if we should update the curExample
     if (isCurExampleChanged(inputFormConfig.curExample, newCurExample)) {
       inputFormConfig.curExample = newCurExample;

@@ -24,7 +24,7 @@ import { propagate, featureHasOutgoingEdges } from '../engine/index.mjs';
  * Flip to false to return to the exact prior (un-propagation-aware) generation —
  * createMILP() then behaves byte-identically to before.
  */
-const PROPAGATION_AWARE_DTI_CONSTRAINT = false;
+const PROPAGATION_AWARE_DTI_CONSTRAINT = true;
 
 // Safety margin (propagation-aware generation only). The solver targets this
 // approval probability instead of exactly 0.50, so plans robustly clear 50% AFTER

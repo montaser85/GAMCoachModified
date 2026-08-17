@@ -76,7 +76,9 @@
       "Bash(grep -iE \"error|\\\\!\\\\] |warn.*dti|is not defined\" /tmp/devbuild.log | grep -vi \"circular\\\\|Unused CSS\\\\|a11y\\\\|onMount\" | head -15; echo \"=== \\(no output above = clean\\) ===\")",
       "Bash(grep -o \"New total monthly debt[^!]\\\\{0,60\\\\}\" public/build/bundle.js)",
       "Bash(grep -oE \"New total monthly debt: .{0,140}\" public/build/bundle.js)",
-      "Bash(grep -oE \".{0,30}New total monthly debt:.{0,90}\" public/build/bundle.js)"
+      "Bash(grep -oE \".{0,30}New total monthly debt:.{0,90}\" public/build/bundle.js)",
+      "PowerShell($roll = Get-CimInstance Win32_Process -Filter \"Name='node.exe'\" | Where-Object { $_.CommandLine -match 'rollup' -and $_.CommandLine -notmatch 'sirv' }; if \\($roll\\) { $roll | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue } }; \"done\")",
+      "Bash(grep -E \"^[0-9a-f]{7,}|PROPAGATION_AWARE_DTI_CONSTRAINT = \\(true|false\\)\")"
     ]
   }
 }

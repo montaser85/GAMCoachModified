@@ -274,6 +274,19 @@
   // source change never discards it. Cleared only on that feature's own reset.
   let userDtiDelta = 0;    // DTI: newDTI = computedDTI + userDtiDelta
   let userRevolDelta = 0;  // Revolving Balance: newBal = profile + userRevolDelta + util-driven
+  // Revolving-Balance anchor, captured at load INDEPENDENT of
+  // PROPAGATE_SUGGESTED_ON_LOAD. `revolAnchorBal`/`revolAnchorUtil` are the
+  // DISPLAYED (post-fold) suggested balance and utilization the user is looking at;
+  // `coachRevolDelta` is that balance's offset from the balance its OWN displayed
+  // utilization implies. Folding it into userRevolDelta makes a later Credit
+  // Utilization edit anchor the recompute to the suggested balance, and measuring
+  // the utilization change from `revolAnchorUtil` (not the profile) keeps the hover
+  // consistent with what the user sees in BOTH flag states (flag-on folds util at
+  // load; flag-off leaves it at the profile). Tracked separately so the user's OWN
+  // direct balance edits compose on top without double-counting.
+  let coachRevolDelta = 0;
+  let revolAnchorBal = 0;
+  let revolAnchorUtil = 0;
   // Provenance for Number of Derogatory Records: the "independent part" — the
   // user's OWN (non-bankruptcy) derogatory marks, tracked as a bin label
   // ('0'..'2+'). Number of Derogatory Records = min(2+, independentPart +
@@ -407,7 +420,44 @@
   const captureManualRevolDelta = () => {
     if (!applicantBaselineState || !plan) return;
     const cur = buildCurrentEngineState();
-    userRevolDelta = (cur.revol_bal || 0) - (applicantBaselineState.revol_bal || 0);
+    const L = creditLimitFromBaseline(applicantBaselineState);
+    // userRevolDelta is the balance's offset from the balance its CURRENT utilization
+    // implies — the invariant the engine adds to (newUtil/100·L). Measuring against
+    // the current util (not the profile) keeps it correct even when utilization was
+    // folded at load (flag on). It already includes the coach's offset baked into the
+    // current balance; the hover derives the user's own part as
+    // userRevolDelta − coachRevolDelta.
+    const utilImplied =
+      L !== null ? ((Number(cur.revol_util) || 0) / 100) * L : (applicantBaselineState.revol_bal || 0);
+    userRevolDelta = (cur.revol_bal || 0) - utilImplied;
+  };
+
+  /**
+   * Seed the coach's suggested Revolving-Balance offset so that a later Credit
+   * Utilization edit anchors the recompute to the SUGGESTED balance, not the
+   * profile. This must run regardless of PROPAGATE_SUGGESTED_ON_LOAD: editing
+   * utilization is the user's own action, whose propagation is always on, so the
+   * balance it derives must chain from the plan the user is viewing. Idempotent —
+   * re-runnable on plan (re)mount and on a revol-pair reset.
+   */
+  const seedRevolCoachOffset = () => {
+    if (!applicantBaselineState || !plan) return;
+    const baseline = applicantBaselineState;
+    // Read the DISPLAYED state — post-fold when the flag is on, un-propagated when
+    // off — so the anchor matches exactly what the user sees.
+    const shown = buildCurrentEngineState();
+    const L = creditLimitFromBaseline(baseline);
+    revolAnchorBal = shown.revol_bal || 0;
+    revolAnchorUtil = Number(shown.revol_util) || 0;
+    // Offset of the shown balance from the balance its OWN shown utilization implies.
+    // When utilization was folded (flag on), the balance is fully util-explained and
+    // this is ~0; when it wasn't (flag off), it captures the coach's paydown vs. the
+    // profile. Either way the engine recompute (newUtil/100·L + offset) anchors to
+    // the shown suggested balance.
+    coachRevolDelta = L !== null
+      ? revolAnchorBal - (revolAnchorUtil / 100) * L
+      : revolAnchorBal - (baseline.revol_bal || 0);
+    userRevolDelta = coachRevolDelta;
   };
 
   // Set up the GAM Coach feature cards
@@ -446,6 +496,13 @@
     // per-plan (this whole init re-runs on each plan switch via Coach.svelte's
     // {#key} remount). No-op when the flag is off.
     propagateSuggestedChangesAtLoad();
+
+    // Seed the Revolving-Balance anchor — FLAG-INDEPENDENT — from the DISPLAYED
+    // (post-fold) state, so a later Credit Utilization edit anchors the balance
+    // recompute to the suggested value and the hover's utilization-change figure is
+    // measured from the utilization the user actually sees. Runs AFTER the fold so
+    // it reads the folded utilization when the flag is on.
+    seedRevolCoachOffset();
 
     // Start the "Effects of your changes" section empty on (re)init — a fresh
     // mount happens on plan switch / regenerate / history restore, matching the
@@ -698,16 +755,18 @@
     unmodify.forEach(name => restoreToLoadTime(name, overrides));
     modifiedFeatures = modifiedFeatures;
 
-    // Clear the two-way-pair input flag when the pair itself is reset.
+    // Clear the two-way-pair input flag when the pair itself is reset. (The flag-on
+    // suggested input side is re-established from loadSnapshot below.)
     if (unmodify.has('revol_util') || unmodify.has('revol_bal')) {
       revolUtilIsInput = false;
     }
     // Reset each counter's manual delta when that counter is restored.
     if (unmodify.has('open_acc')) userOpenDelta = 0;
     if (unmodify.has('total_acc')) userTotalDelta = 0;
-    // Clear the Revolving Balance manual delta when the balance (or its two-way
-    // sibling) is restored, so the utilization-driven derivation starts clean.
-    if (unmodify.has('revol_bal')) userRevolDelta = 0;
+    // Restore the Revolving Balance total delta to the coach's suggested offset
+    // when the balance (or its two-way sibling) is restored — so the derivation
+    // re-anchors to the suggested value, not the profile.
+    if (unmodify.has('revol_bal')) userRevolDelta = coachRevolDelta;
     // Clear the DTI manual delta when DTI is restored (its sources are restored
     // to load-time alongside it, so no contribution should linger).
     if (unmodify.has('dti')) userDtiDelta = 0;
@@ -736,7 +795,7 @@
           modifiedFeatures.add(name);   // undo restoreToLoadTime's delete
           suggestedAtLoad.add(name);    // suggested, not user-caused
           // Restore this input's seeded delta (undo the clears above).
-          if (name === 'revol_bal') { userRevolDelta = loadSnapshot.userRevolDelta; revolUtilIsInput = loadSnapshot.revolUtilIsInput; }
+          if (name === 'revol_bal') { userRevolDelta = coachRevolDelta; revolUtilIsInput = loadSnapshot.revolUtilIsInput; }
           if (name === 'revol_util') revolUtilIsInput = loadSnapshot.revolUtilIsInput;
           if (name === 'open_acc') userOpenDelta = loadSnapshot.userOpenDelta;
           if (name === 'total_acc') userTotalDelta = loadSnapshot.userTotalDelta;
@@ -1369,27 +1428,37 @@
       (n < 0 ? '−$' : '+$') + Math.round(Math.abs(n)).toLocaleString();
     const profileBal = baseline.revol_bal || 0;
     const creditLimit = creditLimitFromBaseline(baseline); // null when indeterminate
-    const manualDelta = userRevolDelta; // signed direct balance edit
-    // Utilization-driven part: only when Credit Utilization is the input (balance
-    // is derived from it) and the limit is recoverable.
+    // Anchor the base to the SUGGESTED (displayed) balance, so a utilization edit
+    // chains from the plan the user is viewing, not the profile.
+    const suggestedBal = revolAnchorBal;
+    const hasSuggestedBase = Math.abs(revolAnchorBal - profileBal) > 0.5;
+    // The user's OWN direct balance edit, kept SEPARATE from the coach suggestion so
+    // the two compose (base + user edit + util change) without double-counting.
+    const manualDelta = userRevolDelta - coachRevolDelta;
+    // Utilization-driven part: only when Credit Utilization is the input (balance is
+    // derived from it) and the limit is recoverable. Measured from the DISPLAYED
+    // load utilization (revolAnchorUtil), so base + manual + util reconciles exactly
+    // to the engine's (newUtil/100·L + userRevolDelta) in both flag states.
     const utilDriven =
       revolUtilIsInput && creditLimit !== null
-        ? ((Number(state.revol_util) || 0) / 100) * creditLimit - profileBal
+        ? (((Number(state.revol_util) || 0) - revolAnchorUtil) / 100) * creditLimit
         : 0;
-    const newBalance = profileBal + manualDelta + utilDriven;
+    const newBalance = suggestedBal + manualDelta + utilDriven;
     const showManualRow = Math.abs(manualDelta) > 0.5;
     const showUtilRow = Math.abs(utilDriven) > 0.5;
 
     // Assemble the total as an addition of the shown contributions, e.g.
-    // "$5,000 + $3,733" (or "$5,000 − $200" for a paydown), summing to newBalance.
-    const pieces = [money(profileBal)];
+    // "$10,781 + $591" (or "$10,781 − $781 + $591" when the user also paid down),
+    // summing to newBalance.
+    const pieces = [money(suggestedBal)];
     if (showManualRow) pieces.push((manualDelta < 0 ? '− ' : '+ ') + money(Math.abs(manualDelta)));
     if (showUtilRow) pieces.push((utilDriven < 0 ? '− ' : '+ ') + money(Math.abs(utilDriven)));
 
     return {
       type: 'revol_bal',
       engaged: true,
-      profileBalance: money(profileBal),
+      baseIsSuggested: hasSuggestedBase,
+      baseBalance: money(suggestedBal),
       showManualRow,
       manualDelta: signedMoney(manualDelta),
       showUtilRow,

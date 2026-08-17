@@ -735,7 +735,7 @@
                 {#if linkCalculation.engaged}
                   <div class="link-calculation dti-calc">
                     <div class="dti-subhead">Your revolving balance breakdown</div>
-                    <div class="dti-row">Your profile balance: <b>{linkCalculation.profileBalance}</b></div>
+                    <div class="dti-row">Your {linkCalculation.baseIsSuggested ? 'suggested' : 'profile'} balance: <b>{linkCalculation.baseBalance}</b></div>
                     {#if linkCalculation.showManualRow}
                       <div class="dti-row">Adjusted by you: <b>{linkCalculation.manualDelta}</b></div>
                     {/if}
