@@ -642,7 +642,7 @@
                     <div class="dti-row">Your revolving-balance change adjusts monthly debt by <b>{linkCalculation.revolDelta}</b>.</div>
                   {/if}
                   {#if linkCalculation.debtChanged}
-                    <div class="dti-row">New total monthly debt: <b>{linkCalculation.totalDebt}</b></div>
+                    <div class="dti-row">New total monthly debt: {linkCalculation.debtEquation} = <b>{linkCalculation.totalDebt}</b></div>
                   {/if}
                   <div class="dti-row">New DTI: {linkCalculation.totalDebt} &divide; {linkCalculation.finalIncome} = <b>{linkCalculation.newDTI}%</b></div>
                   <div class="dti-line final">So {linkCalculation.newDTI}% of your income would go toward debt payments.</div>

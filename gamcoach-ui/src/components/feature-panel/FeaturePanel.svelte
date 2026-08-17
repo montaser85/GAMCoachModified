@@ -1182,11 +1182,34 @@
     const revolDeltaRaw = revolChanged ? (parts.revolDelta || 0) : 0;
     const debtChanged = loanChanged || revolChanged;
     const denomIncome = incomeChanged ? newMonthlyIncome : origMonthlyIncome;
-    // New monthly debt IMPLIED by the engine's scored DTI (debt = DTI × income), so
-    // the final "debt ÷ income = DTI" equation chains exactly to the scored value —
-    // one source of truth even in the two-way revolving case (where summing the
-    // shown current-debt + contributions would drift from what the engine scored).
-    const totalDebt = Math.round((finalDti / 100) * denomIncome);
+
+    // The "New total monthly debt" line is shown as a full equation:
+    //   current debt  ±  loan-payment change  ±  revolving change  =  new total
+    // built from integer-dollar components so the shown amounts add up EXACTLY to
+    // the total. The loan/revolving terms are the SIGNED deltas the engine applied
+    // (Model B); a manual DTI edit (rare) is folded in as its dollar equivalent so
+    // the total still ties to the scored DTI.
+    const loanDeltaInt = loanChanged ? Math.round(parts.loanPaymentDelta || 0) : 0;
+    const revolDeltaInt = revolChanged ? Math.round(revolDeltaRaw) : 0;
+    const manualDeltaInt = Math.round(((parts.dtiManualDelta || 0) / 100) * denomIncome);
+    const debtTerms = [currentMonthlyDebt];
+    if (loanChanged) debtTerms.push(loanDeltaInt);
+    if (revolChanged) debtTerms.push(revolDeltaInt);
+    if (manualDeltaInt !== 0) debtTerms.push(manualDeltaInt);
+    // When the loan/revolving changed, the total is the exact component sum (so the
+    // equation reconciles); otherwise keep the debt implied by the scored DTI, which
+    // makes the "debt ÷ income = DTI" line chain exactly to the scored value.
+    const totalDebt = debtChanged
+      ? debtTerms.reduce((s, t) => s + t, 0)
+      : Math.round((finalDti / 100) * denomIncome);
+    // The addition expression, e.g. "$1,041 − $231 + $40" (first term unsigned).
+    const debtEquation = debtTerms
+      .map((t, i) =>
+        i === 0
+          ? '$' + Math.abs(t).toLocaleString()
+          : (t < 0 ? ' − $' : ' + $') + Math.abs(t).toLocaleString()
+      )
+      .join('');
 
     const aprFraction = aprForPurpose(parts.loanPurpose);
 
@@ -1211,6 +1234,7 @@
       revolChanged,
       revolDelta: signedMoney(revolDeltaRaw),
       debtChanged,
+      debtEquation,
       totalDebt: '$' + totalDebt.toLocaleString(),
       finalIncome: '$' + denomIncome.toLocaleString(),
       // The final DTI is the ENGINE's scored value — the single source of truth. The

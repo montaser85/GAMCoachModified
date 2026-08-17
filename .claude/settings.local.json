@@ -67,7 +67,16 @@
       "Bash(ROLLUP_WATCH=true npm run build)",
       "PowerShell($procs = Get-CimInstance Win32_Process -Filter \"Name='node.exe'\" | Select-Object ProcessId, CommandLine; $roll = $procs | Where-Object { $_.CommandLine -match 'rollup' -and $_.CommandLine -notmatch 'sirv' }; if \\($roll\\) { $roll | ForEach-Object { \"Stopping PID $\\($_.ProcessId\\): $\\($_.CommandLine.Substring\\(0,[Math]::Min\\(90,$_.CommandLine.Length\\)\\)\\)\"; Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue } } else { \"no rollup process found\" }; \"--- remaining node procs ---\"; \\(Get-CimInstance Win32_Process -Filter \"Name='node.exe'\" | Where-Object { $_.CommandLine -match 'sirv|rollup' } | Measure-Object\\).Count)",
       "Bash(curl -s -o /dev/null -w \"root: %{http_code}\\\\n\" http://localhost:5005/)",
-      "Bash(curl -s -o /dev/null -w \"model: %{http_code}\\\\n\" http://localhost:5005/data/lc-classifier.json)"
+      "Bash(curl -s -o /dev/null -w \"model: %{http_code}\\\\n\" http://localhost:5005/data/lc-classifier.json)",
+      "Bash(ROLLUP_WATCH=true npx rollup -c)",
+      "Bash(echo \"started dev build pid $!\")",
+      "Bash(cd \"D:/OSU/Dr B research group/GAM_Coach/gam-coach_modified/gamcoach-ui\"; echo \"--- log tail ---\"; tail -6 /tmp/devbuild.log 2>/dev/null; echo \"--- bundle mtime ---\"; ls -la --time-style=+%H:%M:%S public/build/bundle.js; echo \"--- prod-path count \\(want 0\\) ---\"; grep -c \"gam-coach/data\" public/build/bundle.js; echo \"--- current time ---\"; date +%H:%M:%S)",
+      "PowerShell($roll = Get-CimInstance Win32_Process -Filter \"Name='node.exe'\" | Where-Object { $_.CommandLine -match 'rollup' -and $_.CommandLine -notmatch 'sirv' }; if \\($roll\\) { $roll | ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }; \"stopped $\\($roll.Count\\) rollup proc\\(s\\)\" } else { \"none\" })",
+      "Bash(curl -s -o /dev/null -w \"app: %{http_code}\\\\n\" http://localhost:5005/)",
+      "Bash(grep -iE \"error|\\\\!\\\\] |warn.*dti|is not defined\" /tmp/devbuild.log | grep -vi \"circular\\\\|Unused CSS\\\\|a11y\\\\|onMount\" | head -15; echo \"=== \\(no output above = clean\\) ===\")",
+      "Bash(grep -o \"New total monthly debt[^!]\\\\{0,60\\\\}\" public/build/bundle.js)",
+      "Bash(grep -oE \"New total monthly debt: .{0,140}\" public/build/bundle.js)",
+      "Bash(grep -oE \".{0,30}New total monthly debt:.{0,90}\" public/build/bundle.js)"
     ]
   }
 }
