@@ -12,19 +12,23 @@ import { loanMonthlyPayment, aprForPurpose } from '../engine/params.mjs';
 // The SAME propagation engine the load-fold uses — the post-generation approval
 // filter runs it to compute each plan's TRUE post-fold score (identical to the
 // displayed score), so no plan below approval is ever shown.
-import { propagate, featureHasOutgoingEdges } from '../engine/index.mjs';
+import { propagate, featureHasOutgoingEdges, USE_ADVANCED_CONDITION } from '../engine/index.mjs';
 
 /**
- * PROPAGATION_AWARE_DTI_CONSTRAINT — single source of truth for the
- * propagation-aware plan generation (Partial Option 2). When true, createMILP()
- * encodes the loan/revolving-balance → Debt-to-Income propagation as linear
- * constraints, so generated plans reach the target approval AFTER the load-time
- * DTI fold is applied (instead of dropping ~7–8pp below). Stage 1 encodes the
- * loan_amnt + revol_bal paths with income fixed to baseline (approach a).
- * Flip to false to return to the exact prior (un-propagation-aware) generation —
- * createMILP() then behaves byte-identically to before.
+ * PROPAGATION_AWARE_DTI_CONSTRAINT — the propagation-aware plan generation
+ * (Partial Option 2). When true, createMILP() encodes the loan/revolving-balance →
+ * Debt-to-Income propagation as linear constraints, so generated plans reach the
+ * target approval AFTER the load-time DTI fold is applied (instead of dropping
+ * ~7–8pp below). When false, createMILP() behaves byte-identically to the prior
+ * (un-propagation-aware) generation.
+ *
+ * DERIVED from the single condition switch (engine/index.mjs USE_ADVANCED_CONDITION)
+ * — NOT set independently. It MUST match PROPAGATE_SUGGESTED_ON_LOAD: the folded
+ * guarantee only protects the folded (advanced) display, and the original algorithm
+ * only protects the un-folded (original) display. Deriving both from one switch
+ * makes a mismatch impossible.
  */
-const PROPAGATION_AWARE_DTI_CONSTRAINT = true;
+const PROPAGATION_AWARE_DTI_CONSTRAINT = USE_ADVANCED_CONDITION;
 
 // Safety margin (propagation-aware generation only). The solver targets this
 // approval probability instead of exactly 0.50, so plans robustly clear 50% AFTER

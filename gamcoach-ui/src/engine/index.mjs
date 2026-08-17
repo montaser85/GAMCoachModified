@@ -7,15 +7,26 @@
  * concerns such as the linked-feature icon.
  */
 
-// ── Load-time propagation of the coach's suggested changes ──────────────────
-// When true, each plan runs the SAME causal-propagation engine on its
-// coach-suggested changes at load, so dependent features display their
-// propagated values immediately (instead of only after the user's first edit).
-// When false, the app behaves exactly as before: suggestions are shown
-// un-propagated at load and propagation begins on the first user edit.
-// Flip this single value to return to the current behavior. The load-time pass
-// is routed exclusively through this flag (see FeaturePanel.propagateSuggestedChangesAtLoad).
-export const PROPAGATE_SUGGESTED_ON_LOAD = false;
+// ── SINGLE CONDITION SWITCH ──────────────────────────────────────────────────
+// The study runs ONE of two conditions. Two underlying behaviors must always move
+// together, or a plan's displayed score and its guaranteed score diverge (a
+// folded-guaranteed plan can display an un-folded score below 0.5, and vice-versa
+// — the 49.51% "Approved" bug). Those behaviors are:
+//   • load-time propagation of the coach's suggested changes  (DISPLAY: folded)
+//   • the propagation-aware MILP DTI guarantee                (GENERATION: folded)
+// This master switch is the ONLY place either is set; both flags below (and
+// PROPAGATION_AWARE_DTI_CONSTRAINT in ebm/gamcoach.js, which imports this) derive
+// from it, so a mismatched state is impossible.
+//   true  → ADVANCED condition:  propagate at load (folded display) + folded guarantee
+//   false → ORIGINAL condition:  no load-time propagation (un-folded display) + original algorithm
+export const USE_ADVANCED_CONDITION = true;
+
+// Derived — DO NOT set independently. When true, each plan runs the SAME
+// causal-propagation engine on its coach-suggested changes at load, so dependent
+// features display their propagated values immediately (instead of only after the
+// user's first edit). Routed exclusively through this flag (see
+// FeaturePanel.propagateSuggestedChangesAtLoad).
+export const PROPAGATE_SUGGESTED_ON_LOAD = USE_ADVANCED_CONDITION;
 
 export { propagate, DTI_WARN_THRESHOLD, FICO_WARN_THRESHOLD } from './engine.mjs';
 export { EDGES, LEAF_FEATURES, computeDtiParts, DTI_USER_EDITS_ONLY } from './edges.mjs';
