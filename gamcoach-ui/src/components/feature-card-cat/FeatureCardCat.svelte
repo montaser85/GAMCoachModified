@@ -633,7 +633,7 @@
                   {#if linkCalculation.foldedLayout}
                     <div class="dti-row">Monthly income: {linkCalculation.annualIncome} &divide; 12 = <b>{linkCalculation.monthlyIncome}</b></div>
                     <div class="dti-row">Debt before this loan: {linkCalculation.p1BaseDtiExcl}% of {linkCalculation.monthlyIncome} = <b>{linkCalculation.p1ExistingDebt}</b></div>
-                    <div class="dti-row"><b>{linkCalculation.p1LoanAmount}</b> loan adds <b>{linkCalculation.p1LoanPayment}</b>/month ({linkCalculation.loanTermsShort}).</div>
+                    <div class="dti-row"><b>{linkCalculation.p1LoanAmount}</b> loan adds <b>{linkCalculation.p1LoanPayment}</b>/month debt ({linkCalculation.loanTermsShort}).</div>
                     <div class="dti-row">Debt with the loan: {linkCalculation.p1ExistingDebt} + {linkCalculation.p1LoanPayment} = <b>{linkCalculation.p1CurrentDebt}</b> &rarr; DTI = {linkCalculation.p1CurrentDebt} &divide; {linkCalculation.monthlyIncome} = <b>{linkCalculation.p1CurrentDti}%</b></div>
                     {#if linkCalculation.incomeChanged}
                       <div class="dti-row">New income: {linkCalculation.newAnnualIncome} &divide; 12 = <b>{linkCalculation.newMonthlyIncome}</b></div>

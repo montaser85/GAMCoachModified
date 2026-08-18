@@ -84,7 +84,12 @@
       "Bash(cd \"D:/OSU/Dr B research group/GAM_Coach/gam-coach_modified/gamcoach-ui\"; ls -la --time-style=+%H:%M:%S public/build/bundle.js; date +%H:%M:%S; grep -iE \"error\" /tmp/db_o2.log | grep -viE \"Circular|Unused|a11y\" | head -3)",
       "Bash(cd \"D:/OSU/Dr B research group/GAM_Coach/gam-coach_modified/gamcoach-ui\"; ls -la --time-style=+%H:%M:%S public/build/bundle.js; date +%H:%M:%S; grep -iE \"error\" /tmp/db_fold.log | grep -viE \"Circular|Unused|a11y\" | head -3)",
       "Bash(node \"C:/Users/monta/AppData/Local/Temp/claude/D--OSU-Dr-B-research-group-GAM-Coach-gam-coach-modified/8c4c60b6-96b7-43c4-ae72-14fbe576e739/scratchpad/validate_hover.mjs\")",
-      "Bash(cd \"D:/OSU/Dr B research group/GAM_Coach/gam-coach_modified/gamcoach-ui\"; ls -la --time-style=+%H:%M:%S public/build/bundle.js; date +%H:%M:%S; grep -iE \"error\" /tmp/db_h2.log | grep -viE \"Circular|Unused|a11y\" | head -3)"
+      "Bash(cd \"D:/OSU/Dr B research group/GAM_Coach/gam-coach_modified/gamcoach-ui\"; ls -la --time-style=+%H:%M:%S public/build/bundle.js; date +%H:%M:%S; grep -iE \"error\" /tmp/db_h2.log | grep -viE \"Circular|Unused|a11y\" | head -3)",
+      "Bash(cd \"D:/OSU/Dr B research group/GAM_Coach/gam-coach_modified/gamcoach-ui\"; ls -la --time-style=+%H:%M:%S public/build/bundle.js; date +%H:%M:%S; grep -iE \"error\" /tmp/db_idem.log | grep -viE \"Circular|Unused|a11y\" | head -3)",
+      "Bash(cd \"D:/OSU/Dr B research group/GAM_Coach/gam-coach_modified/gamcoach-ui\"; ls -la --time-style=+%H:%M:%S public/build/bundle.js; date +%H:%M:%S; grep -iE \"error\" /tmp/db_prov.log | grep -viE \"Circular|Unused|a11y\" | head -3)",
+      "Bash(break)",
+      "Bash(ps -W)",
+      "Bash(cd \"D:/OSU/Dr B research group/GAM_Coach/gam-coach_modified/gamcoach-ui\"; grep -n \"created public\\\\|waiting for changes\\\\|Error\" /tmp/db_rvb.log | tail; echo \"---9366 vs 5005---\"; grep -n \"localhost:\" /tmp/db_rvb.log | head)"
     ]
   }
 }

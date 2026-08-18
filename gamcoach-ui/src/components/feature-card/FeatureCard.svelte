@@ -695,8 +695,11 @@
                   <div class="link-calculation dti-calc">
                     <div class="dti-subhead">Your score breakdown</div>
                     <div class="dti-row">Your profile score: <b>{linkCalculation.profileFICO}</b></div>
-                    {#if linkCalculation.showManualRow}
-                      <div class="dti-row">Adjusted by you: <b>{linkCalculation.ficoManualDelta}</b></div>
+                    {#if linkCalculation.showSuggestedRow}
+                      <div class="dti-row">Suggested change: <b>{linkCalculation.suggestedDelta}</b></div>
+                    {/if}
+                    {#if linkCalculation.showYourRow}
+                      <div class="dti-row">Your change: <b>{linkCalculation.yourDelta}</b></div>
                     {/if}
                     {#if linkCalculation.isClamped}
                       {#if linkCalculation.showPenaltyRow}
@@ -756,7 +759,7 @@
                 {#if linkCalculation.engaged}
                   <div class="link-calculation dti-calc">
                     <div class="dti-subhead">Your revolving balance breakdown</div>
-                    <div class="dti-row">Your {linkCalculation.baseIsSuggested ? 'suggested' : 'profile'} balance: <b>{linkCalculation.baseBalance}</b></div>
+                    <div class="dti-row">{linkCalculation.baseIsSuggested ? 'Suggested balance' : 'Your profile balance'}: <b>{linkCalculation.baseBalance}</b></div>
                     {#if linkCalculation.showManualRow}
                       <div class="dti-row">Adjusted by you: <b>{linkCalculation.manualDelta}</b></div>
                     {/if}

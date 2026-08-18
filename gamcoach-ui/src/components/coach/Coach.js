@@ -54,6 +54,11 @@ export class Plan {
   constructor(modelData, curExample, plans, cfData, planIndex) {
     this.features = this.initFeatures(modelData, curExample, cfData);
     this.coachSample = cfData;
+    // Immutable snapshot of the RAW counterfactual (the coach's actual suggested
+    // values, before any load-time propagation fold). coachSample === cfData and
+    // both get MUTATED by the fold, so this preserves the original for a
+    // deterministic, idempotent re-derivation on every plan (re)mount.
+    this.cfDataRaw = cfData.slice();
     this.curExample = curExample;
     this.planIndex = planIndex;
 

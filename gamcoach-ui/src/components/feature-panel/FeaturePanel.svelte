@@ -270,6 +270,10 @@
   // the hard-inquiry penalty, so a later source change (open account / mortgage /
   // inquiry) no longer discards the manual edit. Cleared only on a FICO reset.
   let userFicoDelta = 0;
+  // The COACH's suggested FICO delta (immutable, seeded at load). userFicoDelta
+  // holds the TOTAL (coach + any later user edit); subtracting this recovers the
+  // user's OWN part, so a coach suggestion is never mislabeled as the user's change.
+  let coachFicoDelta = 0;
   // Same pattern for the two other editable-and-derived features: a SIGNED manual
   // delta vs. the profile value, folded onto the computed result so a later
   // source change never discards it. Cleared only on that feature's own reset.
@@ -444,20 +448,22 @@
   const seedRevolCoachOffset = () => {
     if (!applicantBaselineState || !plan) return;
     const baseline = applicantBaselineState;
-    // Read the DISPLAYED state — post-fold when the flag is on, un-propagated when
-    // off — so the anchor matches exactly what the user sees.
-    const shown = buildCurrentEngineState();
-    const L = creditLimitFromBaseline(baseline);
-    revolAnchorBal = shown.revol_bal || 0;
-    revolAnchorUtil = Number(shown.revol_util) || 0;
-    // Offset of the shown balance from the balance its OWN shown utilization implies.
-    // When utilization was folded (flag on), the balance is fully util-explained and
-    // this is ~0; when it wasn't (flag off), it captures the coach's paydown vs. the
-    // profile. Either way the engine recompute (newUtil/100·L + offset) anchors to
-    // the shown suggested balance.
-    coachRevolDelta = L !== null
-      ? revolAnchorBal - (revolAnchorUtil / 100) * L
-      : revolAnchorBal - (baseline.revol_bal || 0);
+    const profileBal = baseline.revol_bal || 0;
+    // Read the coach's DIRECT balance suggestion from the IMMUTABLE raw CF, NOT the
+    // post-fold util-derived balance. When the coach suggested UTILIZATION instead,
+    // the balance is a dependent whose raw-CF value is still the profile, so this
+    // offset is 0. Reading one immutable source keeps the suggested-driven and
+    // user-driven breakdowns from diverging (and never depends on fold timing, which
+    // is what produced the $0 base).
+    const rawBal = plan.cfDataRaw
+      ? (buildEngineState((f) => plan.cfDataRaw[f.featureID]).revol_bal || 0)
+      : profileBal;
+    coachRevolDelta = rawBal - profileBal;
+    // Anchor at the PROFILE utilization: every util-driven balance change (the coach's
+    // suggested utilization OR a later user edit) is measured from there, so the
+    // breakdown decomposes honestly — profile/suggested base + util change = total.
+    revolAnchorBal = profileBal + coachRevolDelta; // = rawBal (bal-suggested) or profile (util-suggested)
+    revolAnchorUtil = Number(baseline.revol_util) || 0;
     userRevolDelta = coachRevolDelta;
   };
 
@@ -484,10 +490,6 @@
       })
     );
 
-    // Organize the features into corresponding sections
-    featureGrid.loadFeatures(plan.features, constraints);
-    featureGrid = featureGrid;
-
     // Seed lastKnownValues with the initial coach-suggested values so that
     // the propagation helpers have baseline data even before the user moves any slider.
     initLastKnownValues();
@@ -498,12 +500,25 @@
     // {#key} remount). No-op when the flag is off.
     propagateSuggestedChangesAtLoad();
 
-    // Seed the Revolving-Balance anchor — FLAG-INDEPENDENT — from the DISPLAYED
-    // (post-fold) state, so a later Credit Utilization edit anchors the balance
-    // recompute to the suggested value and the hover's utilization-change figure is
-    // measured from the utilization the user actually sees. Runs AFTER the fold so
-    // it reads the folded utilization when the flag is on.
+    // Seed the Revolving-Balance anchor — FLAG-INDEPENDENT — from the raw CF + profile
+    // utilization, so the revolving/utilization breakdowns decompose from a stable
+    // base. Runs AFTER the fold (so revolUtilIsInput reflects it), but the anchor
+    // itself is derived from immutable sources, not the folded state.
     seedRevolCoachOffset();
+
+    // Rebuild the DTI / revolving / utilization breakdowns AFTER the anchor is seeded.
+    // The fold builds them once (with the anchor still at its initial 0); this second
+    // pass uses the seeded anchor, so the suggested-driven revolving breakdown shows
+    // the correct base instead of $0 — matching the user-driven path exactly.
+    refreshDtiBreakdown();
+
+    // Organize the features into corresponding sections. Runs AFTER the fold so a
+    // propagated dependent (its isChanged set to 1 by the fold) is grouped with its
+    // suggested sources under "Suggested Changes" — identically on initial load and
+    // on every plan-switch remount (the fold is now idempotent), so group placement
+    // is deterministic from the plan and never depends on navigation history.
+    featureGrid.loadFeatures(plan.features, constraints);
+    featureGrid = featureGrid;
 
     // Start the "Effects of your changes" section empty on (re)init — a fresh
     // mount happens on plan switch / regenerate / history restore, matching the
@@ -968,10 +983,19 @@
     if (!plan || !applicantBaselineState) return;
 
     const baseline = applicantBaselineState;
-    // At load ebmLocal.sample === coachSample, so this is the coach-suggested state.
-    const suggested = buildCurrentEngineState();
+    // Derive the coach-suggested state from the IMMUTABLE raw CF, not the live
+    // ebmLocal.sample. The fold mutates the sample/coachSample, so reading the live
+    // sample on a re-mount would treat already-folded dependents (e.g. DTI) as
+    // coach inputs and diverge from the initial load. Reading cfDataRaw makes this
+    // pass deterministic and idempotent: same changed-inputs and same fold every
+    // time, so switching away and back reproduces the initial-load result exactly.
+    const suggested = plan.cfDataRaw
+      ? buildEngineState((f) => plan.cfDataRaw[f.featureID])
+      : buildCurrentEngineState(); // defensive fallback (older plan objects)
 
     // The coach's suggested INPUT changes (values differing from the profile).
+    // From the raw CF, these are ONLY the features the coach changed directly —
+    // propagated dependents are excluded and handled by the fold below.
     const changedInputs = plan.features
       .map((f) => f.data.name)
       .filter((name) => !engineValuesEqual(suggested[name], baseline[name]));
@@ -983,6 +1007,9 @@
     // suggested contributions engaged (consistent with the folded results).
     const mortDelta = Math.max(0, (suggested.mort_acc || 0) - (baseline.mort_acc || 0));
     userFicoDelta = changedSet.has('fico_score') ? (suggested.fico_score - baseline.fico_score) : 0;
+    // The coach's suggested FICO delta is the whole of userFicoDelta at load (no
+    // user edit yet); kept immutable so the hover can split coach vs. user later.
+    coachFicoDelta = userFicoDelta;
     userDtiDelta = changedSet.has('dti') ? (suggested.dti - baseline.dti) : 0;
     userRevolDelta = changedSet.has('revol_bal') ? (suggested.revol_bal - baseline.revol_bal) : 0;
     userOpenDelta = changedSet.has('open_acc')
@@ -1374,6 +1401,21 @@
   };
 
   /**
+   * Provenance of a directly-set (non-dependent) feature — used to decide whether
+   * its value-breakdown box appears and how its change is labeled:
+   *   suggestedOnly: the coach suggested a value and the user has NOT edited it
+   *                  (still marked suggested at load) → box hidden for such features.
+   *   userEdited:    the user directly edited it (a real edit reclaims it out of
+   *                  suggestedAtLoad) → box shown, labeled "Your change".
+   * A feature that is BOTH (coach-suggested then user-edited) is userEdited here; the
+   * coach's part is recovered from the feature's own coach-delta tracker.
+   */
+  const featureProvenance = (name) => ({
+    suggestedOnly: suggestedAtLoad.has(name),
+    userEdited: modifiedFeatures.has(name) && !suggestedAtLoad.has(name)
+  });
+
+  /**
    * Build the FICO Score hover breakdown. FICO has a SINGLE channel — the shared
    * hard-inquiry counter (−4 per inquiry). Opened accounts, mortgages, and direct
    * Number of Credit Inquiries edits all feed ONE counter (one row, never split),
@@ -1399,30 +1441,38 @@
     const openExMort = Math.max(0, openIncrease - mortIncrease);
     const hardInquiries = inqIncrease + openExMort + mortIncrease;
 
-    // The user's own manual FICO edit is a SIGNED contribution, gated to when the
-    // user actually edited FICO (so a suggested value never fabricates a change).
-    const ficoManualDelta = modifiedFeatures.has('fico_score') ? Math.round(userFicoDelta) : 0;
+    // Provenance split (FICO is a directly-set / non-dependent feature). userFicoDelta
+    // is the TOTAL delta vs. profile (coach suggestion + any later user edit);
+    // coachFicoDelta is the coach's part; the remainder is the user's own change.
+    const { userEdited: ficoUserEdited } = featureProvenance('fico_score');
+    const ficoDeltaTotal = modifiedFeatures.has('fico_score') ? Math.round(userFicoDelta) : 0;
+    const ficoCoachDelta = Math.round(coachFicoDelta || 0);
+    const ficoUserOwnDelta = ficoDeltaTotal - ficoCoachDelta;
 
-    // Definition-only when nothing applies (no penalty AND no manual edit).
-    if (hardInquiries === 0 && ficoManualDelta === 0) return { type: 'fico', engaged: false };
+    // Non-dependent rule: the breakdown box appears for a PENALTY (propagated from
+    // account/inquiry edits) or a USER edit — NEVER for a coach suggestion alone.
+    // A coach-suggested-only FICO with no penalty shows no box (the card still shows
+    // the suggested value). This is the fix for "Adjusted by you: +8" on a suggestion.
+    if (hardInquiries === 0 && !ficoUserEdited) return { type: 'fico', engaged: false };
 
     const profileFICO = Math.round(baseline.fico_score || 0);
     const rawPenalty = hardInquiries * 4;
-    const raw = profileFICO + ficoManualDelta - rawPenalty;
+    const raw = profileFICO + ficoDeltaTotal - rawPenalty;
     // 662 is the lowest FICO the model bins; the score can never go below it.
-    // When the raw value would push below the floor, we clamp and switch the
-    // hover to the floor explanation (never show a deduction that doesn't
-    // reconcile with the displayed score).
     const isClamped = raw < FICO_FLOOR;
     const newFICO = Math.max(FICO_FLOOR, raw);
 
-    // Assembled arithmetic for the not-clamped final line, e.g.
-    // "677 + 34 − 20 = 691". The manual term appears only when non-zero (signed)
-    // and the penalty term only when there is a penalty; the pieces sum exactly
-    // to newFICO.
+    // Distinct rows for the coach's suggested change and the user's own change, so a
+    // coach suggestion is never labeled as "your change". Penalty shown when present.
+    const showSuggestedRow = ficoCoachDelta !== 0;
+    const showYourRow = ficoUserEdited && ficoUserOwnDelta !== 0;
+
+    // Assembled arithmetic, e.g. "677 + 8 + 4 − 20 = 669" (pieces sum to newFICO).
     let newScoreExpr = String(profileFICO);
-    if (ficoManualDelta !== 0)
-      newScoreExpr += (ficoManualDelta < 0 ? ' − ' : ' + ') + Math.abs(ficoManualDelta);
+    if (showSuggestedRow)
+      newScoreExpr += (ficoCoachDelta < 0 ? ' − ' : ' + ') + Math.abs(ficoCoachDelta);
+    if (showYourRow)
+      newScoreExpr += (ficoUserOwnDelta < 0 ? ' − ' : ' + ') + Math.abs(ficoUserOwnDelta);
     if (rawPenalty > 0) newScoreExpr += ' − ' + rawPenalty;
     newScoreExpr += ' = ' + newFICO;
 
@@ -1431,8 +1481,10 @@
       engaged: true,
       isClamped,
       profileFICO: String(profileFICO),
-      showManualRow: ficoManualDelta !== 0,
-      ficoManualDelta: (ficoManualDelta < 0 ? '−' : '+') + Math.abs(ficoManualDelta),
+      showSuggestedRow,
+      suggestedDelta: (ficoCoachDelta < 0 ? '−' : '+') + Math.abs(ficoCoachDelta),
+      showYourRow,
+      yourDelta: (ficoUserOwnDelta < 0 ? '−' : '+') + Math.abs(ficoUserOwnDelta),
       showPenaltyRow: hardInquiries > 0,
       hardInquiries: String(hardInquiries),
       rawPenalty: String(rawPenalty),
@@ -1455,8 +1507,15 @@
     // (unreconciled) suggested balance, so computing a "new utilization" from it
     // would be inconsistent with the profile utilization the card shows. Show the
     // definition line only in that case.
-    const engaged =
+    // Provenance rule for the two-way pair: when Utilization is the INPUT it is a
+    // directly-set (non-dependent) feature → show only on a USER edit (a coach
+    // suggestion alone shows nothing). When it is the DERIVED side (Balance is the
+    // input) it is a dependent → always show, so the propagation is explained.
+    const pairEngaged =
       modifiedFeatures.has('revol_util') || modifiedFeatures.has('revol_bal');
+    const engaged = revolUtilIsInput
+      ? featureProvenance('revol_util').userEdited
+      : pairEngaged;
     if (!engaged) return { type: 'revol_util', engaged: false };
 
     const money = (n) => '$' + Math.round(n).toLocaleString();
@@ -1490,8 +1549,14 @@
    * Revolving Balance or Credit Utilization (no-propagation-on-load rule).
    */
   const buildRevolBalBreakdown = (baseline, state) => {
-    const engaged =
+    // Provenance rule: when Balance is the INPUT (revolUtilIsInput === false) it is a
+    // directly-set (non-dependent) feature → show only on a USER edit. When it is the
+    // DERIVED side (Utilization is the input) it is a dependent → always show.
+    const pairEngaged =
       modifiedFeatures.has('revol_bal') || modifiedFeatures.has('revol_util');
+    const engaged = revolUtilIsInput
+      ? pairEngaged
+      : featureProvenance('revol_bal').userEdited;
     if (!engaged) return { type: 'revol_bal', engaged: false };
 
     const money = (n) => '$' + Math.round(n).toLocaleString();
