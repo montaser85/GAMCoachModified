@@ -66,7 +66,7 @@ export const DEFAULT_APR = 0.1165; // personal / everything else
 // (new − original) payment from that baseline.
 // When false → byte-identical to current behavior (baseline DTI excludes the loan).
 // Independent of USE_ADVANCED_CONDITION — flip this one line to toggle.
-export const FOLD_APPLIED_LOAN_INTO_DTI = false;
+export const FOLD_APPLIED_LOAN_INTO_DTI = true;
 
 /**
  * Resolve the APR for a given purpose string. Case-insensitive; unknown

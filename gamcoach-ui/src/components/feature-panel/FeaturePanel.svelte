@@ -1273,8 +1273,73 @@
 
     const aprFraction = aprForPurpose(parts.loanPurpose);
 
+    // ── FOLD_APPLIED_LOAN_INTO_DTI: two-phase, all-contributors layout ──────────
+    // Phase 1 builds the loan-inclusive current DTI transparently (pre-loan debt +
+    // the applied-for loan's payment); Phase 2 shows every contributor that actually
+    // changed. Provenance-neutral. Composes with Model B: the loan-payment line in
+    // Phase 2 shows the CURRENT amortized payment (from the changed loan/term/purpose),
+    // and the final debt rebuilds from components — no double-count. Only used when
+    // the fold is on and the loan is present; fold-off keeps the equation layout.
+    const foldedLayout =
+      FOLD_APPLIED_LOAN_INTO_DTI && (parts.originalLoanPayment || 0) > 0.5;
+    // Integer components chosen so Phase 1 chains EXACTLY: existing + loan = current.
+    const appliedLoanInt = Math.round(parts.originalLoanPayment || 0);
+    const existingDebtInt = currentMonthlyDebt - appliedLoanInt; // pre-loan debt
+    const baseDtiExcl =
+      origMonthlyIncomeRaw > 0 ? (existingDebtInt / origMonthlyIncomeRaw) * 100 : 0;
+    // Final debt = existing (constant) + CURRENT loan payment (new if the loan/term/
+    // purpose changed, else the applied-for payment) + revolving change [+ manual].
+    const currentLoanPaymentInt = loanChanged
+      ? Math.round(parts.newLoanPayment || 0)
+      : appliedLoanInt;
+    const foldRevolInt = revolChanged ? Math.round(revolDeltaRaw) : 0;
+    const foldManualInt = Math.round(((parts.dtiManualDelta || 0) / 100) * denomIncome);
+    const foldTerms = [existingDebtInt, currentLoanPaymentInt];
+    if (revolChanged) foldTerms.push(foldRevolInt);
+    if (foldManualInt !== 0) foldTerms.push(foldManualInt);
+    const foldNewTotalDebt = foldTerms.reduce((s, t) => s + t, 0);
+    let foldDebtExpr = money(existingDebtInt) + ' + ' + money(currentLoanPaymentInt);
+    if (revolChanged)
+      foldDebtExpr += (foldRevolInt < 0 ? ' − ' : ' + ') + money(Math.abs(foldRevolInt));
+    if (foldManualInt !== 0)
+      foldDebtExpr += (foldManualInt < 0 ? ' − ' : ' + ') + money(Math.abs(foldManualInt));
+    const loanTermsShort =
+      `${parts.paymentPeriod || 0} months, ${pct(aprFraction * 100)}% APR, ` +
+      String(parts.loanPurpose || '').replace(/_/g, ' ');
+
+    // Card value display (fold-on only): the LEFT of the arrow shows the RAW profile
+    // DTI the applicant entered (pre-fold), not the loan-folded baseline — recovered
+    // by subtracting the applied-for loan's DTI contribution from the folded value.
+    // The RIGHT stays the last updated DTI (curValue). Display-only; the feature's
+    // originalValue stays folded for propagation/scoring.
+    const loanDtiContribution =
+      origMonthlyIncomeRaw > 0 ? ((parts.originalLoanPayment || 0) / origMonthlyIncomeRaw) * 100 : 0;
+    const rawProfileDti = currentDti - loanDtiContribution;
+    // Delta on the arrow = updated (scored) DTI − raw profile DTI.
+    const rawProfileDelta = finalDti - rawProfileDti;
+
     return {
       type: 'dti',
+      // Two-phase folded layout (fold-on) vs. the equation layout (fold-off).
+      foldedLayout,
+      // DTI card value display (fold-on): raw profile DTI on the left, updated DTI on
+      // the right, and the change between them on the arrow.
+      overrideOriginalDisplay: foldedLayout,
+      originalDisplayValue: pct(rawProfileDti),
+      originalDisplayDelta: (rawProfileDelta >= 0 ? '+' : '−') + pct(Math.abs(rawProfileDelta)),
+      p1ExistingDebt: money(existingDebtInt),
+      p1BaseDtiExcl: pct(baseDtiExcl),
+      p1LoanAmount: money(baseline?.loan_amnt || 0),     // applied-for loan amount
+      p1LoanPayment: money(appliedLoanInt),
+      p1CurrentDebt: money(currentMonthlyDebt),
+      p1CurrentDti: pct(currentDti),
+      loanTermsShort,
+      p2LoanAmount: money(parts.loanAmount || 0),         // the new loan amount
+      p2NewLoanPayment: money(Math.round(parts.newLoanPayment || 0)),
+      p2OldLoanPayment: money(appliedLoanInt),
+      p2RevolToDebt: signedMoney(foldRevolInt),
+      foldDebtExpr,
+      foldNewTotalDebt: money(foldNewTotalDebt),
       annualIncome: money(baseline?.annual_inc || 0),
       monthlyIncome: '$' + origMonthlyIncome.toLocaleString(),
       currentDti: pct(currentDti),

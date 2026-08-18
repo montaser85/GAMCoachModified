@@ -714,25 +714,43 @@
               {:else if linkCalculation?.type === 'dti'}
                 <div class="link-calculation dti-calc">
                   <div class="dti-subhead">How your DTI is calculated:</div>
-                  <div class="dti-row">Your monthly income: {linkCalculation.annualIncome} &divide; 12 = <b>{linkCalculation.monthlyIncome}</b></div>
-                  <div class="dti-row">Your current DTI is {linkCalculation.currentDti}%, so your current monthly debt is: {linkCalculation.monthlyIncome} &times; {linkCalculation.currentDti}% = <b>{linkCalculation.currentMonthlyDebt}</b></div>
-                  {#if linkCalculation.appliedLoanFolded}
-                    <div class="dti-row">This already includes your applied-for loan's monthly payment of <b>{linkCalculation.appliedLoanPayment}</b> ({linkCalculation.paymentPeriod}-month term at {linkCalculation.aprPercent}% APR for {linkCalculation.loanPurpose}).</div>
+                  {#if linkCalculation.foldedLayout}
+                    <!-- Phase 1 — how the current DTI is built (loan included) -->
+                    <div class="dti-row">Monthly income: {linkCalculation.annualIncome} &divide; 12 = <b>{linkCalculation.monthlyIncome}</b></div>
+                    <div class="dti-row">Debt before this loan: {linkCalculation.p1BaseDtiExcl}% of {linkCalculation.monthlyIncome} = <b>{linkCalculation.p1ExistingDebt}</b></div>
+                    <div class="dti-row"><b>{linkCalculation.p1LoanAmount}</b> loan adds <b>{linkCalculation.p1LoanPayment}</b>/month ({linkCalculation.loanTermsShort}).</div>
+                    <div class="dti-row">Debt with the loan: {linkCalculation.p1ExistingDebt} + {linkCalculation.p1LoanPayment} = <b>{linkCalculation.p1CurrentDebt}</b> &rarr; DTI = {linkCalculation.p1CurrentDebt} &divide; {linkCalculation.monthlyIncome} = <b>{linkCalculation.p1CurrentDti}%</b></div>
+                    <!-- Phase 2 — with the new values (only contributors that changed) -->
+                    {#if linkCalculation.incomeChanged}
+                      <div class="dti-row">New income: {linkCalculation.newAnnualIncome} &divide; 12 = <b>{linkCalculation.newMonthlyIncome}</b></div>
+                    {/if}
+                    {#if linkCalculation.loanChanged}
+                      <div class="dti-row">New loan of {linkCalculation.p2LoanAmount} {linkCalculation.loanIncreased ? 'raises' : 'drops'} the monthly payment from <b>{linkCalculation.p2OldLoanPayment}</b> to <b>{linkCalculation.p2NewLoanPayment}</b>.</div>
+                    {/if}
+                    {#if linkCalculation.revolChanged}
+                      <div class="dti-row">New revolving balance: <b>{linkCalculation.p2RevolToDebt}</b> to debt.</div>
+                    {/if}
+                    <div class="dti-row">New total debt: {linkCalculation.foldDebtExpr} = <b>{linkCalculation.foldNewTotalDebt}</b></div>
+                    <div class="dti-row">New DTI: {linkCalculation.foldNewTotalDebt} &divide; {linkCalculation.finalIncome} = <b>{linkCalculation.newDTI}%</b></div>
+                    <div class="dti-line final">So {linkCalculation.newDTI}% of your income would go toward debt payments.</div>
+                  {:else}
+                    <div class="dti-row">Your monthly income: {linkCalculation.annualIncome} &divide; 12 = <b>{linkCalculation.monthlyIncome}</b></div>
+                    <div class="dti-row">Your current DTI is {linkCalculation.currentDti}%, so your current monthly debt is: {linkCalculation.monthlyIncome} &times; {linkCalculation.currentDti}% = <b>{linkCalculation.currentMonthlyDebt}</b></div>
+                    {#if linkCalculation.incomeChanged}
+                      <div class="dti-row">Your changed monthly income now: {linkCalculation.newAnnualIncome} &divide; 12 = <b>{linkCalculation.newMonthlyIncome}</b></div>
+                    {/if}
+                    {#if linkCalculation.loanChanged}
+                      <div class="dti-row">Your changed loan of {linkCalculation.loanAmount} {linkCalculation.loanIncreased ? 'raises' : 'lowers'} its monthly payment from <b>{linkCalculation.originalLoanPayment}</b> to <b>{linkCalculation.newLoanPayment}</b>, a change of <b>{linkCalculation.loanPaymentDelta}</b> to your monthly debt (calculated based on your <b>{linkCalculation.paymentPeriod}</b>-month payment period and the <b>{linkCalculation.aprPercent}%</b> interest rate for your loan purpose, <b>{linkCalculation.loanPurpose}</b>).</div>
+                    {/if}
+                    {#if linkCalculation.revolChanged}
+                      <div class="dti-row">Your revolving-balance change adjusts monthly debt by <b>{linkCalculation.revolDelta}</b>.</div>
+                    {/if}
+                    {#if linkCalculation.debtChanged}
+                      <div class="dti-row">New total monthly debt: {linkCalculation.debtEquation} = <b>{linkCalculation.totalDebt}</b></div>
+                    {/if}
+                    <div class="dti-row">New DTI: {linkCalculation.totalDebt} &divide; {linkCalculation.finalIncome} = <b>{linkCalculation.newDTI}%</b></div>
+                    <div class="dti-line final">So {linkCalculation.newDTI}% of your income would go toward debt payments.</div>
                   {/if}
-                  {#if linkCalculation.incomeChanged}
-                    <div class="dti-row">Your changed monthly income now: {linkCalculation.newAnnualIncome} &divide; 12 = <b>{linkCalculation.newMonthlyIncome}</b></div>
-                  {/if}
-                  {#if linkCalculation.loanChanged}
-                    <div class="dti-row">Your changed loan of {linkCalculation.loanAmount} {linkCalculation.loanIncreased ? 'raises' : 'lowers'} its monthly payment from <b>{linkCalculation.originalLoanPayment}</b> to <b>{linkCalculation.newLoanPayment}</b>, a change of <b>{linkCalculation.loanPaymentDelta}</b> to your monthly debt (calculated based on your <b>{linkCalculation.paymentPeriod}</b>-month payment period and the <b>{linkCalculation.aprPercent}%</b> interest rate for your loan purpose, <b>{linkCalculation.loanPurpose}</b>).</div>
-                  {/if}
-                  {#if linkCalculation.revolChanged}
-                    <div class="dti-row">Your revolving-balance change adjusts monthly debt by <b>{linkCalculation.revolDelta}</b>.</div>
-                  {/if}
-                  {#if linkCalculation.debtChanged}
-                    <div class="dti-row">New total monthly debt: {linkCalculation.debtEquation} = <b>{linkCalculation.totalDebt}</b></div>
-                  {/if}
-                  <div class="dti-row">New DTI: {linkCalculation.totalDebt} &divide; {linkCalculation.finalIncome} = <b>{linkCalculation.newDTI}%</b></div>
-                  <div class="dti-line final">So {linkCalculation.newDTI}% of your income would go toward debt payments.</div>
                 </div>
               {:else if linkCalculation?.type === 'revol_bal'}
                 {#if linkCalculation.engaged}
@@ -814,7 +832,26 @@
     </div>
 
     <div class="values">
-      {#if state.feature.originalValue === state.feature.curValue}
+      {#if linkCalculation && linkCalculation.overrideOriginalDisplay}
+        <!-- DTI fold-on: LEFT shows the RAW profile DTI (pre-fold); RIGHT shows the
+             last updated DTI; the change between them sits on the arrow. -->
+        <span class="value-old">{linkCalculation.originalDisplayValue}</span>
+        <div class="feature-arrow">
+          <span class="value-change">{linkCalculation.originalDisplayDelta}</span>
+          <div class="arrow-right" />
+        </div>
+        <input
+          class="value-new value-input"
+          type="text"
+          inputmode="decimal"
+          value={valueInputStr(state.feature.curValue)}
+          title="Type a value within this feature's range"
+          on:change={(e) => applyValueInput(e.currentTarget.value)}
+          on:keydown|stopPropagation={valueInputKeydown}
+          on:click|stopPropagation
+          on:mousedown|stopPropagation
+        />
+      {:else if state.feature.originalValue === state.feature.curValue}
         <!-- Unchanged: the single value doubles as an editable input. -->
         <input
           class="value-old value-input"
