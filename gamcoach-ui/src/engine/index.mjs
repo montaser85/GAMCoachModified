@@ -43,7 +43,9 @@ export {
   MORTGAGE_HOME_VALUE,
   FICO_FLOOR,
   FICO_CEIL,
-  MODEL_BOUNDS
+  MODEL_BOUNDS,
+  FOLD_APPLIED_LOAN_INTO_DTI,
+  foldAppliedLoanIntoDti
 } from './params.mjs';
 
 import { EDGES } from './edges.mjs';

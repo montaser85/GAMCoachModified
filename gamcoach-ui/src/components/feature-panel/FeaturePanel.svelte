@@ -42,7 +42,8 @@
     derogSubtract,
     loanMonthlyPayment,
     aprForPurpose,
-    PROPAGATE_SUGGESTED_ON_LOAD
+    PROPAGATE_SUGGESTED_ON_LOAD,
+    FOLD_APPLIED_LOAN_INTO_DTI
   } from '../../engine/index.mjs';
 
   export let windowLoaded = false;
@@ -1278,6 +1279,11 @@
       monthlyIncome: '$' + origMonthlyIncome.toLocaleString(),
       currentDti: pct(currentDti),
       currentMonthlyDebt: '$' + currentMonthlyDebt.toLocaleString(),
+      // FOLD_APPLIED_LOAN_INTO_DTI: the baseline debt above already includes the
+      // applied-for loan's payment — surface it so the higher starting DTI is
+      // explained rather than appearing unattributed.
+      appliedLoanFolded: FOLD_APPLIED_LOAN_INTO_DTI && (parts.originalLoanPayment || 0) > 0.5,
+      appliedLoanPayment: money(parts.originalLoanPayment || 0),
       incomeChanged,
       newAnnualIncome: money(newMonthlyIncomeRaw * 12),
       newMonthlyIncome: '$' + newMonthlyIncome.toLocaleString(),

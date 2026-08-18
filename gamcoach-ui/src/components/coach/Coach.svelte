@@ -12,6 +12,7 @@
   import starIconOutline from '../../img/icon-star-outline.svg';
 
   import { EBM } from '../../ebm/ebm';
+  import { foldAppliedLoanIntoDti } from '../../engine/params.mjs';
   import {
     Plan,
     Constraints,
@@ -122,10 +123,19 @@
     };
     bookmarkConfigStore.set(bookmarkConfig);
 
+    // TEST TOGGLE (FOLD_APPLIED_LOAN_INTO_DTI): fold the applied-for loan into the
+    // applicant's baseline DTI at the single source point, so generation, scoring,
+    // and the feature-panel baseline all use the same loan-included DTI. Off →
+    // returns the SAME array (byte-identical to current behavior).
+    const baselineExample = foldAppliedLoanIntoDti(
+      curExample,
+      curModelData.features.map((f) => f.name)
+    );
+
     // Initialize the Constraints based on the info provided by model developers
     // Creating the constraints object can change the modelData (setting
     // the acceptance range based on the curExample)
-    constraints = new Constraints(curModelData, curExample);
+    constraints = new Constraints(curModelData, baselineExample);
 
     constraintsStore.set(constraints);
     unsubscribes.push(
@@ -140,7 +150,7 @@
       await initPlans(
         curModelData,
         ebm,
-        curExample,
+        baselineExample,
         constraints,
         plansUpdated,
         logger

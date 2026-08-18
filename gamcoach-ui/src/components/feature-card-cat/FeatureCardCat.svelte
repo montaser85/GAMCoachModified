@@ -632,6 +632,9 @@
                   <div class="dti-subhead">How your DTI is calculated:</div>
                   <div class="dti-row">Your monthly income: {linkCalculation.annualIncome} &divide; 12 = <b>{linkCalculation.monthlyIncome}</b></div>
                   <div class="dti-row">Your current DTI is {linkCalculation.currentDti}%, so your current monthly debt is: {linkCalculation.monthlyIncome} &times; {linkCalculation.currentDti}% = <b>{linkCalculation.currentMonthlyDebt}</b></div>
+                  {#if linkCalculation.appliedLoanFolded}
+                    <div class="dti-row">This already includes your applied-for loan's monthly payment of <b>{linkCalculation.appliedLoanPayment}</b> ({linkCalculation.paymentPeriod}-month term at {linkCalculation.aprPercent}% APR for {linkCalculation.loanPurpose}).</div>
+                  {/if}
                   {#if linkCalculation.incomeChanged}
                     <div class="dti-row">Your changed monthly income now: {linkCalculation.newAnnualIncome} &divide; 12 = <b>{linkCalculation.newMonthlyIncome}</b></div>
                   {/if}

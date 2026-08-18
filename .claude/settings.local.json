@@ -81,7 +81,8 @@
       "Bash(grep -E \"^[0-9a-f]{7,}|PROPAGATION_AWARE_DTI_CONSTRAINT = \\(true|false\\)\")",
       "Bash(cd \"D:/OSU/Dr B research group/GAM_Coach/gam-coach_modified/gamcoach-ui\"; ls -la --time-style=+%H:%M:%S public/build/bundle.js; date +%H:%M:%S; grep -iE \"error\" /tmp/db_orig.log | grep -viE \"Circular|Unused|a11y\" | head -3)",
       "mcp__claude-in-chrome__tabs_context_mcp",
-      "Bash(cd \"D:/OSU/Dr B research group/GAM_Coach/gam-coach_modified/gamcoach-ui\"; ls -la --time-style=+%H:%M:%S public/build/bundle.js; date +%H:%M:%S; grep -iE \"error\" /tmp/db_o2.log | grep -viE \"Circular|Unused|a11y\" | head -3)"
+      "Bash(cd \"D:/OSU/Dr B research group/GAM_Coach/gam-coach_modified/gamcoach-ui\"; ls -la --time-style=+%H:%M:%S public/build/bundle.js; date +%H:%M:%S; grep -iE \"error\" /tmp/db_o2.log | grep -viE \"Circular|Unused|a11y\" | head -3)",
+      "Bash(cd \"D:/OSU/Dr B research group/GAM_Coach/gam-coach_modified/gamcoach-ui\"; ls -la --time-style=+%H:%M:%S public/build/bundle.js; date +%H:%M:%S; grep -iE \"error\" /tmp/db_fold.log | grep -viE \"Circular|Unused|a11y\" | head -3)"
     ]
   }
 }
