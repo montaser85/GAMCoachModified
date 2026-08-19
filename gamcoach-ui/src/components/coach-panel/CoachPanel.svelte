@@ -25,6 +25,7 @@
   import '../../typedef';
   import { Plan, SavedPlan } from '../coach/Coach';
   import { InitPlanLabels } from './CoachPanel';
+  import { applySuggestedPropagationToPlan } from '../../engine/loadPropagation.mjs';
 
   import refreshIcon from '../../img/icon-refresh2.svg';
   import starIconSolid from '../../img/icon-star-solid.svg';
@@ -454,6 +455,13 @@
             // Capture the initial feature state (after coach suggestions are applied)
             // on the very first update for this plan
             if (isFirstUpdate) {
+              // Eagerly fold the coach's suggested changes into THIS plan's stored
+              // state (ebmLocal / coachSample / predScore) — the same propagation a
+              // FeaturePanel runs on mount, but applied to every plan up front so
+              // consumers that read all plans (Compare Plans) match the main panel on
+              // first open, not only after each plan has been visited. Idempotent and
+              // a no-op in the original study condition.
+              applySuggestedPropagationToPlan(value);
               const initialState = {};
               for (const feature of value.features) {
                 initialState[feature.featureID] = value.ebmLocal.sample[feature.featureID];

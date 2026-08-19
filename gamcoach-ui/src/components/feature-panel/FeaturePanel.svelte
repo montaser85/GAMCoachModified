@@ -1331,8 +1331,8 @@
     if (foldManualInt !== 0)
       foldDebtExpr += (foldManualInt < 0 ? ' − ' : ' + ') + money(Math.abs(foldManualInt));
     const loanTermsShort =
-      `${parts.paymentPeriod || 0} months, ${pct(aprFraction * 100)}% APR, ` +
-      String(parts.loanPurpose || '').replace(/_/g, ' ');
+      `${parts.paymentPeriod || 0} months payment period, ${pct(aprFraction * 100)}% APR, ` +
+      `loan purpose: ${String(parts.loanPurpose || '').replace(/_/g, ' ')}`;
 
     // Card value display (fold-on only): the LEFT of the arrow shows the RAW profile
     // DTI the applicant entered (pre-fold), not the loan-folded baseline — recovered

@@ -716,26 +716,26 @@
                 {/if}
               {:else if linkCalculation?.type === 'dti'}
                 <div class="link-calculation dti-calc">
+                  <div class="dti-line intro">Your DTI is {linkCalculation.newDTI}, so {linkCalculation.newDTI}% of your income would go toward debt payments.</div>
                   <div class="dti-subhead">How your DTI is calculated:</div>
                   {#if linkCalculation.foldedLayout}
                     <!-- Phase 1 — how the current DTI is built (loan included) -->
                     <div class="dti-row">Monthly income: {linkCalculation.annualIncome} &divide; 12 = <b>{linkCalculation.monthlyIncome}</b></div>
-                    <div class="dti-row">Debt before this loan: {linkCalculation.p1BaseDtiExcl}% of {linkCalculation.monthlyIncome} = <b>{linkCalculation.p1ExistingDebt}</b></div>
-                    <div class="dti-row"><b>{linkCalculation.p1LoanAmount}</b> loan adds <b>{linkCalculation.p1LoanPayment}</b>/month ({linkCalculation.loanTermsShort}).</div>
-                    <div class="dti-row">Debt with the loan: {linkCalculation.p1ExistingDebt} + {linkCalculation.p1LoanPayment} = <b>{linkCalculation.p1CurrentDebt}</b> &rarr; DTI = {linkCalculation.p1CurrentDebt} &divide; {linkCalculation.monthlyIncome} = <b>{linkCalculation.p1CurrentDti}%</b></div>
+                    <div class="dti-row">Monthly debt payment before this loan: {linkCalculation.p1BaseDtiExcl}% of {linkCalculation.monthlyIncome} = <b>{linkCalculation.p1ExistingDebt}</b></div>
+                    <div class="dti-row"><b>{linkCalculation.p1LoanAmount}</b> loan adds <b>{linkCalculation.p1LoanPayment}</b>/monthly debt payment({linkCalculation.loanTermsShort}).</div>
+                    <div class="dti-row">Monthly debt payment with the loan: {linkCalculation.p1ExistingDebt} + {linkCalculation.p1LoanPayment} = <b>{linkCalculation.p1CurrentDebt}</b> &rarr; DTI = {linkCalculation.p1CurrentDebt} &divide; {linkCalculation.monthlyIncome} = <b>{linkCalculation.p1CurrentDti}%</b></div>
                     <!-- Phase 2 — with the new values (only contributors that changed) -->
                     {#if linkCalculation.incomeChanged}
-                      <div class="dti-row">New income: {linkCalculation.newAnnualIncome} &divide; 12 = <b>{linkCalculation.newMonthlyIncome}</b></div>
+                      <div class="dti-row">New monthly income: {linkCalculation.newAnnualIncome} &divide; 12 = <b>{linkCalculation.newMonthlyIncome}</b></div>
                     {/if}
                     {#if linkCalculation.loanChanged}
                       <div class="dti-row">New loan of {linkCalculation.p2LoanAmount} {linkCalculation.loanIncreased ? 'raises' : 'drops'} the monthly payment from <b>{linkCalculation.p2OldLoanPayment}</b> to <b>{linkCalculation.p2NewLoanPayment}</b>.</div>
                     {/if}
                     {#if linkCalculation.revolChanged}
-                      <div class="dti-row">New revolving balance: <b>{linkCalculation.p2RevolToDebt}</b> to debt.</div>
+                      <div class="dti-row">New revolving balance adds: <b>{linkCalculation.p2RevolToDebt}</b> to debt.</div>
                     {/if}
-                    <div class="dti-row">New total debt: {linkCalculation.foldDebtExpr} = <b>{linkCalculation.foldNewTotalDebt}</b></div>
+                    <div class="dti-row">New total monthly debt payment: {linkCalculation.foldDebtExpr} = <b>{linkCalculation.foldNewTotalDebt}</b></div>
                     <div class="dti-row">New DTI: {linkCalculation.foldNewTotalDebt} &divide; {linkCalculation.finalIncome} = <b>{linkCalculation.newDTI}%</b></div>
-                    <div class="dti-line final">So {linkCalculation.newDTI}% of your income would go toward debt payments.</div>
                   {:else}
                     <div class="dti-row">Your monthly income: {linkCalculation.annualIncome} &divide; 12 = <b>{linkCalculation.monthlyIncome}</b></div>
                     <div class="dti-row">Your current DTI is {linkCalculation.currentDti}%, so your current monthly debt is: {linkCalculation.monthlyIncome} &times; {linkCalculation.currentDti}% = <b>{linkCalculation.currentMonthlyDebt}</b></div>
@@ -749,10 +749,9 @@
                       <div class="dti-row">Your revolving-balance change adjusts monthly debt by <b>{linkCalculation.revolDelta}</b>.</div>
                     {/if}
                     {#if linkCalculation.debtChanged}
-                      <div class="dti-row">New total monthly debt: {linkCalculation.debtEquation} = <b>{linkCalculation.totalDebt}</b></div>
+                      <div class="dti-row">New total monthly debt payment: {linkCalculation.debtEquation} = <b>{linkCalculation.totalDebt}</b></div>
                     {/if}
                     <div class="dti-row">New DTI: {linkCalculation.totalDebt} &divide; {linkCalculation.finalIncome} = <b>{linkCalculation.newDTI}%</b></div>
-                    <div class="dti-line final">So {linkCalculation.newDTI}% of your income would go toward debt payments.</div>
                   {/if}
                 </div>
               {:else if linkCalculation?.type === 'revol_bal'}

@@ -2,6 +2,7 @@
   import { onDestroy } from 'svelte';
   import { compareOpenStore, constraintsStore } from '../../store';
   import { computeIdeasForPlan } from '../ideas/planIdeas';
+  import { appliedLoanDtiContribution } from '../../engine/index.mjs';
 
   /** @type {import('../coach/Coach').Plans} */
   export let plans = null;
@@ -84,6 +85,30 @@
     return 'neutral';                               // changed, ~zero contribution
   }
 
+  /**
+   * The applicant's ORIGINAL profile DTI (model units), used as the "before" for
+   * the DTI row. The generation baseline (plan.curExample) folds the applied-for
+   * loan's monthly payment into DTI, so plan.curExample[dti] is the loan-inclusive
+   * value (e.g. 30.22), not the profile value the applicant entered (e.g. 20.47).
+   * Subtract that same contribution back out — matching the main-panel DTI card,
+   * whose left value is likewise the raw profile DTI. A no-op when the fold is off.
+   */
+  function rawProfileDtiValue(plan, dtiFeatureID) {
+    const names = plan.features.map((f) => f.data.name);
+    const example = plan.features.map((f) => plan.curExample[f.featureID]);
+    const contribution = appliedLoanDtiContribution(example, names);
+    return (plan.curExample[dtiFeatureID] || 0) - contribution;
+  }
+
+  /** The display "before" value for a feature: the raw profile DTI for `dti`,
+   *  otherwise the plan's baseline example value. */
+  function originalValueFor(plan, feature) {
+    if (feature.data?.name === 'dti') {
+      return rawProfileDtiValue(plan, feature.featureID);
+    }
+    return plan.curExample[feature.featureID];
+  }
+
   // ─── Comparison data ──────────────────────────────────────────────────────
 
   let planList = [];
@@ -127,7 +152,9 @@
             const name = f.data?.name;
             const currentVal = plan.ebmLocal.sample[f.featureID];
             const currentDisplay = formatVal(currentVal, f);
-            const originalDisplay = formatVal(f.originalValue, f);
+            // "before" = raw profile DTI for `dti` (baseline folds the applied
+            // loan into DTI); the plan's baseline example value otherwise.
+            const originalDisplay = formatVal(originalValueFor(plan, f), f);
             const contribution = (curScores[name] ?? 0) - (origScores[name] ?? 0);
             return {
               featureID: f.featureID,
@@ -207,7 +234,9 @@
         p.features.forEach((f) => {
           const i = f.featureID;
           const curD = formatVal(p.ebmLocal.sample[i], f);
-          const origD = formatVal(p.curExample[i], f);
+          // "before" = raw profile DTI for `dti` (the baseline folds the applied
+          // loan into DTI); the plan's baseline example value otherwise.
+          const origD = formatVal(originalValueFor(p, f), f);
           if (curD === origD) return; // unchanged from the applicant's original
           const coachD = formatVal(p.coachSample[i], f);
           changes.push({

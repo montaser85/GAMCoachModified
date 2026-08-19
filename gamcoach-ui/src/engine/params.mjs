@@ -126,6 +126,37 @@ export function loanMonthlyPayment(loanAmount, monthlyInterestRate, termMonths) 
 }
 
 /**
+ * The DTI points the applied-for loan contributes — i.e. the exact amount
+ * foldAppliedLoanIntoDti adds to the baseline `dti`. Exposed on its own so a
+ * consumer can REVERSE the fold and recover the applicant's raw profile DTI
+ * (e.g. Compare Plans showing the DTI "before" as the original profile value,
+ * not the loan-folded baseline). Returns 0 when the fold is off or the loan
+ * contribution can't be computed. Operates in model-internal units.
+ *
+ * NOTE: keep the formula here in lock-step with foldAppliedLoanIntoDti below.
+ * @param {Array} curExample model example (feature values by index)
+ * @param {string[]} featureNames feature names, same order as curExample
+ * @returns {number} DTI percentage points added by the applied-for loan
+ */
+export function appliedLoanDtiContribution(curExample, featureNames) {
+  if (!FOLD_APPLIED_LOAN_INTO_DTI) return 0;
+  if (!curExample || !featureNames) return 0;
+  const idx = (n) => featureNames.indexOf(n);
+  const dtiIdx = idx('dti');
+  const loanIdx = idx('loan_amnt');
+  const incIdx = idx('annual_inc');
+  const purpIdx = idx('purpose');
+  const termIdx = idx('term');
+  if (dtiIdx < 0 || loanIdx < 0 || incIdx < 0) return 0;
+  const monthlyIncome = Math.pow(10, curExample[incIdx]) / 12; // log10 $/yr → $/mo
+  if (!(monthlyIncome > 0)) return 0;
+  const apr = purpIdx >= 0 ? aprForPurpose(curExample[purpIdx]) : aprForPurpose(null);
+  const termMonths = termIdx >= 0 ? parseInt(String(curExample[termIdx]), 10) || 0 : 0;
+  const loanPayment = loanMonthlyPayment(curExample[loanIdx], apr / 12, termMonths);
+  return (loanPayment / monthlyIncome) * 100; // payment → DTI points
+}
+
+/**
  * TEST TOGGLE (FOLD_APPLIED_LOAN_INTO_DTI): return a copy of the raw model example
  * with its `dti` raised to INCLUDE the applied-for loan's monthly payment. Applied
  * once, at the applicant-baseline source, so generation + scoring + display all see

@@ -196,6 +196,17 @@ $card-h-padding: 16px;
             font-weight: 700;
             color: $blue-700;
           }
+
+          // Summary headline shown ABOVE the breakdown — mirrors `.final` but with
+          // the divider BELOW it, so it separates the takeaway from the steps that
+          // follow rather than concluding them.
+          &.intro {
+            margin-bottom: 4px;
+            padding-bottom: 4px;
+            border-bottom: 1px solid $blue-200;
+            font-weight: 700;
+            color: $blue-700;
+          }
         }
 
         // Itemized contributor rows (base / loan / revolving)
@@ -375,8 +386,12 @@ $card-h-padding: 16px;
     margin: -5px 0 0 0;
     color: $green-600;
 
+    // Every delta renders green across all three feature groups (Suggested
+    // Changes / Configured / Other) for both continuous and categorical cards
+    // (FeatureCardCat imports this stylesheet). The `.user` (blue) provenance
+    // tint is intentionally collapsed into green.
     &.user {
-      color: $blue-600;
+      color: $green-600;
     }
   }
 }
