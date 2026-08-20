@@ -693,6 +693,7 @@
               {#if linkCalculation?.type === 'fico'}
                 {#if linkCalculation.engaged}
                   <div class="link-calculation dti-calc">
+                    <div class="dti-line intro">Your FICO score (credit score) is <b>{linkCalculation.scoredFICO}</b></div>
                     <div class="dti-subhead">Your score breakdown</div>
                     <div class="dti-row">Your profile score: <b>{linkCalculation.profileFICO}</b></div>
                     {#if linkCalculation.showSuggestedRow}
@@ -701,17 +702,12 @@
                     {#if linkCalculation.showYourRow}
                       <div class="dti-row">Your change: <b>{linkCalculation.yourDelta}</b></div>
                     {/if}
-                    {#if linkCalculation.isClamped}
-                      {#if linkCalculation.showPenaltyRow}
-                        <div class="dti-row">Credit checks from new accounts, mortgages, and inquiries: <b>{linkCalculation.hardInquiries} total</b> (4 points each) &mdash; enough to reach the minimum score</div>
-                      {/if}
-                      <div class="dti-line final">New score: <b>662</b> &mdash; the lowest score possible. More accounts or inquiries won&rsquo;t lower it further.</div>
-                    {:else}
-                      {#if linkCalculation.showPenaltyRow}
-                        <div class="dti-row">Credit checks from new accounts, mortgages, and inquiries: <b>{linkCalculation.hardInquiries} total</b> (4 points each), accounts for <b>&minus;{linkCalculation.rawPenalty} points</b></div>
-                      {/if}
-                      <div class="dti-line final">New score: <b>{linkCalculation.newScoreExpr}</b></div>
+                    {#if linkCalculation.showPenaltyRow}
+                      <div class="dti-row">New open accounts, mortgages, and credit inquiries: <b>{linkCalculation.count}</b></div>
+                      <div class="dti-row">Each lowers your FICO score by 4 points.</div>
+                      <div class="dti-row">Total drop: 4 &times; {linkCalculation.count} = <b>{linkCalculation.totalDrop}</b> points</div>
                     {/if}
+                    <div class="dti-line final">New FICO score: {linkCalculation.ficoChainExpr} = <b>{linkCalculation.rawNewScore}</b>{#if linkCalculation.isCapped}&nbsp;&mdash; this is below the minimum score of 662, so it&rsquo;s capped at <b>662</b>.{/if}</div>
                   </div>
                 {/if}
               {:else if linkCalculation?.type === 'dti'}
@@ -775,7 +771,7 @@
                       <div class="dti-subhead">Your utilization breakdown</div>
                       <div class="dti-row">Your credit limit: <b>{linkCalculation.creditLimit}</b> (estimated from your revolving balance {linkCalculation.currentBalance} &divide; current utilization {linkCalculation.currentUtilization}%)</div>
                       <div class="dti-row">New revolving balance: <b>{linkCalculation.newBalance}</b></div>
-                      <div class="dti-row">New utilization: {linkCalculation.newBalance} &divide; {linkCalculation.creditLimit} &times; 100 = <b>{linkCalculation.newUtilization}%</b></div>
+                      <div class="dti-row">New utilization: {linkCalculation.newBalance} &divide; {linkCalculation.creditLimit} &times; 100 = <b>{linkCalculation.newUtilizationRaw}%</b>{#if linkCalculation.utilCapped}&nbsp;&mdash; this is above the maximum limit of 100%, so it&rsquo;s capped at <b>100%</b>.{/if}</div>
                     {/if}
                     {#if linkCalculation.changeVerb === 'stayed at'}
                       <div class="dti-line final">Your credit utilization stayed at <b>{linkCalculation.newUtilization}%</b>, i.e., you&rsquo;re using {linkCalculation.newUtilization}% of your available credit.</div>

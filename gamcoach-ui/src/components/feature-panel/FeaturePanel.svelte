@@ -1463,33 +1463,44 @@
     const newFICO = Math.max(FICO_FLOOR, raw);
 
     // Distinct rows for the coach's suggested change and the user's own change, so a
-    // coach suggestion is never labeled as "your change". Penalty shown when present.
+    // coach suggestion is never labeled as "your change". Shown only when nonzero, so
+    // the common penalty-only case reduces to exactly "profile − totalDrop".
     const showSuggestedRow = ficoCoachDelta !== 0;
     const showYourRow = ficoUserEdited && ficoUserOwnDelta !== 0;
 
-    // Assembled arithmetic, e.g. "677 + 8 + 4 − 20 = 669" (pieces sum to newFICO).
-    let newScoreExpr = String(profileFICO);
+    // Chaining arithmetic for the final line, reconciling EXACTLY to the raw
+    // (pre-floor) score: profile [± suggested] [± your] − totalDrop. In the common
+    // penalty-only case this is simply "profile − totalDrop". `raw` equals masterFico
+    // pre-clamp, so this chains to the true scored value (display == score); when it
+    // dips below the floor the template appends the "capped at 662" note and the
+    // scored value is FICO_FLOOR.
+    let ficoChainExpr = String(profileFICO);
     if (showSuggestedRow)
-      newScoreExpr += (ficoCoachDelta < 0 ? ' − ' : ' + ') + Math.abs(ficoCoachDelta);
+      ficoChainExpr += (ficoCoachDelta < 0 ? ' − ' : ' + ') + Math.abs(ficoCoachDelta);
     if (showYourRow)
-      newScoreExpr += (ficoUserOwnDelta < 0 ? ' − ' : ' + ') + Math.abs(ficoUserOwnDelta);
-    if (rawPenalty > 0) newScoreExpr += ' − ' + rawPenalty;
-    newScoreExpr += ' = ' + newFICO;
+      ficoChainExpr += (ficoUserOwnDelta < 0 ? ' − ' : ' + ') + Math.abs(ficoUserOwnDelta);
+    if (rawPenalty > 0) ficoChainExpr += ' − ' + rawPenalty;
 
     return {
       type: 'fico',
       engaged: true,
-      isClamped,
       profileFICO: String(profileFICO),
       showSuggestedRow,
       suggestedDelta: (ficoCoachDelta < 0 ? '−' : '+') + Math.abs(ficoCoachDelta),
       showYourRow,
       yourDelta: (ficoUserOwnDelta < 0 ? '−' : '+') + Math.abs(ficoUserOwnDelta),
       showPenaltyRow: hardInquiries > 0,
-      hardInquiries: String(hardInquiries),
-      rawPenalty: String(rawPenalty),
-      newFICO: String(newFICO),
-      newScoreExpr
+      // count = penalty-item count: new credit inquiries + new open accounts (beyond
+      // the mortgage's own +1) + new mortgages. Identical to the model's
+      // params.hardInquiries, so 4 × count is EXACTLY the penalty masterFico applied.
+      count: String(hardInquiries),
+      totalDrop: String(rawPenalty),
+      ficoChainExpr,
+      // Raw (pre-floor) score shown in the equation. The cap note (isCapped) fires
+      // strictly when it is below the model's 662 floor; the scored value is then 662.
+      rawNewScore: String(raw),
+      isCapped: isClamped,
+      scoredFICO: String(newFICO)
     };
   };
 
@@ -1523,6 +1534,13 @@
     const creditLimit = creditLimitFromBaseline(baseline); // null when indeterminate
     const currentUtil = Number(baseline.revol_util) || 0;
     const newUtil = Number(state.revol_util) || 0;
+    // True (uncapped) utilization the new balance implies against the recovered
+    // limit. The model clamps revol_util to [0, 100] (MODEL_BOUNDS), so `newUtil`
+    // can sit at the 100% cap while balance ÷ limit is actually higher. Surface the
+    // real figure in the equation line, flagged so the template can note the cap.
+    const rawUtil =
+      creditLimit ? (Number(state.revol_bal || 0) / creditLimit) * 100 : newUtil;
+    const utilCapped = rawUtil > 100 + 1e-9;
     let changeVerb = 'stayed at';
     if (newUtil > currentUtil + 1e-9) changeVerb = 'increased';
     else if (newUtil < currentUtil - 1e-9) changeVerb = 'decreased';
@@ -1535,6 +1553,11 @@
       currentUtilization: pct(currentUtil),
       newBalance: money(state.revol_bal || 0),
       newUtilization: pct(newUtil),
+      // Equation-line figure: the true ratio (rounded) when it exceeds the cap,
+      // otherwise the normal capped value. `utilCapped` drives the "capped at 100%"
+      // note. Everything else keeps using the capped `newUtilization`.
+      newUtilizationRaw: utilCapped ? String(Math.round(rawUtil)) : pct(newUtil),
+      utilCapped,
       changeVerb
     };
   };
