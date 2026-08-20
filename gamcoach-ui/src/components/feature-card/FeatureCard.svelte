@@ -56,6 +56,26 @@
   /** Static dependency lists for the info tooltip: {changedBy?, canChange?}. */
   export let linkDeps = null;
 
+  /** (featureName) => string[]: display names of the OTHER features a reset of this
+   *  card will also revert (the coupled group, computed live from current state).
+   *  Drives the reset-button hover warning. */
+  export let getResetPreview = null;
+
+  // Reset-hover warning: names of connected features this reset will also revert.
+  // Recomputed on each hover so it always matches the current state (and therefore
+  // exactly what clicking reset reverts).
+  let resetTipNames = [];
+  let resetTipOpen = false;
+  const openResetTip = () => {
+    resetTipNames = getResetPreview
+      ? getResetPreview(state.feature.featureName) || []
+      : [];
+    resetTipOpen = true;
+  };
+  const closeResetTip = () => {
+    resetTipOpen = false;
+  };
+
   // Flip the popup upward when near the bottom of the viewport.
   // Uses direct DOM manipulation (not Svelte state) to avoid triggering
   // a re-render, which would disrupt the CSS :hover state and cause flickering.
@@ -713,7 +733,7 @@
               {:else if linkCalculation?.type === 'dti'}
                 <div class="link-calculation dti-calc">
                   <div class="dti-line intro">Your DTI is {linkCalculation.newDTI}, so {linkCalculation.newDTI}% of your income would go toward debt payments.</div>
-                  <div class="dti-subhead">How your DTI is calculated:</div>
+                  <div class="dti-subhead">Your DTI breakdown</div>
                   {#if linkCalculation.foldedLayout}
                     <!-- Phase 1 — how the current DTI is built (loan included) -->
                     <div class="dti-row">Monthly income: {linkCalculation.annualIncome} &divide; 12 = <b>{linkCalculation.monthlyIncome}</b></div>
@@ -731,7 +751,11 @@
                       <div class="dti-row">New revolving balance adds: <b>{linkCalculation.p2RevolToDebt}</b> to debt.</div>
                     {/if}
                     <div class="dti-row">New total monthly debt payment: {linkCalculation.foldDebtExpr} = <b>{linkCalculation.foldNewTotalDebt}</b></div>
-                    <div class="dti-row">New DTI: {linkCalculation.foldNewTotalDebt} &divide; {linkCalculation.finalIncome} = <b>{linkCalculation.newDTI}%</b></div>
+                    <div class="dti-row">{linkCalculation.hasManualDti ? 'DTI from your inputs' : 'New DTI'}: {linkCalculation.foldNewTotalDebt} &divide; {linkCalculation.finalIncome} = <b>{linkCalculation.propagatedDtiPct}%</b></div>
+                    {#if linkCalculation.hasManualDti}
+                      <div class="dti-row">Your manual change: <b>{linkCalculation.manualDtiDelta}%</b></div>
+                      <div class="dti-line final">New DTI: {linkCalculation.propagatedDtiPct} {linkCalculation.manualDtiSign} {linkCalculation.manualDtiDeltaMag} = <b>{linkCalculation.displayedDtiPct}%</b></div>
+                    {/if}
                   {:else}
                     <div class="dti-row">Your monthly income: {linkCalculation.annualIncome} &divide; 12 = <b>{linkCalculation.monthlyIncome}</b></div>
                     <div class="dti-row">Your current DTI is {linkCalculation.currentDti}%, so your current monthly debt is: {linkCalculation.monthlyIncome} &times; {linkCalculation.currentDti}% = <b>{linkCalculation.currentMonthlyDebt}</b></div>
@@ -747,7 +771,11 @@
                     {#if linkCalculation.debtChanged}
                       <div class="dti-row">New total monthly debt payment: {linkCalculation.debtEquation} = <b>{linkCalculation.totalDebt}</b></div>
                     {/if}
-                    <div class="dti-row">New DTI: {linkCalculation.totalDebt} &divide; {linkCalculation.finalIncome} = <b>{linkCalculation.newDTI}%</b></div>
+                    <div class="dti-row">{linkCalculation.hasManualDti ? 'DTI from your inputs' : 'New DTI'}: {linkCalculation.totalDebt} &divide; {linkCalculation.finalIncome} = <b>{linkCalculation.propagatedDtiPct}%</b></div>
+                    {#if linkCalculation.hasManualDti}
+                      <div class="dti-row">Your manual change: <b>{linkCalculation.manualDtiDelta}%</b></div>
+                      <div class="dti-line final">New DTI: {linkCalculation.propagatedDtiPct} {linkCalculation.manualDtiSign} {linkCalculation.manualDtiDeltaMag} = <b>{linkCalculation.displayedDtiPct}%</b></div>
+                    {/if}
                   {/if}
                 </div>
               {:else if linkCalculation?.type === 'revol_bal'}
@@ -769,7 +797,7 @@
                   <div class="link-calculation dti-calc">
                     {#if linkCalculation.hasLimit}
                       <div class="dti-subhead">Your utilization breakdown</div>
-                      <div class="dti-row">Your credit limit: <b>{linkCalculation.creditLimit}</b> (estimated from your revolving balance {linkCalculation.currentBalance} &divide; current utilization {linkCalculation.currentUtilization}%)</div>
+                      <div class="dti-row">Your credit limit: <b>{linkCalculation.creditLimit}</b> (estimated from your profile revolving balance {linkCalculation.currentBalance} &divide; credit utilization {linkCalculation.currentUtilization}%)</div>
                       <div class="dti-row">New revolving balance: <b>{linkCalculation.newBalance}</b></div>
                       <div class="dti-row">New utilization: {linkCalculation.newBalance} &divide; {linkCalculation.creditLimit} &times; 100 = <b>{linkCalculation.newUtilizationRaw}%</b>{#if linkCalculation.utilCapped}&nbsp;&mdash; this is above the maximum limit of 100%, so it&rsquo;s capped at <b>100%</b>.{/if}</div>
                     {/if}
@@ -819,13 +847,20 @@
         class="card-icons"
         class:collapsed={isCollapsed}
         on:click={resetClicked}
-        title="Reset"
+        on:mouseenter={openResetTip}
+        on:mouseleave={closeResetTip}
       >
-        <div class="svg-icon icon-refresh">
-          <!-- <div class='local-tooltip'>
-            <span class='content'>Reset</span>
-          </div> -->
-        </div>
+        <div class="svg-icon icon-refresh" />
+        {#if resetTipOpen}
+          <div class="reset-tooltip">
+            <div class="reset-tip-line">Reset</div>
+            {#if resetTipNames.length > 0}
+              <div class="reset-tip-warn">
+                &#9888;&#65039; This will also change these connected features: {resetTipNames.join(', ')}
+              </div>
+            {/if}
+          </div>
+        {/if}
       </div>
     </div>
 

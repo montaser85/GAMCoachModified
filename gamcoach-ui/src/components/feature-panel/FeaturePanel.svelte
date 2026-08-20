@@ -399,7 +399,17 @@
   const applyManualDtiEdit = () => {
     if (!applicantBaselineState || !plan) return;
     const cur = buildCurrentEngineState();
-    userDtiDelta = (cur.dti || 0) - (applicantBaselineState.dti || 0);
+    // Two-source model: the manual delta is the offset from the PROPAGATED DTI (the
+    // value the current inputs produce, manual delta = 0) — NOT from the profile
+    // baseline. So displayed = propagated + delta == the typed value, and the delta
+    // stays a FIXED constant when inputs later change (income/loan move the
+    // propagated part; the manual offset persists). For a drag this captures
+    // (dragged DTI − propagated DTI) at drag-end.
+    const propagated = computeDtiParts(
+      cur,
+      computeParams(applicantBaselineState, cur, modifiedFeatures, userFicoDelta, 0, userRevolDelta)
+    ).computedDti;
+    userDtiDelta = (cur.dti || 0) - (propagated || 0);
     const settled = settleDti(userDtiDelta);
     plan.ebmLocal.updateFeature('dti', settled);
     const f = plan.features.find(ff => ff.data.name === 'dti');
@@ -644,12 +654,6 @@
         applyManualFicoEdit();
       }
 
-      // DTI is a leaf as well — capture the signed manual delta and re-settle
-      // (computedDTI + delta) so existing source contributions apply on top.
-      if (featureName === 'dti') {
-        applyManualDtiEdit();
-      }
-
       // Revolving Balance is NOT a leaf — just capture its signed manual delta so
       // a LATER Credit Utilization change sums with it. triggerPropagation below
       // derives utilization + DTI and refreshes the hovers.
@@ -661,7 +665,17 @@
       if (propagationDebounceTimer) clearTimeout(propagationDebounceTimer);
       propagationDebounceTimer = setTimeout(() => {
         propagationDebounceTimer = null;
-        triggerPropagation(featureName);
+        // DTI is a leaf: capture the manual delta and re-settle HERE (debounced),
+        // never per drag increment. Running applyManualDtiEdit synchronously on each
+        // increment re-settled DTI and pushed a featureValueOverrideStore update that
+        // repositioned the slider thumb mid-drag — the jitter / lost grab cursor.
+        // Deferring it to drag-end (350ms of silence) makes the DTI drag as smooth as
+        // the other continuous features; the delta is captured at drag-end.
+        if (featureName === 'dti') {
+          applyManualDtiEdit();
+        } else {
+          triggerPropagation(featureName);
+        }
       }, 350);
     }
   };
@@ -852,9 +866,13 @@
       lastKnownValues[dep] = internal;
       overrides[dep] = internal;
 
-      // A recomputed dependent stays modified (outline stays) only while at
-      // least one of its sources is still modified; otherwise it un-modifies.
-      if (sourcesOf(dep).some(s => modifiedFeatures.has(s))) {
+      // A recomputed dependent stays modified (outline stays) while at least one of
+      // its sources is still modified — OR while it carries its OWN manual delta. A
+      // manually-edited DTI persists its offset through the reset of any input
+      // (mirroring how a manual FICO delta survives resetting a source), so it must
+      // NOT un-modify just because its sources were reverted. Otherwise it un-modifies.
+      const depHasOwnManual = dep === 'dti' && Math.abs(userDtiDelta) >= 0.005;
+      if (depHasOwnManual || sourcesOf(dep).some(s => modifiedFeatures.has(s))) {
         modifiedFeatures.add(dep);
       } else {
         modifiedFeatures.delete(dep);
@@ -874,6 +892,12 @@
         const dep = f.data.name;
         if (!loadSnapshot.suggestedAll.has(dep)) return;
         if (loadSnapshot.suggestedInputs.has(dep)) return; // inputs handled above
+        // A manually-edited DTI keeps its OWN persistent delta through the reset of
+        // any INPUT — it is not a fully-suggested dependent to snap back to load
+        // time. Skip the snap so it retains its recomputed (propagated + manual)
+        // value, mirroring a manual FICO delta surviving a source reset. Cleared
+        // only when DTI ITSELF is reset (dti ∈ unmodify → userDtiDelta already 0).
+        if (dep === 'dti' && Math.abs(userDtiDelta) >= 0.005) return;
         const anyUserSource = sourcesOf(dep).some(
           (s) => modifiedFeatures.has(s) && !suggestedAtLoad.has(s)
         );
@@ -903,6 +927,100 @@
     propagatedFeaturesStore.set(new Set());
     showPropagationMessage = false;
     dismissArrows();
+  };
+
+  /**
+   * Preview which OTHER features a reset of `featureName` will actually change,
+   * for the reset-button hover warning. Mirrors handleFeatureReset's revert scope
+   * EXACTLY — restore the feature + its direct sources to load-time, then recompute
+   * their dependents — but WITHOUT mutating any state. Returns the DISPLAY names of
+   * every feature whose value would visibly change, so the warning lists precisely
+   * what clicking reset reverts (never more, never less). Empty when the reset
+   * affects only the hovered feature.
+   *
+   * FICO's reset is special-cased in handleFeatureReset (it re-settles the persistent
+   * penalty on the profile and never touches source/dependent cards), so a FICO reset
+   * changes only its own value — we return [] to match that.
+   */
+  const resetRevertNames = (featureName) => {
+    if (!plan || !loadTimeSample || !applicantBaselineState) return [];
+    if (featureName === 'fico_score') return [];
+
+    const dispName = (name) => {
+      const f = plan.features.find((ff) => ff.data.name === name);
+      return f ? f.data.description?.displayName || f.data.name : name;
+    };
+
+    // 1. The reset restores the feature + its direct sources to load-time.
+    const unmodify = new Set([featureName, ...sourcesOf(featureName)]);
+
+    // Simulated modified-set + deltas AFTER the restore — mirror the handler's clears
+    // and the loadSnapshot re-establishment so the dependent recompute matches what
+    // the reset actually produces.
+    const simModified = new Set(modifiedFeatures);
+    unmodify.forEach((n) => simModified.delete(n));
+    let sOpen = userOpenDelta;
+    let sTotal = userTotalDelta;
+    let sRevol = userRevolDelta;
+    let sDti = userDtiDelta;
+    let sDerog = derogIndependentPart;
+    const sFico = userFicoDelta; // the general path never touches the FICO delta
+    if (unmodify.has('open_acc')) sOpen = 0;
+    if (unmodify.has('total_acc')) sTotal = 0;
+    if (unmodify.has('revol_bal')) sRevol = coachRevolDelta;
+    if (unmodify.has('dti')) sDti = 0;
+    if (unmodify.has('pub_rec'))
+      sDerog = derogSubtract(
+        applicantBaselineState.pub_rec,
+        applicantBaselineState.pub_rec_bankruptcies
+      );
+    if (loadSnapshot) {
+      unmodify.forEach((n) => {
+        if (!loadSnapshot.suggestedInputs.has(n)) return;
+        simModified.add(n); // a suggested input stays engaged after reset
+        if (n === 'open_acc') sOpen = loadSnapshot.userOpenDelta;
+        if (n === 'total_acc') sTotal = loadSnapshot.userTotalDelta;
+        if (n === 'dti') sDti = loadSnapshot.userDtiDelta;
+        if (n === 'revol_bal') sRevol = coachRevolDelta;
+      });
+    }
+
+    const baseline = applicantBaselineState;
+    // Post-restore engine state: current values, with the restored set at load-time.
+    const post = buildEngineState((f) =>
+      unmodify.has(f.data.name)
+        ? loadTimeSample[f.featureID]
+        : plan.ebmLocal.sample[f.featureID]
+    );
+    const cur = buildCurrentEngineState();
+    const appliedMort = homeMortgageContribution(post.home_ownership);
+
+    const changed = new Set();
+
+    // Restored sources that actually move off their current value.
+    unmodify.forEach((name) => {
+      if (!engineValuesEqual(post[name], cur[name])) changed.add(name);
+    });
+
+    // Recompute the dependents of each restored source; any that land on a different
+    // value than now are changed by the reset.
+    unmodify.forEach((src) => {
+      if (!featureHasOutgoingEdges(src)) return;
+      const { state: next, log } = propagate(
+        src, baseline, post, baseline,
+        simModified, appliedMort, sOpen, sTotal, sFico, sDti, sRevol, sDerog
+      );
+      log
+        .filter((l) => !l.note)
+        .forEach((l) => {
+          const dep = l.dependent;
+          if (unmodify.has(dep)) return;
+          if (!engineValuesEqual(next[dep], cur[dep])) changed.add(dep);
+        });
+    });
+
+    changed.delete(featureName);
+    return [...changed].map(dispName);
   };
 
   // ────────────────────────────────────────────────────────────────────────────
@@ -1242,6 +1360,21 @@
     // caller omits it.
     const finalDti = scoredDti != null ? scoredDti : parts.newDti;
 
+    // ── Two-source DTI model (mirrors FICO) ──────────────────────────────────────
+    // Source 1 — propagated DTI: what the current inputs actually produce
+    // (debt ÷ income, all suggested/propagated changes applied). A real, recomputable
+    // number, NEVER back-justified from the displayed value.
+    // Source 2 — manual delta: the user's manual DTI override, a FIXED offset held
+    // constant as inputs change (engine: newDti = computedDti + dtiManualDelta).
+    // Displayed DTI = propagated + manual == the scored value (display == score).
+    // The delta shown is derived from the ROUNDED propagated/displayed values so the
+    // equation "propagated + delta = displayed" always adds up exactly.
+    const propagatedDtiRaw = parts.computedDti || 0;
+    const propShown = Number(propagatedDtiRaw.toFixed(2));
+    const dispShown = Number(finalDti.toFixed(2));
+    const manShown = Number((dispShown - propShown).toFixed(2));
+    const hasManualDti = Math.abs(parts.dtiManualDelta || 0) >= 0.005;
+
     const origMonthlyIncomeRaw = (baseline?.annual_inc || 0) / 12; // profile income
     const currentDti = baseline?.dti || 0;                         // profile DTI %
     // Current monthly debt is the engine's baseDebt (profile income × profile DTI).
@@ -1278,17 +1411,19 @@
     // the total still ties to the scored DTI.
     const loanDeltaInt = loanChanged ? Math.round(parts.loanPaymentDelta || 0) : 0;
     const revolDeltaInt = revolChanged ? Math.round(revolDeltaRaw) : 0;
-    const manualDeltaInt = Math.round(((parts.dtiManualDelta || 0) / 100) * denomIncome);
+    // The manual DTI edit is NEVER folded into the debt equation as an invented
+    // dollar figure — it is a separate percentage-point delta shown on its own line
+    // (two-source model). The debt equation reflects ONLY the propagated inputs.
     const debtTerms = [currentMonthlyDebt];
     if (loanChanged) debtTerms.push(loanDeltaInt);
     if (revolChanged) debtTerms.push(revolDeltaInt);
-    if (manualDeltaInt !== 0) debtTerms.push(manualDeltaInt);
     // When the loan/revolving changed, the total is the exact component sum (so the
-    // equation reconciles); otherwise keep the debt implied by the scored DTI, which
-    // makes the "debt ÷ income = DTI" line chain exactly to the scored value.
+    // equation reconciles); otherwise the debt implied by the PROPAGATED DTI (never
+    // the displayed value), so the "debt ÷ income = DTI" line chains to the
+    // propagated part and the manual delta is added separately below.
     const totalDebt = debtChanged
       ? debtTerms.reduce((s, t) => s + t, 0)
-      : Math.round((finalDti / 100) * denomIncome);
+      : Math.round((propagatedDtiRaw / 100) * denomIncome);
     // The addition expression, e.g. "$1,041 − $231 + $40" (first term unsigned).
     const debtEquation = debtTerms
       .map((t, i) =>
@@ -1320,16 +1455,14 @@
       ? Math.round(parts.newLoanPayment || 0)
       : appliedLoanInt;
     const foldRevolInt = revolChanged ? Math.round(revolDeltaRaw) : 0;
-    const foldManualInt = Math.round(((parts.dtiManualDelta || 0) / 100) * denomIncome);
+    // The manual DTI edit is NOT folded into the debt (no invented dollar figure) —
+    // the propagated debt reflects inputs only; the manual delta is a separate line.
     const foldTerms = [existingDebtInt, currentLoanPaymentInt];
     if (revolChanged) foldTerms.push(foldRevolInt);
-    if (foldManualInt !== 0) foldTerms.push(foldManualInt);
     const foldNewTotalDebt = foldTerms.reduce((s, t) => s + t, 0);
     let foldDebtExpr = money(existingDebtInt) + ' + ' + money(currentLoanPaymentInt);
     if (revolChanged)
       foldDebtExpr += (foldRevolInt < 0 ? ' − ' : ' + ') + money(Math.abs(foldRevolInt));
-    if (foldManualInt !== 0)
-      foldDebtExpr += (foldManualInt < 0 ? ' − ' : ' + ') + money(Math.abs(foldManualInt));
     const loanTermsShort =
       `${parts.paymentPeriod || 0} months payment period, ${pct(aprFraction * 100)}% APR, ` +
       `loan purpose: ${String(parts.loanPurpose || '').replace(/_/g, ' ')}`;
@@ -1394,6 +1527,16 @@
       debtEquation,
       totalDebt: '$' + totalDebt.toLocaleString(),
       finalIncome: '$' + denomIncome.toLocaleString(),
+      // Two-source manual-edit model (mirrors FICO). When the user manually edited
+      // DTI, the build-up chains to the PROPAGATED DTI, then a "Your manual change"
+      // line adds the fixed delta, then "New DTI: propagated + delta = displayed".
+      // No manual edit → hasManualDti false → normal build-up only.
+      hasManualDti,
+      propagatedDtiPct: propShown.toFixed(2),
+      manualDtiDelta: (manShown >= 0 ? '+' : '−') + Math.abs(manShown).toFixed(2),
+      manualDtiSign: manShown >= 0 ? '+' : '−',
+      manualDtiDeltaMag: Math.abs(manShown).toFixed(2),
+      displayedDtiPct: dispShown.toFixed(2),
       // The final DTI is the ENGINE's scored value — the single source of truth. The
       // hover reflects it; it does not compute its own.
       newDTI: pct(finalDti)
@@ -2596,6 +2739,7 @@
                              : feature.data.name === 'open_acc'   ? openAccLinkCalculation
                              : feature.data.name === 'total_acc'  ? totalAccLinkCalculation
                              : null}
+              getResetPreview={resetRevertNames}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}
             >
@@ -2616,6 +2760,7 @@
                              : feature.data.name === 'open_acc'   ? openAccLinkCalculation
                              : feature.data.name === 'total_acc'  ? totalAccLinkCalculation
                              : null}
+              getResetPreview={resetRevertNames}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}
             >
@@ -2644,6 +2789,7 @@
                              : feature.data.name === 'open_acc'   ? openAccLinkCalculation
                              : feature.data.name === 'total_acc'  ? totalAccLinkCalculation
                              : null}
+              getResetPreview={resetRevertNames}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}
             >
@@ -2664,6 +2810,7 @@
                              : feature.data.name === 'open_acc'   ? openAccLinkCalculation
                              : feature.data.name === 'total_acc'  ? totalAccLinkCalculation
                              : null}
+              getResetPreview={resetRevertNames}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}
             >
@@ -2692,6 +2839,7 @@
                              : feature.data.name === 'open_acc'   ? openAccLinkCalculation
                              : feature.data.name === 'total_acc'  ? totalAccLinkCalculation
                              : null}
+              getResetPreview={resetRevertNames}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}
             >
@@ -2712,6 +2860,7 @@
                              : feature.data.name === 'open_acc'   ? openAccLinkCalculation
                              : feature.data.name === 'total_acc'  ? totalAccLinkCalculation
                              : null}
+              getResetPreview={resetRevertNames}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}
             >
@@ -2755,6 +2904,7 @@
                              : feature.data.name === 'open_acc'   ? openAccLinkCalculation
                              : feature.data.name === 'total_acc'  ? totalAccLinkCalculation
                              : null}
+              getResetPreview={resetRevertNames}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}
             >
@@ -2775,6 +2925,7 @@
                              : feature.data.name === 'open_acc'   ? openAccLinkCalculation
                              : feature.data.name === 'total_acc'  ? totalAccLinkCalculation
                              : null}
+              getResetPreview={resetRevertNames}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}
             >
@@ -2803,6 +2954,7 @@
                              : feature.data.name === 'open_acc'   ? openAccLinkCalculation
                              : feature.data.name === 'total_acc'  ? totalAccLinkCalculation
                              : null}
+              getResetPreview={resetRevertNames}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}
             >
@@ -2823,6 +2975,7 @@
                              : feature.data.name === 'open_acc'   ? openAccLinkCalculation
                              : feature.data.name === 'total_acc'  ? totalAccLinkCalculation
                              : null}
+              getResetPreview={resetRevertNames}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}
             >
@@ -2851,6 +3004,7 @@
                              : feature.data.name === 'open_acc'   ? openAccLinkCalculation
                              : feature.data.name === 'total_acc'  ? totalAccLinkCalculation
                              : null}
+              getResetPreview={resetRevertNames}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}
             >
@@ -2871,6 +3025,7 @@
                              : feature.data.name === 'open_acc'   ? openAccLinkCalculation
                              : feature.data.name === 'total_acc'  ? totalAccLinkCalculation
                              : null}
+              getResetPreview={resetRevertNames}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}
             >
@@ -2914,6 +3069,7 @@
                              : feature.data.name === 'open_acc'   ? openAccLinkCalculation
                              : feature.data.name === 'total_acc'  ? totalAccLinkCalculation
                              : null}
+              getResetPreview={resetRevertNames}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}
             >
@@ -2934,6 +3090,7 @@
                              : feature.data.name === 'open_acc'   ? openAccLinkCalculation
                              : feature.data.name === 'total_acc'  ? totalAccLinkCalculation
                              : null}
+              getResetPreview={resetRevertNames}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}
             >
@@ -2962,6 +3119,7 @@
                              : feature.data.name === 'open_acc'   ? openAccLinkCalculation
                              : feature.data.name === 'total_acc'  ? totalAccLinkCalculation
                              : null}
+              getResetPreview={resetRevertNames}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}
             >
@@ -2982,6 +3140,7 @@
                              : feature.data.name === 'open_acc'   ? openAccLinkCalculation
                              : feature.data.name === 'total_acc'  ? totalAccLinkCalculation
                              : null}
+              getResetPreview={resetRevertNames}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}
             >
@@ -3010,6 +3169,7 @@
                              : feature.data.name === 'open_acc'   ? openAccLinkCalculation
                              : feature.data.name === 'total_acc'  ? totalAccLinkCalculation
                              : null}
+              getResetPreview={resetRevertNames}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}
             >
@@ -3030,6 +3190,7 @@
                              : feature.data.name === 'open_acc'   ? openAccLinkCalculation
                              : feature.data.name === 'total_acc'  ? totalAccLinkCalculation
                              : null}
+              getResetPreview={resetRevertNames}
               on:curValueUpdated={(e) => curValueUpdatedHandler(e, feature)}
               on:constraintUpdated={(e) => constraintUpdatedHandler(e, feature)}
             >
