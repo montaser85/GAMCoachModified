@@ -781,6 +781,7 @@
               {:else if linkCalculation?.type === 'revol_bal'}
                 {#if linkCalculation.engaged}
                   <div class="link-calculation dti-calc">
+                    <div class="dti-line intro">You have <b>{linkCalculation.newBalance}</b> in unpaid revolving balance.</div>
                     <div class="dti-subhead">Your revolving balance breakdown</div>
                     <div class="dti-row">{linkCalculation.baseIsSuggested ? 'Suggested balance' : 'Your profile balance'}: <b>{linkCalculation.baseBalance}</b></div>
                     {#if linkCalculation.showManualRow}
@@ -789,12 +790,13 @@
                     {#if linkCalculation.showUtilRow}
                       <div class="dti-row">From your credit utilization change: <b>{linkCalculation.utilDrivenDelta}</b></div>
                     {/if}
-                    <div class="dti-line final">Total: {#if linkCalculation.hasContributors}{linkCalculation.balanceSumExpr} = {/if}<b>{linkCalculation.newBalance}</b>, i.e., you owe {linkCalculation.newBalance} on revolving credit.</div>
+                    <div class="dti-line final">Total: {#if linkCalculation.hasContributors}{linkCalculation.balanceSumExpr} = {/if}<b>{linkCalculation.newBalance}</b></div>
                   </div>
                 {/if}
               {:else if linkCalculation?.type === 'revol_util'}
                 {#if linkCalculation.engaged}
                   <div class="link-calculation dti-calc">
+                    <div class="dti-line intro">You&rsquo;re using <b>{linkCalculation.newUtilization}%</b> of your credit limit.</div>
                     {#if linkCalculation.hasLimit}
                       <div class="dti-subhead">Your utilization breakdown</div>
                       <div class="dti-row">Your credit limit: <b>{linkCalculation.creditLimit}</b> (estimated from your profile revolving balance {linkCalculation.currentBalance} &divide; credit utilization {linkCalculation.currentUtilization}%)</div>
@@ -802,14 +804,15 @@
                       <div class="dti-row">New utilization: {linkCalculation.newBalance} &divide; {linkCalculation.creditLimit} &times; 100 = <b>{linkCalculation.newUtilizationRaw}%</b>{#if linkCalculation.utilCapped}&nbsp;&mdash; this is above the maximum limit of 100%, so it&rsquo;s capped at <b>100%</b>.{/if}</div>
                     {/if}
                     {#if linkCalculation.changeVerb === 'stayed at'}
-                      <div class="dti-line final">Your credit utilization stayed at <b>{linkCalculation.newUtilization}%</b>, i.e., you&rsquo;re using {linkCalculation.newUtilization}% of your available credit.</div>
+                      <div class="dti-line final">Your credit utilization stayed at <b>{linkCalculation.newUtilization}%</b></div>
                     {:else}
-                      <div class="dti-line final">Your credit utilization {linkCalculation.changeVerb} from <b>{linkCalculation.currentUtilization}%</b> to <b>{linkCalculation.newUtilization}%</b>, i.e., you&rsquo;re using {linkCalculation.newUtilization}% of your available credit.</div>
+                      <div class="dti-line final">Your credit utilization {linkCalculation.changeVerb} from <b>{linkCalculation.currentUtilization}%</b> to <b>{linkCalculation.newUtilization}%</b></div>
                     {/if}
                   </div>
                 {/if}
               {:else if linkCalculation?.type === 'open_acc'}
                 <div class="link-calculation dti-calc">
+                  <div class="dti-line intro">You have {linkCalculation.newOpenAccounts} 'Open' accounts</div>
                   <div class="dti-subhead">Your open accounts breakdown</div>
                   <div class="dti-row">Open accounts in your profile: <b>{linkCalculation.profileOpen}</b></div>
                   {#if linkCalculation.showOpenRow}
@@ -822,6 +825,7 @@
                 </div>
               {:else if linkCalculation?.type === 'total_acc'}
                 <div class="link-calculation dti-calc">
+                  <div class="dti-line intro">You have {linkCalculation.newTotalAccounts} accounts</div>
                   <div class="dti-subhead">Your account breakdown</div>
                   <div class="dti-row">Accounts in your profile: <b>{linkCalculation.profileAccounts}</b></div>
                   {#if linkCalculation.showOpenRow}
@@ -856,7 +860,7 @@
             <div class="reset-tip-line">Reset</div>
             {#if resetTipNames.length > 0}
               <div class="reset-tip-warn">
-                &#9888;&#65039; This will also change these connected features: {resetTipNames.join(', ')}
+                &#9888;&#65039; will also reset these connected features: {resetTipNames.join(', ')}
               </div>
             {/if}
           </div>

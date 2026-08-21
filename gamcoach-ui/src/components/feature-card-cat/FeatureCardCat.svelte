@@ -731,7 +731,7 @@
             <div class="reset-tip-line">Reset</div>
             {#if resetTipNames.length > 0}
               <div class="reset-tip-warn">
-                &#9888;&#65039; This will also change these connected features: {resetTipNames.join(', ')}
+                &#9888;&#65039; will also reset these connected features: {resetTipNames.join(', ')}
               </div>
             {/if}
           </div>
