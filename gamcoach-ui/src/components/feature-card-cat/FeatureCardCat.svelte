@@ -11,9 +11,7 @@
   import {
     initHist,
     initHistSize,
-    syncBars,
-    titleMouseenterHandler,
-    titleMouseleaveHandler
+    syncBars
   } from './FeatureCardCat';
 
   import rightArrowIcon from '../../img/icon-right-arrow.svg';
@@ -597,18 +595,7 @@
     on:click={headerClicked}
   >
     <div class="top-row">
-      <div
-        class="feature-info"
-        on:mouseenter={(e) =>
-          titleMouseenterHandler(
-            e,
-            tooltipConfig,
-            tooltipConfigStore,
-            state.feature.descriptionString
-          )}
-        on:mouseleave={(e) =>
-          titleMouseleaveHandler(e, tooltipConfig, tooltipConfigStore)}
-      >
+      <div class="feature-info">
         <span class="feature-name">
           {state.feature.name}
         </span>

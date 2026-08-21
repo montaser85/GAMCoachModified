@@ -44,7 +44,7 @@
 <div class="change-effects">
   <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
   <div class="ce-title" class:ce-title-empty={events.length === 0} on:click={() => (collapsed = !collapsed)}>
-    Which features your changes affected
+    Features affected by suggested or your changes
     <span
       class="ce-info"
       title="How each feature you edit ripples through your application, and whether each ripple helps or hurts your approval."
@@ -83,10 +83,12 @@
     <div class="ce-rows">
       {#each events as ev (ev.sourceName)}
         <div class="ce-row">
-          <!-- Per-row causal-link info (left) -->
-          <span class="ce-info ce-row-info" title={rowTooltip(ev)}>i</span>
+          <!-- Per-row causal-link info (left). Custom tooltip below the row so it
+               never overlaps the values it describes. -->
+          <span class="ce-info ce-row-info">i</span>
+          <div class="ce-row-tip">{rowTooltip(ev)}</div>
 
-          <!-- Source: full feature name + its new value (no icon) -->
+          <!-- Source: full feature name + its before → after value -->
           <div class="ce-source">
             <div class="ce-src-name">{ev.sourceDisplayName}</div>
             <div class="ce-src-val">{ev.sourceValueDisplay}</div>
@@ -182,16 +184,22 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 15px;
-    height: 15px;
+    width: 17px;
+    height: 17px;
     border-radius: 50%;
-    border: 1px solid $gray-400;
-    color: $gray-500;
-    font-size: 0.68rem;
+    border: 1.5px solid $blue-500;
+    color: $blue-600;
+    font-size: 0.72rem;
     font-weight: 700;
     font-style: italic;
-    cursor: default;
+    cursor: pointer;
     flex: 0 0 auto;
+    transition: background 120ms, color 120ms;
+
+    &:hover {
+      background: $blue-500;
+      color: white;
+    }
   }
 
   .ce-legend {
@@ -236,10 +244,39 @@
     gap: 12px;
     padding: 16px 2px;
     border-top: 1px solid $gray-200;
+    position: relative; // anchor for the per-row info tooltip
 
     &:first-child {
       border-top: none;
     }
+  }
+
+  // Per-row causal-link tooltip — sits BELOW the row so it never covers the source
+  // / effect values it explains. Shown only while the row's info icon is hovered.
+  .ce-row-tip {
+    position: absolute;
+    top: calc(100% - 6px);
+    left: 0;
+    z-index: 60;
+    max-width: 300px;
+    width: max-content;
+    background: $gray-900;
+    color: white;
+    padding: 8px 10px;
+    border-radius: 6px;
+    font-size: 0.78rem;
+    line-height: 1.4;
+    white-space: pre-line; // render the \n\n between multiple effects as blank lines
+    box-shadow: 0 4px 16px hsla(0, 0%, 0%, 0.28);
+    opacity: 0;
+    visibility: hidden;
+    pointer-events: none;
+    transition: opacity 120ms ease;
+  }
+
+  .ce-row-info:hover ~ .ce-row-tip {
+    opacity: 1;
+    visibility: visible;
   }
 
   .ce-row-info {
@@ -248,7 +285,7 @@
 
   .ce-source {
     flex: 0 0 auto;
-    width: 112px;
+    width: 148px;
     display: flex;
     flex-direction: column;
     align-items: flex-start;
@@ -263,13 +300,19 @@
       overflow-wrap: anywhere;
     }
 
+    // before → after: stays on ONE horizontal line when it fits (short numeric
+    // sources), and for a long value wraps at the spaces around the arrow WITHIN the
+    // column instead of overflowing into the arrow/effects. min-width:0 lets the
+    // fixed-width column actually contain the text.
     .ce-src-val {
+      min-width: 0;
+      max-width: 100%;
       font-size: 0.84rem;
       font-weight: 700;
       color: $gray-900;
       line-height: 1.2;
       font-variant-numeric: tabular-nums;
-      overflow-wrap: anywhere;
+      overflow-wrap: break-word;
     }
   }
 

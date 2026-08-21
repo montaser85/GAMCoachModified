@@ -14,10 +14,6 @@
     moveThumb,
     syncRangeTrack
   } from './FeatureCard';
-  import {
-    titleMouseenterHandler,
-    titleMouseleaveHandler
-  } from '../feature-card-cat/FeatureCardCat';
 
   import rightArrowIcon from '../../img/icon-right-arrow.svg';
   import rangeThumbLeftIcon from '../../img/icon-range-thumb-left.svg';
@@ -669,18 +665,7 @@
     on:click={headerClicked}
   >
     <div class="top-row">
-      <div
-        class="feature-info"
-        on:mouseenter={(e) =>
-          titleMouseenterHandler(
-            e,
-            tooltipConfig,
-            tooltipConfigStore,
-            state.feature.description
-          )}
-        on:mouseleave={(e) =>
-          titleMouseleaveHandler(e, tooltipConfig, tooltipConfigStore)}
-      >
+      <div class="feature-info">
         <span class="feature-name">
           {state.feature.name}
         </span>
@@ -714,7 +699,8 @@
                 {#if linkCalculation.engaged}
                   <div class="link-calculation dti-calc">
                     <div class="dti-line intro">Your FICO score (credit score) is <b>{linkCalculation.scoredFICO}</b></div>
-                    <div class="dti-subhead">Your score breakdown</div>
+                    <details class="dti-details">
+                    <summary class="dti-subhead">Your score breakdown</summary>
                     <div class="dti-row">Your profile score: <b>{linkCalculation.profileFICO}</b></div>
                     {#if linkCalculation.showSuggestedRow}
                       <div class="dti-row">Suggested change: <b>{linkCalculation.suggestedDelta}</b></div>
@@ -728,12 +714,14 @@
                       <div class="dti-row">Total drop: 4 &times; {linkCalculation.count} = <b>{linkCalculation.totalDrop}</b> points</div>
                     {/if}
                     <div class="dti-line final">New FICO score: {linkCalculation.ficoChainExpr} = <b>{linkCalculation.rawNewScore}</b>{#if linkCalculation.isCapped}&nbsp;&mdash; this is below the minimum score of 662, so it&rsquo;s capped at <b>662</b>.{/if}</div>
+                    </details>
                   </div>
                 {/if}
               {:else if linkCalculation?.type === 'dti'}
                 <div class="link-calculation dti-calc">
                   <div class="dti-line intro">Your DTI is {linkCalculation.newDTI}, so {linkCalculation.newDTI}% of your income would go toward debt payments.</div>
-                  <div class="dti-subhead">Your DTI breakdown</div>
+                  <details class="dti-details">
+                  <summary class="dti-subhead">Your DTI breakdown</summary>
                   {#if linkCalculation.foldedLayout}
                     <!-- Phase 1 — how the current DTI is built (loan included) -->
                     <div class="dti-row">Monthly income: {linkCalculation.annualIncome} &divide; 12 = <b>{linkCalculation.monthlyIncome}</b></div>
@@ -777,12 +765,14 @@
                       <div class="dti-line final">New DTI: {linkCalculation.propagatedDtiPct} {linkCalculation.manualDtiSign} {linkCalculation.manualDtiDeltaMag} = <b>{linkCalculation.displayedDtiPct}%</b></div>
                     {/if}
                   {/if}
+                  </details>
                 </div>
               {:else if linkCalculation?.type === 'revol_bal'}
                 {#if linkCalculation.engaged}
                   <div class="link-calculation dti-calc">
                     <div class="dti-line intro">You have <b>{linkCalculation.newBalance}</b> in unpaid revolving balance.</div>
-                    <div class="dti-subhead">Your revolving balance breakdown</div>
+                    <details class="dti-details">
+                    <summary class="dti-subhead">Your revolving balance breakdown</summary>
                     <div class="dti-row">{linkCalculation.baseIsSuggested ? 'Suggested balance' : 'Your profile balance'}: <b>{linkCalculation.baseBalance}</b></div>
                     {#if linkCalculation.showManualRow}
                       <div class="dti-row">Adjusted by you: <b>{linkCalculation.manualDelta}</b></div>
@@ -791,6 +781,7 @@
                       <div class="dti-row">From your credit utilization change: <b>{linkCalculation.utilDrivenDelta}</b></div>
                     {/if}
                     <div class="dti-line final">Total: {#if linkCalculation.hasContributors}{linkCalculation.balanceSumExpr} = {/if}<b>{linkCalculation.newBalance}</b></div>
+                    </details>
                   </div>
                 {/if}
               {:else if linkCalculation?.type === 'revol_util'}
@@ -798,22 +789,31 @@
                   <div class="link-calculation dti-calc">
                     <div class="dti-line intro">You&rsquo;re using <b>{linkCalculation.newUtilization}%</b> of your credit limit.</div>
                     {#if linkCalculation.hasLimit}
-                      <div class="dti-subhead">Your utilization breakdown</div>
+                      <details class="dti-details">
+                      <summary class="dti-subhead">Your utilization breakdown</summary>
                       <div class="dti-row">Your credit limit: <b>{linkCalculation.creditLimit}</b> (estimated from your profile revolving balance {linkCalculation.currentBalance} &divide; credit utilization {linkCalculation.currentUtilization}%)</div>
                       <div class="dti-row">New revolving balance: <b>{linkCalculation.newBalance}</b></div>
                       <div class="dti-row">New utilization: {linkCalculation.newBalance} &divide; {linkCalculation.creditLimit} &times; 100 = <b>{linkCalculation.newUtilizationRaw}%</b>{#if linkCalculation.utilCapped}&nbsp;&mdash; this is above the maximum limit of 100%, so it&rsquo;s capped at <b>100%</b>.{/if}</div>
-                    {/if}
-                    {#if linkCalculation.changeVerb === 'stayed at'}
-                      <div class="dti-line final">Your credit utilization stayed at <b>{linkCalculation.newUtilization}%</b></div>
+                      {#if linkCalculation.changeVerb === 'stayed at'}
+                        <div class="dti-line final">Your credit utilization stayed at <b>{linkCalculation.newUtilization}%</b></div>
+                      {:else}
+                        <div class="dti-line final">Your credit utilization {linkCalculation.changeVerb} from <b>{linkCalculation.currentUtilization}%</b> to <b>{linkCalculation.newUtilization}%</b></div>
+                      {/if}
+                      </details>
                     {:else}
-                      <div class="dti-line final">Your credit utilization {linkCalculation.changeVerb} from <b>{linkCalculation.currentUtilization}%</b> to <b>{linkCalculation.newUtilization}%</b></div>
+                      {#if linkCalculation.changeVerb === 'stayed at'}
+                        <div class="dti-line final">Your credit utilization stayed at <b>{linkCalculation.newUtilization}%</b></div>
+                      {:else}
+                        <div class="dti-line final">Your credit utilization {linkCalculation.changeVerb} from <b>{linkCalculation.currentUtilization}%</b> to <b>{linkCalculation.newUtilization}%</b></div>
+                      {/if}
                     {/if}
                   </div>
                 {/if}
               {:else if linkCalculation?.type === 'open_acc'}
                 <div class="link-calculation dti-calc">
                   <div class="dti-line intro">You have {linkCalculation.newOpenAccounts} 'Open' accounts</div>
-                  <div class="dti-subhead">Your open accounts breakdown</div>
+                  <details class="dti-details">
+                  <summary class="dti-subhead">Your open accounts breakdown</summary>
                   <div class="dti-row">Open accounts in your profile: <b>{linkCalculation.profileOpen}</b></div>
                   {#if linkCalculation.showOpenRow}
                     <div class="dti-row">Open accounts you added directly: <b>{linkCalculation.openManualDelta}</b></div>
@@ -822,11 +822,13 @@
                     <div class="dti-row">{linkCalculation.mortgagePlural ? 'Mortgages you added' : 'Mortgage you added'}: <b>+{linkCalculation.mortgageDelta}</b></div>
                   {/if}
                   <div class="dti-line final">Total open accounts: <b>{linkCalculation.newOpenAccounts}</b></div>
+                  </details>
                 </div>
               {:else if linkCalculation?.type === 'total_acc'}
                 <div class="link-calculation dti-calc">
                   <div class="dti-line intro">You have {linkCalculation.newTotalAccounts} accounts</div>
-                  <div class="dti-subhead">Your account breakdown</div>
+                  <details class="dti-details">
+                  <summary class="dti-subhead">Your account breakdown</summary>
                   <div class="dti-row">Accounts in your profile: <b>{linkCalculation.profileAccounts}</b></div>
                   {#if linkCalculation.showOpenRow}
                     <div class="dti-row">{linkCalculation.openPlural ? 'Open accounts you added' : 'Open account you added'}: <b>{linkCalculation.openAccountsDelta}</b></div>
@@ -838,6 +840,7 @@
                     <div class="dti-row">Adjusted by you: <b>{linkCalculation.accountsManualDelta}</b></div>
                   {/if}
                   <div class="dti-line final">Total accounts: <b>{linkCalculation.newTotalAccounts}</b></div>
+                  </details>
                 </div>
               {/if}
             {:else}

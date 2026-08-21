@@ -528,10 +528,12 @@
     featureGrid.loadFeatures(plan.features, constraints);
     featureGrid = featureGrid;
 
-    // Start the "Effects of your changes" section empty on (re)init — a fresh
-    // mount happens on plan switch / regenerate / history restore, matching the
-    // FeaturePanel's own per-mount reset of propagation tracking.
+    // Start the affected-features section empty on (re)init — a fresh mount happens
+    // on plan switch / regenerate / history restore, matching the FeaturePanel's own
+    // per-mount reset of propagation tracking — then seed it with the coach's
+    // suggested-change ripples so they show from load (user edits add rows on top).
     changeEffectsStore.set([]);
+    recordSuggestedChangeEffects();
     // Same for "Ideas to try" (recomputed immediately by the store subscription).
     ideasStore.set([]);
 
@@ -2171,18 +2173,15 @@
   };
 
   /**
-   * Source-value label for a row. Categorical sources show a transition
-   * (e.g. "Rent → Mortgage") from the applicant's profile value to the current
-   * value; numeric sources show the single current (formatted) value.
+   * Source-value label for a row: the transition from the applicant's profile value
+   * to the current value (e.g. "$61,000 → $90,000" or "Rent → Mortgage"), for both
+   * continuous and categorical sources. Falls back to the single current value when
+   * there is no distinct "before".
    */
   const formatSourceValue = (sourceName, rawAfter) => {
-    const feat = plan.features.find((f) => f.data.name === sourceName);
-    if (feat && feat.data.type === 'categorical') {
-      const before = formatEffectValue(sourceName, applicantBaselineState?.[sourceName]);
-      const after = formatEffectValue(sourceName, rawAfter);
-      return before && before !== after ? `${before} → ${after}` : after;
-    }
-    return formatEffectValue(sourceName, rawAfter);
+    const before = formatEffectValue(sourceName, applicantBaselineState?.[sourceName]);
+    const after = formatEffectValue(sourceName, rawAfter);
+    return before && before !== after ? `${before} → ${after}` : after;
   };
 
   /**
@@ -2230,7 +2229,7 @@
     const approvalVerb = helps ? 'raised' : 'lowered';
     const tooltip =
       `${sourceDisplay} ${valueVerb} your ${depDisplay.toLowerCase()} ` +
-      `from ${beforeDisplay} to ${afterDisplay}, which ${approvalVerb} your approval.`;
+      `from ${beforeDisplay} to ${afterDisplay}, which ${approvalVerb} your approval score.`;
 
     return {
       depName,
@@ -2244,8 +2243,8 @@
   };
 
   /**
-   * Record (or refresh) the "Effects of your changes" row for one source edit.
-   * Collapses by source: the newest edit of a source replaces its prior row and
+   * Record (or refresh) the affected-features row for one source change.
+   * Collapses by source: the newest change of a source replaces its prior row and
    * moves to the top (newest first). An empty `effects` array records a
    * "no effect" row (the user changed this feature but it propagated to nothing).
    */
@@ -2260,6 +2259,56 @@
       event,
       ...list.filter((ev) => ev.sourceName !== sourceName)
     ]);
+  };
+
+  /**
+   * Populate the affected-features section at LOAD with the coach's suggested-change
+   * ripples — one source→effect row per suggested INPUT that actually propagates to a
+   * dependent. Applies the suggested inputs sequentially from the folded baseline
+   * (as if the user had entered the suggestions one by one), running the SAME engine
+   * + seeded deltas the load-fold used, so the ripple values match the displayed /
+   * scored values (and the DTI hover's propagated result). A suggested input that
+   * propagates to nothing gets NO row (no invented effects). Provenance is tagged
+   * "suggested" via recordChangeEffects's shared derivation.
+   */
+  const recordSuggestedChangeEffects = () => {
+    if (!plan || !applicantBaselineState) return;
+    const baseline = applicantBaselineState;
+    const suggested = plan.cfDataRaw
+      ? buildEngineState((f) => plan.cfDataRaw[f.featureID])
+      : buildCurrentEngineState();
+    const changedInputs = plan.features
+      .map((f) => f.data.name)
+      .filter((name) => !engineValuesEqual(suggested[name], baseline[name]));
+    if (changedInputs.length === 0) return;
+
+    let working = { ...baseline };
+    changedInputs.forEach((name) => {
+      working = { ...working, [name]: suggested[name] };
+      if (!featureHasOutgoingEdges(name)) return; // leaf suggestion → no ripple, no row
+      const { state: next, log } = propagate(
+        name, baseline, working, baseline,
+        modifiedFeatures, appliedHomeMortgage, userOpenDelta, userTotalDelta, userFicoDelta,
+        userDtiDelta, userRevolDelta, derogIndependentPart
+      );
+      const effectEntries = [];
+      const deps = [...new Set(log.filter((l) => !l.note).map((l) => l.dependent))];
+      deps.forEach((dep) => {
+        const before = working[dep];
+        const after = next[dep];
+        const changed =
+          typeof after === 'number' && typeof before === 'number'
+            ? Math.abs(after - before) > 1e-6
+            : after !== before;
+        if (!changed) return;
+        effectEntries.push(buildEffectEntry(name, dep, before, after));
+      });
+      working = next; // accumulate propagated dependents for the next input
+      // Only record a row when this suggested input actually rippled somewhere.
+      if (effectEntries.length > 0) {
+        recordChangeEffects(name, working[name], effectEntries);
+      }
+    });
   };
 
   // ── "Ideas to try" — isolated speculative what-if evaluation (Part 1) ────────
