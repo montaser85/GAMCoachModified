@@ -41,9 +41,7 @@
     derogRank,
     derogSubtract,
     loanMonthlyPayment,
-    aprForPurpose,
-    PROPAGATE_SUGGESTED_ON_LOAD,
-    FOLD_APPLIED_LOAN_INTO_DTI
+    aprForPurpose
   } from '../../engine/index.mjs';
 
   export let windowLoaded = false;
@@ -187,7 +185,7 @@
   // load-time value — only a reset clears it.
   let modifiedFeatures = new Set();
   // Features whose values came from LOAD-TIME propagation of the coach's
-  // suggestions (PROPAGATE_SUGGESTED_ON_LOAD). They are put in modifiedFeatures
+  // suggestions. They are put in modifiedFeatures
   // so the DTI/FICO gate keeps their contributions engaged on later user edits,
   // but they are NOT user-caused — this set excludes them from the blue "you
   // modified" outline and keeps their provenance "suggested". A real user edit of
@@ -279,8 +277,8 @@
   // source change never discards it. Cleared only on that feature's own reset.
   let userDtiDelta = 0;    // DTI: newDTI = computedDTI + userDtiDelta
   let userRevolDelta = 0;  // Revolving Balance: newBal = profile + userRevolDelta + util-driven
-  // Revolving-Balance anchor, captured at load INDEPENDENT of
-  // PROPAGATE_SUGGESTED_ON_LOAD. `revolAnchorBal`/`revolAnchorUtil` are the
+  // Revolving-Balance anchor, captured at load from the coach's suggested state.
+  // `revolAnchorBal`/`revolAnchorUtil` are the
   // DISPLAYED (post-fold) suggested balance and utilization the user is looking at;
   // `coachRevolDelta` is that balance's offset from the balance its OWN displayed
   // utilization implies. Folding it into userRevolDelta makes a later Credit
@@ -450,7 +448,7 @@
   /**
    * Seed the coach's suggested Revolving-Balance offset so that a later Credit
    * Utilization edit anchors the recompute to the SUGGESTED balance, not the
-   * profile. This must run regardless of PROPAGATE_SUGGESTED_ON_LOAD: editing
+   * profile. Editing
    * utilization is the user's own action, whose propagation is always on, so the
    * balance it derives must chain from the plan the user is viewing. Idempotent —
    * re-runnable on plan (re)mount and on a revol-pair reset.
@@ -504,8 +502,8 @@
     // the propagation helpers have baseline data even before the user moves any slider.
     initLastKnownValues();
 
-    // PROPAGATE_SUGGESTED_ON_LOAD: run causal propagation on this plan's suggested
-    // changes so dependents display their propagated values immediately. Runs
+    // Run causal propagation on this plan's suggested changes so dependents display
+    // their propagated values immediately. Runs
     // per-plan (this whole init re-runs on each plan switch via Coach.svelte's
     // {#key} remount). No-op when the flag is off.
     propagateSuggestedChangesAtLoad();
@@ -732,7 +730,7 @@
     // user's manual FICO delta and re-settles the score from the remaining
     // penalties (never touches the source cards).
     if (featureName === 'fico_score') {
-      // PROPAGATE_SUGGESTED_ON_LOAD: a FICO that was the coach's SUGGESTED input
+      // A FICO that was the coach's SUGGESTED input
       // returns to its load-snapshot value + seeded delta (re-engaged, "suggested",
       // no outline) instead of clearing to the profile penalty.
       const suggestedFico = !!(loadSnapshot && loadSnapshot.suggestedInputs.has('fico_score'));
@@ -811,7 +809,7 @@
       );
     }
 
-    // ── 1b. PROPAGATE_SUGGESTED_ON_LOAD — re-establish the LOAD SNAPSHOT ──────
+    // ── 1b. Re-establish the LOAD SNAPSHOT ────────────────────────────────────
     // The steps above cleared the restored features' gate engagement and deltas
     // (which is correct for USER edits). But with the flag on, a restored feature
     // that was part of the coach's load-time suggestions must return to its
@@ -880,7 +878,7 @@
     });
     modifiedFeatures = modifiedFeatures;
 
-    // ── 2b. PROPAGATE_SUGGESTED_ON_LOAD — snap fully-suggested dependents ─────
+    // ── 2b. Snap fully-suggested dependents ───────────────────────────────────
     // A folded dependent whose sources are ALL still suggested (none user-edited)
     // belongs exactly at its load-snapshot value. Restore it directly from
     // loadTimeSample — overriding any small recompute drift (e.g. the two-way
@@ -1082,10 +1080,10 @@
   };
 
   /**
-   * PROPAGATE_SUGGESTED_ON_LOAD — run the causal-propagation engine on the coach's
-   * suggested changes at load, so dependent features show their propagated values
-   * immediately (as if the user had manually entered the suggestions). Reuses the
-   * SAME engine + panel helpers — no second propagation path.
+   * Run the causal-propagation engine on the coach's suggested changes at load, so
+   * dependent features show their propagated values immediately (as if the user had
+   * manually entered the suggestions). Reuses the SAME engine + panel helpers — no
+   * second propagation path.
    *
    * Provenance handling (folded, per design): each propagated dependent is written
    * into BOTH ebmLocal.sample AND coachSample, so it reads as "suggested" (never
@@ -1094,10 +1092,9 @@
    * DTI/FICO gate (added to modifiedFeatures, so later edits keep their
    * contributions) but recorded in suggestedAtLoad so they carry NO user-modified
    * outline and never enter "Which features your changes affected" (that section
-   * is left untouched here). Entirely gated by the flag — a no-op when off.
+   * is left untouched here).
    */
   const propagateSuggestedChangesAtLoad = () => {
-    if (!PROPAGATE_SUGGESTED_ON_LOAD) return;
     if (!plan || !applicantBaselineState) return;
 
     const baseline = applicantBaselineState;
@@ -1435,15 +1432,16 @@
 
     const aprFraction = aprForPurpose(parts.loanPurpose);
 
-    // ── FOLD_APPLIED_LOAN_INTO_DTI: two-phase, all-contributors layout ──────────
+    // ── Two-phase, all-contributors layout ─────────────────────────────────────
     // Phase 1 builds the loan-inclusive current DTI transparently (pre-loan debt +
     // the applied-for loan's payment); Phase 2 shows every contributor that actually
     // changed. Provenance-neutral. Composes with Model B: the loan-payment line in
     // Phase 2 shows the CURRENT amortized payment (from the changed loan/term/purpose),
-    // and the final debt rebuilds from components — no double-count. Only used when
-    // the fold is on and the loan is present; fold-off keeps the equation layout.
-    const foldedLayout =
-      FOLD_APPLIED_LOAN_INTO_DTI && (parts.originalLoanPayment || 0) > 0.5;
+    // and the final debt rebuilds from components — no double-count. Requires the
+    // applied-for loan to be present; when there is no loan payment to fold (a
+    // degenerate case that does not occur for real applications, where loan_amnt > 0)
+    // the template falls back to the plain equation layout.
+    const foldedLayout = (parts.originalLoanPayment || 0) > 0.5;
     // Integer components chosen so Phase 1 chains EXACTLY: existing + loan = current.
     const appliedLoanInt = Math.round(parts.originalLoanPayment || 0);
     const existingDebtInt = currentMonthlyDebt - appliedLoanInt; // pre-loan debt
@@ -1504,10 +1502,10 @@
       monthlyIncome: '$' + origMonthlyIncome.toLocaleString(),
       currentDti: pct(currentDti),
       currentMonthlyDebt: '$' + currentMonthlyDebt.toLocaleString(),
-      // FOLD_APPLIED_LOAN_INTO_DTI: the baseline debt above already includes the
-      // applied-for loan's payment — surface it so the higher starting DTI is
-      // explained rather than appearing unattributed.
-      appliedLoanFolded: FOLD_APPLIED_LOAN_INTO_DTI && (parts.originalLoanPayment || 0) > 0.5,
+      // The baseline debt above already includes the applied-for loan's payment —
+      // surface it so the higher starting DTI is explained rather than appearing
+      // unattributed.
+      appliedLoanFolded: (parts.originalLoanPayment || 0) > 0.5,
       appliedLoanPayment: money(parts.originalLoanPayment || 0),
       incomeChanged,
       newAnnualIncome: money(newMonthlyIncomeRaw * 12),

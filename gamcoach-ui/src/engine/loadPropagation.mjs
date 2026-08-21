@@ -29,17 +29,13 @@
  * the identical result. The two paths must stay in lock-step — this is a faithful
  * transcription of the plan-mutation core of
  * FeaturePanel.propagateSuggestedChangesAtLoad(); keep them in sync.
- *
- * Gated by PROPAGATE_SUGGESTED_ON_LOAD: a no-op in the ORIGINAL study condition
- * (where the FeaturePanel also does not propagate), so both stay consistent.
  */
 
 import {
   propagate,
   featureHasOutgoingEdges,
   MORTGAGE_HOME_VALUE,
-  derogSubtract,
-  PROPAGATE_SUGGESTED_ON_LOAD
+  derogSubtract
 } from './index.mjs';
 
 // ── Pure helpers (transcribed verbatim from FeaturePanel, parameterized by the
@@ -110,14 +106,13 @@ const homeMortgageContribution = (baseline, stateHome) =>
 /**
  * Apply the coach-suggested propagation + dependent fold to ONE plan's stored
  * state. Mutates plan.ebmLocal / plan.coachSample / per-feature coach fields in
- * place and recomputes predScore. No-op when PROPAGATE_SUGGESTED_ON_LOAD is off,
- * when the plan is missing, or when the coach suggested no input changes.
+ * place and recomputes predScore. No-op when the plan is missing or when the coach
+ * suggested no input changes.
  *
  * @param {import('../components/coach/Coach').Plan} plan
  * @returns {boolean} true if any dependent was folded (state changed)
  */
 export function applySuggestedPropagationToPlan(plan) {
-  if (!PROPAGATE_SUGGESTED_ON_LOAD) return false;
   if (!plan || !plan.features || !plan.ebmLocal) return false;
 
   // Baseline = the applicant's ORIGINAL profile (display units). f.originalValue

@@ -55,18 +55,15 @@ export const APR_BY_PURPOSE = {
 };
 export const DEFAULT_APR = 0.1165; // personal / everything else
 
-// ── TEST TOGGLE: fold the applied-for loan into baseline DTI ──────────────────
-// When true, the applicant's baseline DTI is raised at load to INCLUDE the
-// applied-for loan's amortized monthly payment — a harder, more realistic starting
-// point (the loan they're asking for counts against them from the start). Applied
-// once to curExample (see foldAppliedLoanIntoDti), so generation, scoring, and
-// display all use the same loan-included DTI (display == score). It composes with
-// the Model B loan-change delta WITHOUT double-counting: the folded baseline already
-// carries the original loan's payment, and a loan change moves DTI by
-// (new − original) payment from that baseline.
-// When false → byte-identical to current behavior (baseline DTI excludes the loan).
-// Independent of USE_ADVANCED_CONDITION — flip this one line to toggle.
-export const FOLD_APPLIED_LOAN_INTO_DTI = true;
+// ── Applied-for loan folded into baseline DTI (permanent) ────────────────────
+// The applicant's baseline DTI is raised at load to INCLUDE the applied-for loan's
+// amortized monthly payment — a harder, more realistic starting point (the loan
+// they're asking for counts against them from the start). Applied once to
+// curExample (see foldAppliedLoanIntoDti), so generation, scoring, and display all
+// use the same loan-included DTI (display == score). It composes with the Model B
+// loan-change delta WITHOUT double-counting: the folded baseline already carries the
+// original loan's payment, and a loan change moves DTI by (new − original) payment
+// from that baseline.
 
 /**
  * Resolve the APR for a given purpose string. Case-insensitive; unknown
@@ -130,8 +127,8 @@ export function loanMonthlyPayment(loanAmount, monthlyInterestRate, termMonths) 
  * foldAppliedLoanIntoDti adds to the baseline `dti`. Exposed on its own so a
  * consumer can REVERSE the fold and recover the applicant's raw profile DTI
  * (e.g. Compare Plans showing the DTI "before" as the original profile value,
- * not the loan-folded baseline). Returns 0 when the fold is off or the loan
- * contribution can't be computed. Operates in model-internal units.
+ * not the loan-folded baseline). Returns 0 when the loan contribution can't be
+ * computed. Operates in model-internal units.
  *
  * NOTE: keep the formula here in lock-step with foldAppliedLoanIntoDti below.
  * @param {Array} curExample model example (feature values by index)
@@ -139,7 +136,6 @@ export function loanMonthlyPayment(loanAmount, monthlyInterestRate, termMonths) 
  * @returns {number} DTI percentage points added by the applied-for loan
  */
 export function appliedLoanDtiContribution(curExample, featureNames) {
-  if (!FOLD_APPLIED_LOAN_INTO_DTI) return 0;
   if (!curExample || !featureNames) return 0;
   const idx = (n) => featureNames.indexOf(n);
   const dtiIdx = idx('dti');
@@ -157,19 +153,18 @@ export function appliedLoanDtiContribution(curExample, featureNames) {
 }
 
 /**
- * TEST TOGGLE (FOLD_APPLIED_LOAN_INTO_DTI): return a copy of the raw model example
- * with its `dti` raised to INCLUDE the applied-for loan's monthly payment. Applied
- * once, at the applicant-baseline source, so generation + scoring + display all see
- * the same loan-included DTI. Byte-identical passthrough (returns the SAME array,
- * no copy) when the flag is off. Operates in model-internal units: `dti` is a raw
- * percentage, `annual_inc` is log10 dollars, `loan_amnt` is raw dollars, `term` is
- * raw months, `purpose` is the category string.
+ * Return a copy of the raw model example with its `dti` raised to INCLUDE the
+ * applied-for loan's monthly payment. Applied once, at the applicant-baseline
+ * source, so generation + scoring + display all see the same loan-included DTI.
+ * Operates in model-internal units: `dti` is a raw percentage, `annual_inc` is
+ * log10 dollars, `loan_amnt` is raw dollars, `term` is raw months, `purpose` is the
+ * category string. Returns the original array untouched only when the example is
+ * missing required fields (not the LC model) or income is non-positive.
  * @param {Array} curExample model example (feature values by index)
  * @param {string[]} featureNames feature names, same order as curExample
- * @returns {Array} folded copy (flag on) or the original array (flag off)
+ * @returns {Array} folded copy (or the original array if the fold can't be computed)
  */
 export function foldAppliedLoanIntoDti(curExample, featureNames) {
-  if (!FOLD_APPLIED_LOAN_INTO_DTI) return curExample; // off → byte-identical
   if (!curExample || !featureNames) return curExample;
   const idx = (n) => featureNames.indexOf(n);
   const dtiIdx = idx('dti');

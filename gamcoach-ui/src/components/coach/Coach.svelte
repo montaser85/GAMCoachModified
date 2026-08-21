@@ -123,10 +123,9 @@
     };
     bookmarkConfigStore.set(bookmarkConfig);
 
-    // TEST TOGGLE (FOLD_APPLIED_LOAN_INTO_DTI): fold the applied-for loan into the
-    // applicant's baseline DTI at the single source point, so generation, scoring,
-    // and the feature-panel baseline all use the same loan-included DTI. Off →
-    // returns the SAME array (byte-identical to current behavior).
+    // Fold the applied-for loan into the applicant's baseline DTI at the single
+    // source point, so generation, scoring, and the feature-panel baseline all use
+    // the same loan-included DTI.
     const baselineExample = foldAppliedLoanIntoDti(
       curExample,
       curModelData.features.map((f) => f.name)

@@ -5,7 +5,6 @@ import { round } from '../../utils/utils';
 import {
   GAMCoach,
   foldedApprovalProb,
-  PROPAGATION_AWARE_DTI_CONSTRAINT,
   APPROVAL_PROB,
   MAX_FILTER_ATTEMPTS
 } from '../../ebm/gamcoach';
@@ -417,13 +416,12 @@ export class Constraints {
  */
 
 /**
- * Post-fold approval FILTER (propagation-aware only). Each generated plan is
- * checked against its TRUE post-fold score — foldedApprovalProb == the displayed
- * score, verified empirically — and any plan below approval is muted and
- * regenerated until a passing plan is found or the attempt bound is hit. If none
- * pass, the best-achievable (highest post-fold score) plan is returned so the UI
- * can honestly surface a "best below approval" plan rather than nothing. No-op
- * (returns the plan unchanged) when the flag is off.
+ * Post-fold approval FILTER. Each generated plan is checked against its TRUE
+ * post-fold score — foldedApprovalProb == the displayed score, verified empirically
+ * — and any plan below approval is muted and regenerated until a passing plan is
+ * found or the attempt bound is hit. If none pass, the best-achievable (highest
+ * post-fold score) plan is returned so the UI can honestly surface a "best below
+ * approval" plan rather than nothing.
  * @param {GAMCoach} coach
  * @param {object} modelData
  * @param {object[]} curExample
@@ -431,7 +429,6 @@ export class Constraints {
  * @returns {Promise<object>} a passing cfs, or the best-below-approval cfs
  */
 const filterToPassing = async (coach, modelData, curExample, cfsIn) => {
-  if (!PROPAGATION_AWARE_DTI_CONSTRAINT) return cfsIn;
   let cfs = cfsIn;
   let best = null;
   let attempts = 0;

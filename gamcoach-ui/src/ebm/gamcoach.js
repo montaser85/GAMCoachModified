@@ -12,25 +12,16 @@ import { loanMonthlyPayment, aprForPurpose } from '../engine/params.mjs';
 // The SAME propagation engine the load-fold uses — the post-generation approval
 // filter runs it to compute each plan's TRUE post-fold score (identical to the
 // displayed score), so no plan below approval is ever shown.
-import { propagate, featureHasOutgoingEdges, USE_ADVANCED_CONDITION } from '../engine/index.mjs';
+import { propagate, featureHasOutgoingEdges } from '../engine/index.mjs';
 
-/**
- * PROPAGATION_AWARE_DTI_CONSTRAINT — the propagation-aware plan generation
- * (Partial Option 2). When true, createMILP() encodes the loan/revolving-balance →
- * Debt-to-Income propagation as linear constraints, so generated plans reach the
- * target approval AFTER the load-time DTI fold is applied (instead of dropping
- * ~7–8pp below). When false, createMILP() behaves byte-identically to the prior
- * (un-propagation-aware) generation.
- *
- * DERIVED from the single condition switch (engine/index.mjs USE_ADVANCED_CONDITION)
- * — NOT set independently. It MUST match PROPAGATE_SUGGESTED_ON_LOAD: the folded
- * guarantee only protects the folded (advanced) display, and the original algorithm
- * only protects the un-folded (original) display. Deriving both from one switch
- * makes a mismatch impossible.
- */
-const PROPAGATION_AWARE_DTI_CONSTRAINT = USE_ADVANCED_CONDITION;
+// Propagation-aware plan generation (permanent). createMILP() encodes the
+// loan/revolving-balance → Debt-to-Income propagation as linear constraints, so
+// generated plans reach the target approval AFTER the load-time DTI fold is applied
+// (instead of dropping ~7–8pp below). This was previously behind the
+// USE_ADVANCED_CONDITION switch; the prior un-propagation-aware generation path has
+// been removed (git history holds it).
 
-// Safety margin (propagation-aware generation only). The solver targets this
+// Safety margin. The solver targets this
 // approval probability instead of exactly 0.50, so plans robustly clear 50% AFTER
 // the load-fold despite a ~±1% approximation from two sources: (a) the
 // income×revol_bal cross-term left by approach (a), and (b) an INHERENT
@@ -2225,8 +2216,8 @@ class MILP {
     this.maxNumFeaturesToVary = maxNumFeaturesToVary;
     this.mutedVariables = new Set(mutedVariables);
     this.verbose = verbose;
-    // PROPAGATION_AWARE_DTI_CONSTRAINT: loan/revol → DTI linear-encoding data
-    // (from GAMCoach.computeDtiPropagation), or null to keep the prior behavior.
+    // Propagation-aware DTI: loan/revol → DTI linear-encoding data (from
+    // GAMCoach.computeDtiPropagation), or null when it can't be computed.
     this.dtiPropagation = dtiPropagation || null;
   }
 
@@ -2283,9 +2274,9 @@ class MILP {
     // Collect all variables
     let variables = {};
 
-    // PROPAGATION_AWARE_DTI_CONSTRAINT: when active, DTI is NOT a free lever — its
-    // value (and score) is DETERMINED by the chosen loan/revol bins (see the
-    // sub-model added after this loop). Collect the loan/revol var→DTI-coefficient
+    // Propagation-aware DTI: DTI is NOT a free lever — its value (and score) is
+    // DETERMINED by the chosen loan/revol bins (see the sub-model added after this
+    // loop). Collect the loan/revol var→DTI-coefficient
     // terms as we build those features' variables.
     const dtiProp = this.dtiPropagation;
     const dtiInputTerms = []; // [{ name: varName, coef: dtiPercentagePoints }]
@@ -2438,7 +2429,7 @@ class MILP {
       }
     });
 
-    // ── PROPAGATION_AWARE_DTI_CONSTRAINT: loan/revol → DTI sub-model ───────────
+    // ── Propagation-aware DTI: loan/revol → DTI sub-model ─────────────────────
     // Forces DTI's score contribution in the CF constraint to reflect the DTI the
     // load-fold will actually propagate to, instead of a freely-chosen DTI bin.
     //   DTI_PROP = baseDti + Σ coef(loan/revol bin)·x        (linear; income fixed)
@@ -2624,9 +2615,8 @@ class GAMCoach {
       cfDirection = this.ebm.pred * -2 + 1;
       neededScoreGain = -1 * totalScore;
       // Safety margin: aim past 0.50 so plans clear approval after the load-fold
-      // (see APPROVAL_TARGET_PROB). Only for approval-seeking CFs (cfDirection 1)
-      // and only when the propagation-aware flag is on — otherwise unchanged.
-      if (PROPAGATION_AWARE_DTI_CONSTRAINT && cfDirection === 1) {
+      // (see APPROVAL_TARGET_PROB). Only for approval-seeking CFs (cfDirection 1).
+      if (cfDirection === 1) {
         neededScoreGain +=
           Math.log(APPROVAL_TARGET_PROB / (1 - APPROVAL_TARGET_PROB));
       }
@@ -2839,12 +2829,12 @@ class GAMCoach {
     let mutedVariables = [];
     let isSuccessful = true;
 
-    // PROPAGATION_AWARE_DTI_CONSTRAINT: realism cap on income recourse. Drop income
-    // options above INCOME_INCREASE_CAP_MULTIPLE × the applicant's baseline income so
-    // the solver can't reach approval with an absurd income ask. Applied before the
-    // DTI coefficients are computed, so both the MILP and the propagation model see
-    // only the capped income options.
-    if (PROPAGATION_AWARE_DTI_CONSTRAINT && options['annual_inc']) {
+    // Realism cap on income recourse. Drop income options above
+    // INCOME_INCREASE_CAP_MULTIPLE × the applicant's baseline income so the solver
+    // can't reach approval with an absurd income ask. Applied before the DTI
+    // coefficients are computed, so both the MILP and the propagation model see only
+    // the capped income options.
+    if (options['annual_inc']) {
       const incIdx = this.ebm.featureNames.indexOf('annual_inc');
       if (incIdx >= 0) {
         const capValue =
@@ -2855,11 +2845,9 @@ class GAMCoach {
       }
     }
 
-    // PROPAGATION_AWARE_DTI_CONSTRAINT: precompute the loan/revolving → DTI linear
-    // coefficients once (they don't depend on muting), then feed them to each MILP.
-    const dtiPropagation = PROPAGATION_AWARE_DTI_CONSTRAINT
-      ? this.computeDtiPropagation(options, curExample[0])
-      : null;
+    // Precompute the loan/revolving → DTI linear coefficients once (they don't depend
+    // on muting), then feed them to each MILP.
+    const dtiPropagation = this.computeDtiPropagation(options, curExample[0]);
 
     for (let i = 0; i < totalCfs; i++) {
       let milp = new MILP(
@@ -2910,9 +2898,9 @@ class GAMCoach {
   }
 
   /**
-   * PROPAGATION_AWARE_DTI_CONSTRAINT (Partial Option 2, Stage 1) — precompute the
-   * data the MILP needs to encode the loan/revolving-balance → Debt-to-Income
-   * propagation as linear constraints. The propagated DTI the load-fold produces is
+   * Precompute the data the MILP needs to encode the loan/revolving-balance →
+   * Debt-to-Income propagation as linear constraints (Partial Option 2, Stage 1).
+   * The propagated DTI the load-fold produces is
    *   dti = ( baseDebt + loanPayment(loan) + (revolBal − baseRevolBal)*2% ) / income * 100
    * With income (and purpose/term) fixed to the applicant's baseline (approach a),
    * every term is a constant per loan/revol bin, so DTI is a linear function of the
@@ -3770,7 +3758,6 @@ class GAMCoach {
 export {
   GAMCoach,
   foldedApprovalProb,
-  PROPAGATION_AWARE_DTI_CONSTRAINT,
   APPROVAL_PROB,
   MAX_FILTER_ATTEMPTS
 };
