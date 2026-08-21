@@ -11,6 +11,17 @@
 import { appliedLoanDtiContribution } from '../engine/index.mjs';
 
 /**
+ * Displayed approval percentage that never CONTRADICTS the approval status. Approval
+ * keys off the TRUE probability (≥ 0.5), so a score like 0.4966 is "not approved" —
+ * but a plain round() would show it as "50%" (looks approved). Floor a not-approved
+ * score to 49 and lift an approved score to 50, so "50%" always means approved.
+ */
+function approvalPct(prob) {
+  const raw = Math.round((prob || 0) * 100);
+  return prob >= 0.5 ? Math.max(50, raw) : Math.min(49, raw);
+}
+
+/**
  * The applicant's RAW profile DTI (model units), i.e. the load-time baseline DTI
  * with the applied-for loan's fold removed — matching the DTI feature card's left
  * (profile) value. Returns null if DTI isn't present.
@@ -118,8 +129,8 @@ export function createHistoryEntry(planIndex, plan, propagatedFeatures, previous
     f.recentlyChanged && !f.propagated ? 0 : f.recentlyChanged ? 1 : 2;
   changedFeatures.sort((a, b) => rank(a) - rank(b));
 
-  const currentProb = Math.round(sigmoid(plan.ebmLocal.predScore) * 100);
-  const previousProb = Math.round(sigmoid(previousScore) * 100);
+  const currentProb = approvalPct(sigmoid(plan.ebmLocal.predScore));
+  const previousProb = approvalPct(sigmoid(previousScore));
 
   // Store the complete current state of ALL features (not just changed ones)
   // This is needed to correctly determine what changed in the NEXT entry

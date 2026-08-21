@@ -130,6 +130,8 @@
       <h2>Exploration History</h2>
     </div>
 
+    <div class="list-caption">Newest first</div>
+
     {#if nudge}
       <div class="nudge">{nudge}</div>
     {/if}
@@ -145,7 +147,15 @@
             <div class="entry-header">
               <div class="entry-info">
                 <span class="entry-number">Entry {entry.entryNumber}</span>
-                <span class="entry-score">{entry.probPct}%</span>
+                <!-- Approval keys off the TRUE probability (predScore ≥ 0 ⇔ prob ≥ 0.5),
+                     matching the main score line's honesty rule — not the rounded %. -->
+                <span class="entry-score" class:below={entry.score < 0}>{entry.probPct}%</span>
+                <span
+                  class="entry-approval"
+                  class:approved={entry.score >= 0}
+                  class:rejected={entry.score < 0}
+                  title={entry.score >= 0 ? 'Approved' : 'Not approved'}
+                >{entry.score >= 0 ? '✓' : '✗'}</span>
                 {#if hasNote(entry)}
                   <span class="note-marker" title="This entry has a note">🗒</span>
                 {/if}
@@ -169,7 +179,7 @@
             {#if entry.features.length > 0}
               <button class="group-toggle" on:click={() => toggleChanged(entry.timestamp)}>
                 <span class="gt-arrow">{!collapsedChanged.has(entry.timestamp) ? '▾' : '▸'}</span>
-                {entry.features.length} feature{entry.features.length !== 1 ? 's' : ''} now different from your profile values
+                <span class="gt-label"><b class="feat-count">{entry.features.length}</b> feature{entry.features.length !== 1 ? 's' : ''} now different from your profile values</span>
               </button>
               {#if !collapsedChanged.has(entry.timestamp)}
                 <div class="group-list" transition:slide={{ duration: 150 }}>
@@ -288,6 +298,16 @@
     }
   }
 
+  // "Newest first" caption above the entries, right-aligned.
+  .list-caption {
+    flex: 0 0 auto;
+    padding: 8px 12px 0;
+    text-align: right;
+    font-size: 0.78rem;
+    font-style: italic;
+    color: $gray-500;
+  }
+
   .nudge {
     flex: 0 0 auto;
     margin: 8px 10px 0;
@@ -356,8 +376,22 @@
   .entry-score {
     font-size: 22px;
     font-weight: 800;
-    color: $gray-900;
+    color: $gray-900;      // ≥ approval: black (current style)
     line-height: 1;
+
+    &.below { color: $gray-500; } // below approval: gray
+  }
+
+  // Approval status icon — same glyphs/colors as the main score line
+  // ("✓ Approved" green / "✗ Not approved" red).
+  .entry-approval {
+    font-size: 1.05rem;
+    font-weight: 800;
+    line-height: 1;
+    cursor: default;
+
+    &.approved { color: hsl(140, 55%, 34%); }
+    &.rejected { color: $red-600; }
   }
 
   .entry-actions {
@@ -411,7 +445,11 @@
     color: $gray-600;
     text-align: left;
     &:hover { color: $gray-900; }
-    .gt-arrow { width: 9px; color: $gray-500; }
+    .gt-arrow { width: 9px; flex: 0 0 auto; color: $gray-500; align-self: flex-start; margin-top: 1px; }
+    // Keep the count and the full sentence as ONE flowing text block so the number
+    // sits inline on the first line (not a separately-centered flex item).
+    .gt-label { min-width: 0; }
+    .feat-count { color: $gray-900; } // the count in bold black
   }
 
   .group-list {
