@@ -19,64 +19,6 @@
   let collapsedChanged = new Set();
   let expandedUnchanged = new Set();
 
-  // ── Reflection notes (saved entries only) ─────────────────────────────────
-  // Four independent tap-to-open fields, stored SEPARATELY on entry.note
-  // ({why, learned, worth, other}) so each is retained/edited on its own.
-  const NOTE_FIELDS = [
-    { key: 'why', label: 'Why did you try this combination?' },
-    { key: 'learned', label: 'What did you learn from this plan?' },
-    { key: 'worth', label: 'What makes this plan worth keeping?' },
-    { key: 'other', label: 'Other notes' }
-  ];
-  let noteOpen = new Set();   // entries with the note editor expanded (timestamp)
-  let openFields = new Set(); // open question fields ("timestamp|key")
-
-  /** True when any of the entry's note fields has real (non-whitespace) content. */
-  const hasNote = (entry) =>
-    !!entry.note && Object.values(entry.note).some((v) => v && String(v).trim());
-
-  /** How many of the four fields have real content (for the "N answered" badge). */
-  const answeredCount = (entry) =>
-    entry.note
-      ? Object.values(entry.note).filter((v) => v && String(v).trim()).length
-      : 0;
-
-  // Notify store subscribers (marker, control label) without touching the data.
-  const touchStore = () => historyEntriesStore.update((m) => m);
-
-  const toggleNoteOpen = (ts) => {
-    if (noteOpen.has(ts)) noteOpen.delete(ts);
-    else noteOpen.add(ts);
-    noteOpen = noteOpen;
-  };
-
-  const toggleField = (ts, key) => {
-    const id = `${ts}|${key}`;
-    if (openFields.has(id)) openFields.delete(id);
-    else openFields.add(id);
-    openFields = openFields;
-  };
-
-  /** Write-through a field edit (raw, so typing is never fought). */
-  const setNoteField = (entry, key, value) => {
-    entry.note = { ...(entry.note || {}), [key]: value };
-    touchStore();
-  };
-
-  /** On blur: drop empty fields; all-empty notes collapse back to null. */
-  const cleanupNote = (entry) => {
-    if (!entry.note) return;
-    const cleaned = {};
-    for (const [k, v] of Object.entries(entry.note)) {
-      if (v && String(v).trim()) cleaned[k] = v;
-    }
-    entry.note = Object.keys(cleaned).length ? cleaned : null;
-    touchStore();
-  };
-
-  /** Focus a field's textarea as soon as it opens. */
-  const autofocus = (node) => { node.focus(); };
-
   // Transient nudge banner (e.g. the 5-saved cap message).
   let nudge = null;
   let nudgeTimer = null;
@@ -110,10 +52,6 @@
   };
 
   const starClicked = (entry) => {
-    // Unsaving discards the entry's note — warn first when one has content.
-    if (entry.saved && hasNote(entry)) {
-      if (!window.confirm('This will remove your note. Unsave anyway?')) return;
-    }
     historyEntriesStore.update((map) => {
       const res = toggleSaveEntry(map, activePlanIndex, entry);
       if (!res.ok && res.reason === 'cap') {
@@ -156,9 +94,6 @@
                   class:rejected={entry.score < 0}
                   title={entry.score >= 0 ? 'Approved' : 'Not approved'}
                 >{entry.score >= 0 ? '✓' : '✗'}</span>
-                {#if hasNote(entry)}
-                  <span class="note-marker" title="This entry has a note">🗒</span>
-                {/if}
               </div>
               <div class="entry-actions">
                 <button
@@ -213,42 +148,6 @@
                   {/each}
                 </div>
               {/if}
-            {/if}
-
-            <!-- Reflection note — saved entries only -->
-            {#if entry.saved}
-              <div class="note-section">
-                <button class="group-toggle note-head" on:click={() => toggleNoteOpen(entry.timestamp)}>
-                  <span class="gt-arrow">{noteOpen.has(entry.timestamp) ? '▾' : '▸'}</span>
-                  <span class="note-pencil">✎</span>
-                  <span class="note-label">{hasNote(entry) ? 'edit note' : 'add a note'}</span>
-                  {#if answeredCount(entry) > 0}
-                    <span class="answered-badge">{answeredCount(entry)} answered</span>
-                  {/if}
-                </button>
-                {#if noteOpen.has(entry.timestamp)}
-                  <div class="note-fields" transition:slide={{ duration: 150 }}>
-                    {#each NOTE_FIELDS as f (f.key)}
-                      <div class="note-q">
-                        <button class="q-row" on:click={() => toggleField(entry.timestamp, f.key)}>
-                          <span class="q-icon">{openFields.has(`${entry.timestamp}|${f.key}`) ? '−' : '＋'}</span>
-                          <span class="q-text">{f.label}</span>
-                        </button>
-                        {#if openFields.has(`${entry.timestamp}|${f.key}`)}
-                          <textarea
-                            class="q-input"
-                            rows="3"
-                            use:autofocus
-                            value={entry.note?.[f.key] ?? ''}
-                            on:input={(e) => setNoteField(entry, f.key, e.target.value)}
-                            on:blur={() => cleanupNote(entry)}
-                          ></textarea>
-                        {/if}
-                      </div>
-                    {/each}
-                  </div>
-                {/if}
-              </div>
             {/if}
 
           </div>
@@ -493,103 +392,4 @@
     }
   }
 
-  /* ── Reflection note (saved entries only) ────────── */
-  .note-marker {
-    font-size: 0.85rem;
-    line-height: 1;
-    opacity: 0.75;
-  }
-
-  .note-section {
-    margin-top: 10px;
-    padding-top: 8px;
-    border-top: 1px solid $gray-200; /* divider from the feature groups */
-  }
-
-  /* Note header row — same chevron affordance as the two section rows above,
-     but visually lighter (secondary to the plan data). Clicking anywhere on
-     the row toggles the panel. */
-  .note-head {
-    margin-top: 0;
-    color: $gray-500;
-    &:hover { color: $gray-700; }
-
-    .note-pencil {
-      flex: 0 0 auto;
-      font-size: 0.85rem;
-    }
-    .note-label {
-      font-size: 0.85rem;
-      font-weight: 600;
-    }
-    .answered-badge {
-      margin-left: auto;
-      flex: 0 0 auto;
-      font-size: 0.72rem;
-      font-weight: 600;
-      color: $gray-500;
-      background: $gray-100;
-      border: 1px solid $gray-200;
-      border-radius: 9px;
-      padding: 1px 8px;
-      line-height: 1.5;
-    }
-  }
-
-  .note-fields {
-    margin-top: 4px;
-  }
-
-  .note-q {
-    border-top: 1px solid $gray-100; /* thin dividers between question rows */
-    &:first-child { border-top: none; }
-
-    .q-row {
-      display: flex;
-      align-items: baseline;
-      gap: 7px;
-      width: 100%;
-      padding: 6px 0;
-      background: none;
-      border: none;
-      cursor: pointer;
-      text-align: left;
-
-      .q-icon {
-        width: 12px;
-        flex: 0 0 auto;
-        font-size: 0.85rem;
-        color: $gray-400;
-      }
-      .q-text {
-        font-size: 0.85rem;
-        color: $gray-600;
-      }
-      &:hover .q-text { color: $gray-900; }
-    }
-
-    .q-input {
-      display: block;
-      width: 100%;
-      box-sizing: border-box;
-      margin: 0 0 8px 19px;
-      max-width: calc(100% - 19px);
-      min-height: 54px;
-      resize: vertical; /* multi-line, vertically resizable */
-      padding: 6px 8px;
-      font-size: 0.85rem;
-      font-family: inherit;
-      line-height: 1.4;
-      color: $gray-800;
-      border: 1px solid $gray-300;
-      border-radius: 5px;
-      background: $gray-50;
-
-      &:focus {
-        outline: none;
-        border-color: $blue-500;
-        background: white;
-      }
-    }
-  }
 </style>

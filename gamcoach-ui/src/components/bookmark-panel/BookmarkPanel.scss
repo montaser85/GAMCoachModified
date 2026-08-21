@@ -304,3 +304,39 @@ $border-radius: 5px;
   }
 }
 
+// The user's frozen notes, shown under a saved plan's changes.
+.plan-rationale {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 6px;
+  padding-left: 8px;
+  border-left: 2px solid $gray-light-border;
+
+  .plan-rationale-label {
+    font-size: 0.72rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: $gray-500;
+  }
+  .plan-note-item {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+
+    .pn-q {
+      font-size: 0.78rem;
+      font-weight: 600;
+      color: $gray-600;
+    }
+    .pn-a {
+      font-size: 0.85rem;
+      font-style: italic;
+      color: $gray-700;
+      white-space: pre-wrap;
+      overflow-wrap: break-word;
+    }
+  }
+}
+

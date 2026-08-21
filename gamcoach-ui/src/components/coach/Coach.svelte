@@ -17,7 +17,8 @@
     Plan,
     Constraints,
     initPlans,
-    regeneratePlans
+    regeneratePlans,
+    PLAN_NOTE_FIELDS
   } from '../coach/Coach';
   import '../../typedef';
 
@@ -36,7 +37,8 @@
     historyEntriesStore,
     isRestoringEntryStore,
     propagatedFeaturesStore,
-    featureValueOverrideStore
+    featureValueOverrideStore,
+    planRationaleStore
   } from '../../store';
 
   // import modelDataLC from '../../config/data/lc-classifier.json';
@@ -301,6 +303,89 @@
     plans !== null && $bookmarkConfigStore && $bookmarkConfigStore.plans
       ? $bookmarkConfigStore.plans.has(plans.activePlanIndex)
       : false;
+
+  // Whether the active plan currently clears the approval threshold (predProb ≥ 0.5,
+  // i.e. predScore ≥ 0 — the same honesty rule the score readout uses; never the
+  // rounded percentage). Saving is gated on this so a bookmark is always an approved
+  // plan. Reacts to live edits via the store subscription.
+  $: activePlanApproved =
+    $activePlanStore && $activePlanStore.ebmLocal
+      ? $activePlanStore.ebmLocal.predScore >= 0
+      : false;
+
+  // The star is disabled whenever the live plan is below approval — regardless of
+  // whether it's already saved. A sub-50% plan can't be bookmarked, and an
+  // already-saved plan whose live edits fall below 50% gets the same "blocked" star
+  // (the frozen bookmark stays put; remove it from the Bookmarks panel if needed).
+  $: starDisabled = !activePlanApproved;
+  $: starTitle = starDisabled
+    ? 'Reach 50% approval to save this plan'
+    : activePlanSaved
+      ? 'Click to remove this plan from the saved plans'
+      : 'Click to save this plan';
+
+  // ── Per-plan rationale (expandable multi-question note, "Add your note") ─────
+  // Each plan's note is an object keyed by the PLAN_NOTE_FIELDS questions, read from
+  // the per-plan store by the active plan index — so switching plans shows that
+  // plan's own answers and switching back retains them. Editing is write-through to
+  // the store; it is decoupled from plan values, so feature edits, resets, and the
+  // {#key} remount never disturb it. The expand/open state is UI-only (Sets keyed by
+  // plan index / "index|key"); it lives above the {#key} block so it survives
+  // switches too.
+  let planNoteOpen = new Set();    // plan indices whose note editor is expanded
+  let planNoteFields = new Set();  // "planIndex|fieldKey" of open question textareas
+
+  $: activeNote =
+    plans !== null && $planRationaleStore
+      ? $planRationaleStore.get(plans.activePlanIndex) || {}
+      : {};
+
+  const hasPlanNote = (note) =>
+    !!note && Object.values(note).some((v) => v && String(v).trim());
+  const planAnsweredCount = (note) =>
+    note ? Object.values(note).filter((v) => v && String(v).trim()).length : 0;
+
+  const togglePlanNoteOpen = (idx) => {
+    if (planNoteOpen.has(idx)) planNoteOpen.delete(idx);
+    else planNoteOpen.add(idx);
+    planNoteOpen = planNoteOpen;
+  };
+  const togglePlanField = (idx, key) => {
+    const id = `${idx}|${key}`;
+    if (planNoteFields.has(id)) planNoteFields.delete(id);
+    else planNoteFields.add(id);
+    planNoteFields = planNoteFields;
+  };
+
+  // Write-through a single question's answer (raw, so typing is never fought).
+  const setPlanNoteField = (key, value) => {
+    if (plans === null) return;
+    const idx = plans.activePlanIndex;
+    planRationaleStore.update((m) => {
+      const cur = { ...(m.get(idx) || {}) };
+      cur[key] = value;
+      m.set(idx, cur);
+      return m;
+    });
+  };
+  // On blur: drop empty answers so the "N answered" count stays honest.
+  const cleanupPlanNote = () => {
+    if (plans === null) return;
+    const idx = plans.activePlanIndex;
+    planRationaleStore.update((m) => {
+      const cur = m.get(idx);
+      if (!cur) return m;
+      const cleaned = {};
+      for (const [k, v] of Object.entries(cur)) {
+        if (v && String(v).trim()) cleaned[k] = v;
+      }
+      m.set(idx, cleaned);
+      return m;
+    });
+  };
+
+  /** Focus a field's textarea as soon as it opens. */
+  const noteAutofocus = (node) => { node.focus(); };
 </script>
 
 <div class="main-content-wrapper" class:sidebar-open={$historySidebarOpenStore}>
@@ -361,8 +446,9 @@
 
           <div
             class="star-wrapper"
+            class:disabled={starDisabled}
             on:click={(e) => coachPanel && coachPanel.starActivePlan(e)}
-            title="Click to save this plan"
+            title={starTitle}
           >
             <div class="svg-icon tab-icon" class:no-display={!activePlanSaved}>
               {@html starIconSolid}
@@ -371,17 +457,48 @@
               {@html starIconOutline}
             </div>
           </div>
+
+          <!-- Per-plan rationale header — sits in the plan row, right beside the plan
+               name / star. The multi-question editor (the same tap-to-open reflection
+               style history used to have) expands BELOW the row. The note is attached
+               to the PLAN, kept per-plan (planRationaleStore, keyed by plan index),
+               and frozen into the receipt on save. -->
+          <button
+            class="note-head"
+            on:click={() => togglePlanNoteOpen(plans.activePlanIndex)}
+          >
+            <span class="gt-arrow">{planNoteOpen.has(plans.activePlanIndex) ? '▾' : '▸'}</span>
+            <span class="note-pencil">✎</span>
+            <span class="note-label">{hasPlanNote(activeNote) ? 'Edit your note' : 'Add your note'}</span>
+            {#if planAnsweredCount(activeNote) > 0}
+              <span class="answered-badge">{planAnsweredCount(activeNote)} answered</span>
+            {/if}
+          </button>
         </div>
 
-        <!-- Editability hint — between the plan dropdown and the feature list. -->
-        <div class="edit-hint">
-          <svg class="edit-hint-icon" viewBox="0 0 24 24" width="15" height="15"
-               fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M4 20h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4"/>
-            <path d="M13.5 6.5l4 4"/>
-          </svg>
-          <span>Adjust any feature to match your situation</span>
-        </div>
+        <!-- The note questions expand below the plan row (full width of the column). -->
+        {#if planNoteOpen.has(plans.activePlanIndex)}
+          <div class="plan-note-fields">
+            {#each PLAN_NOTE_FIELDS as f (f.key)}
+              <div class="note-q">
+                <button class="q-row" on:click={() => togglePlanField(plans.activePlanIndex, f.key)}>
+                  <span class="q-icon">{planNoteFields.has(`${plans.activePlanIndex}|${f.key}`) ? '−' : '＋'}</span>
+                  <span class="q-text">{f.label}</span>
+                </button>
+                {#if planNoteFields.has(`${plans.activePlanIndex}|${f.key}`)}
+                  <textarea
+                    class="q-input"
+                    rows="3"
+                    use:noteAutofocus
+                    value={activeNote[f.key] ?? ''}
+                    on:input={(e) => setPlanNoteField(f.key, e.target.value)}
+                    on:blur={cleanupPlanNote}
+                  ></textarea>
+                {/if}
+              </div>
+            {/each}
+          </div>
+        {/if}
       {/if}
 
       {#if plans === null}
@@ -567,18 +684,108 @@
   }
 
   /* Editability hint under the plan dropdown, above the feature list. */
-  .edit-hint {
+  /* Per-plan rationale header — a compact tap target that sits IN the plan row,
+     right beside the plan-name dropdown and the save star. The multi-question
+     editor (ported from the old history reflection style) expands below the row. */
+  .note-head {
     display: flex;
     align-items: center;
-    gap: 6px;
-    padding: 2px 2px 2px;
-    font-size: 0.82rem;
-    font-style: italic;
+    gap: 5px;
+    padding: 4px 6px;
+    background: none;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
     color: $gray-600;
+    transition: background-color 100ms ease-in-out;
+    &:hover {
+      color: $gray-900;
+      background-color: adjust-color($color: $gray-200, $lightness: -4%);
+    }
 
-    .edit-hint-icon {
+    .gt-arrow {
       flex: 0 0 auto;
-      color: $blue-600;
+      font-size: 0.8rem;
+      line-height: 1;
+    }
+    .note-pencil {
+      flex: 0 0 auto;
+      font-size: 0.85rem;
+    }
+    .note-label {
+      font-size: 0.85rem;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+    .answered-badge {
+      flex: 0 0 auto;
+      font-size: 0.7rem;
+      font-weight: 600;
+      color: $gray-500;
+      background: $gray-100;
+      border: 1px solid $gray-200;
+      border-radius: 9px;
+      padding: 1px 7px;
+      line-height: 1.5;
+    }
+  }
+
+  /* The expandable questions — below the plan row, full column width. */
+  .plan-note-fields {
+    margin: 0 2px 4px;
+    padding-top: 4px;
+
+    .note-q {
+      border-top: 1px solid $gray-100; /* thin dividers between question rows */
+      &:first-child { border-top: none; }
+
+      .q-row {
+        display: flex;
+        align-items: baseline;
+        gap: 7px;
+        width: 100%;
+        padding: 6px 0;
+        background: none;
+        border: none;
+        cursor: pointer;
+        text-align: left;
+
+        .q-icon {
+          width: 12px;
+          flex: 0 0 auto;
+          font-size: 0.85rem;
+          color: $gray-400;
+        }
+        .q-text {
+          font-size: 0.85rem;
+          color: $gray-600;
+        }
+        &:hover .q-text { color: $gray-900; }
+      }
+
+      .q-input {
+        display: block;
+        width: 100%;
+        box-sizing: border-box;
+        margin: 0 0 8px 19px;
+        max-width: calc(100% - 19px);
+        min-height: 54px;
+        resize: vertical; /* multi-line, vertically resizable */
+        padding: 6px 8px;
+        font-size: 0.85rem;
+        font-family: inherit;
+        line-height: 1.4;
+        color: $gray-800;
+        border: 1px solid $gray-300;
+        border-radius: 5px;
+        background: $gray-50;
+
+        &:focus {
+          outline: none;
+          border-color: $blue-500;
+          background: white;
+        }
+      }
     }
   }
 
@@ -610,6 +817,20 @@
 
       &:hover {
         background-color: adjust-color($color: $gray-200, $lightness: -4%);
+      }
+
+      // Sub-50% and not yet saved: cannot bookmark. Dim it, block the pointer, and
+      // suppress the hover affordance so it reads as unavailable.
+      &.disabled {
+        cursor: not-allowed;
+        opacity: 0.4;
+
+        &:hover {
+          background-color: transparent;
+        }
+        .tab-icon {
+          cursor: not-allowed;
+        }
       }
 
       .tab-icon {

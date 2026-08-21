@@ -15,8 +15,10 @@
     historyEntriesStore,
     historySidebarOpenStore,
     isRestoringEntryStore,
-    constraintsStore
+    constraintsStore,
+    planRationaleStore
   } from '../../store';
+  import { get } from 'svelte/store';
   import { createHistoryEntry, addHistoryEntry } from '../../utils/historyManager';
 
   import CompareModal from '../compare-modal/CompareModal.svelte';
@@ -241,7 +243,8 @@
                 const savedPlan = new SavedPlan(
                   plan.planIndex,
                   curPlan.ebmLocal,
-                  curPlan.curExample
+                  curPlan.curExample,
+                  get(planRationaleStore).get(plan.planIndex) || {}
                 );
                 bookmarkConfig.plans.set(plan.planIndex, savedPlan);
                 bookmarkConfigStore.set(bookmarkConfig);
@@ -261,7 +264,8 @@
       const savedPlan = new SavedPlan(
         plan.planIndex,
         curPlan.ebmLocal,
-        curPlan.curExample
+        curPlan.curExample,
+        get(planRationaleStore).get(plan.planIndex) || {}
       );
       bookmarkConfig.plans.set(plan.planIndex, savedPlan);
       bookmarkConfigStore.set(bookmarkConfig);

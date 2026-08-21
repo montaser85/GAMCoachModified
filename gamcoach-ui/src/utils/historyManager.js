@@ -149,7 +149,6 @@ export function createHistoryEntry(planIndex, plan, propagatedFeatures, previous
     unchangedFeatures: unchangedFeatures,  // Features still at their baseline value
     allFeatureValues,  // Complete state (used by Restore)
     saved: false,  // Star/bookmark: saved entries are pinned (never auto-pruned)
-    note: null,    // Optional user note — tied to saved state
     timestamp: Date.now()
   };
 }
@@ -239,8 +238,7 @@ export function addHistoryEntry(historyMap, planIndex, entry) {
  * Toggle an entry's saved (starred) state.
  * - Saving is blocked (ok:false, reason:'cap') when MAX_SAVED_ENTRIES entries
  *   are already saved — never silently discards an existing save.
- * - Unsaving returns the entry to the transient pool and discards its note
- *   (notes are tied to saved state; the UI warns first when a note exists).
+ * - Unsaving returns the entry to the transient pool.
  * @returns {{map: Map, ok: boolean, reason?: string}}
  */
 export function toggleSaveEntry(historyMap, planIndex, entry) {
@@ -252,7 +250,6 @@ export function toggleSaveEntry(historyMap, planIndex, entry) {
 
   if (target.saved) {
     target.saved = false;
-    target.note = null; // notes only exist on saved entries
   } else {
     const savedCount = entries.filter((e) => e.saved).length;
     if (savedCount >= MAX_SAVED_ENTRIES) {

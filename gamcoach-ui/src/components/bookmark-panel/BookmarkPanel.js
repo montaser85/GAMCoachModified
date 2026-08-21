@@ -1,5 +1,5 @@
 import '../../typedef';
-import { SavedPlan } from '../coach/Coach';
+import { SavedPlan, PLAN_NOTE_FIELDS } from '../coach/Coach';
 import d3 from '../../utils/d3-import';
 
 const formatter = d3.format(',.2~f');
@@ -114,6 +114,22 @@ export const downloadReceipt = async (bookmarkConfig) => {
             } => ${item.isCont ? formatter(item.newValue) : item.newValue}\n`
           );
         });
+
+        // The user's rationale note, FROZEN at save time — an object keyed by the
+        // PLAN_NOTE_FIELDS questions. Print each answered question with its answer.
+        const rationale = savedPlan.rationale || {};
+        const answered = PLAN_NOTE_FIELDS.filter(
+          (f) => rationale[f.key] && String(rationale[f.key]).trim()
+        );
+        if (answered.length) {
+          receipt = receipt.concat('  Your notes:\n');
+          answered.forEach((f) => {
+            receipt = receipt.concat(`    ${f.label}\n`);
+            String(rationale[f.key]).split('\n').forEach((line) => {
+              receipt = receipt.concat(`      ${line}\n`);
+            });
+          });
+        }
 
         receipt = receipt.concat(separator);
       }

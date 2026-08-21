@@ -21,6 +21,20 @@ const difficultyTextMap = {
 };
 
 /**
+ * The per-plan rationale questions. Each plan's note is an object keyed by these
+ * field keys ({why, learned, worth, other}), so each question is answered/edited
+ * independently. Shared by the note editor (Coach.svelte), the saved snapshot
+ * (SavedPlan.rationale), and the receipt / bookmark rendering so the labels stay
+ * in sync everywhere.
+ */
+export const PLAN_NOTE_FIELDS = [
+  { key: 'why', label: 'Why did you try this combination?' },
+  { key: 'learned', label: 'What did you learn from this plan?' },
+  { key: 'worth', label: 'What makes this plan worth keeping?' },
+  { key: 'other', label: 'Other notes' }
+];
+
+/**
  * Class that represents one plan to change the AI decisions
  */
 export class Plan {
@@ -182,12 +196,25 @@ export class SavedPlan {
    * @param {EBMLocal} ebmLocal
    * @param {object[]} curExample
    */
-  constructor(planIndex, ebmLocal, curExample) {
+  constructor(planIndex, ebmLocal, curExample, rationale = {}) {
     this.planIndex = planIndex;
+    // FROZEN-ON-SAVE. A saved plan is a snapshot of the plan's values at the moment
+    // the user starred it — it must NOT track the live plan afterward. The old code
+    // stored `ebmLocal.sample` (a live reference), so any later edit to the plan
+    // silently mutated the bookmark and the receipt. Clone the sample and capture the
+    // score/probability as plain numbers so the snapshot is immutable. `ebmLocal` is
+    // kept only for the STATIC model weights (binEdges/scores) the receipt hashes;
+    // those never change with edits.
     this.ebmLocal = ebmLocal;
-    this.sample = ebmLocal.sample;
+    this.sample = ebmLocal.sample.slice();
     this.score = ebmLocal.predScore;
-    this.curExample = curExample;
+    this.predProb = ebmLocal.predProb;
+    this.curExample = Array.isArray(curExample) ? curExample.slice() : curExample;
+    // The user's rationale note, FROZEN at save time — an object keyed by the
+    // PLAN_NOTE_FIELDS questions ({why, learned, worth, other}). Cloned so editing
+    // the live note afterward does not change this; save-again captures it anew.
+    this.rationale =
+      rationale && typeof rationale === 'object' ? { ...rationale } : {};
   }
 
   /**

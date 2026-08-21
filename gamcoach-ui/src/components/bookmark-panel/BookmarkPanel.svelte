@@ -6,6 +6,11 @@
   import { onMount } from 'svelte';
   import { bookmarkConfigStore } from '../../store';
   import { downloadReceipt } from './BookmarkPanel';
+  import { PLAN_NOTE_FIELDS } from '../coach/Coach';
+
+  /** True when a frozen note object has at least one answered question. */
+  const hasSavedNote = (note) =>
+    !!note && Object.values(note).some((v) => v && String(v).trim());
   import { privateKey, publicKey } from '../../config/key';
   import {
     readKey,
@@ -203,6 +208,19 @@
               </div>
             </div>
           {/each}
+          {#if hasSavedNote(savedPlan.rationale)}
+            <div class="plan-rationale">
+              <span class="plan-rationale-label">Your notes</span>
+              {#each PLAN_NOTE_FIELDS as f (f.key)}
+                {#if savedPlan.rationale[f.key] && savedPlan.rationale[f.key].trim()}
+                  <div class="plan-note-item">
+                    <span class="pn-q">{f.label}</span>
+                    <span class="pn-a">{savedPlan.rationale[f.key]}</span>
+                  </div>
+                {/if}
+              {/each}
+            </div>
+          {/if}
         </div>
       {/each}
     {/if}

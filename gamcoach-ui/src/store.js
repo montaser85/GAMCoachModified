@@ -117,6 +117,15 @@ export const historyEntriesStore = writable(new Map());
 // Flag to indicate when we're restoring a history entry (to prevent new entry creation)
 export const isRestoringEntryStore = writable(false);
 
+// Per-plan rationale/notes: Map<planIndex, {why, learned, worth, other}>. The user's
+// reflection answers for why a plan works for them (see PLAN_NOTE_FIELDS), shown near
+// the plan controls via the expandable note editor. Deliberately kept in its OWN
+// store — decoupled from the plan value objects — so feature edits, resets, and the
+// {#key} remount on plan switch never touch it. Keyed by plan index so each plan
+// retains its own note across switches. Frozen into the saved snapshot/receipt at
+// save time (see SavedPlan / downloadReceipt).
+export const planRationaleStore = writable(new Map());
+
 // "Effects of your changes" (right panel, last section). An array of source-edit
 // events, NEWEST FIRST. Each event describes one source feature the user edited
 // and the dependent features that changed via propagation as a result:
