@@ -12,8 +12,11 @@
   // A contribution within ±this (log-odds) is neutral — value moved, score didn't.
   const CONTRIB_EPS = 1e-6;
 
-  // Expanded collapsibles, keyed by entry timestamp (stable across re-indexing).
-  let expandedChanged = new Set();
+  // Collapsibles keyed by entry timestamp (stable across re-indexing).
+  // The "N features changed" group is EXPANDED by default — we track the set of
+  // entries the user has explicitly COLLAPSED instead. The "unchanged" group keeps
+  // the opposite convention (collapsed by default → track what's expanded).
+  let collapsedChanged = new Set();
   let expandedUnchanged = new Set();
 
   // ── Reflection notes (saved entries only) ─────────────────────────────────
@@ -81,9 +84,9 @@
   $: planEntries = $historyEntriesStore?.get(activePlanIndex) || [];
 
   const toggleChanged = (key) => {
-    if (expandedChanged.has(key)) expandedChanged.delete(key);
-    else expandedChanged.add(key);
-    expandedChanged = expandedChanged; // reactivity
+    if (collapsedChanged.has(key)) collapsedChanged.delete(key);
+    else collapsedChanged.add(key);
+    collapsedChanged = collapsedChanged; // reactivity
   };
 
   const toggleUnchanged = (key) => {
@@ -162,13 +165,13 @@
               </div>
             </div>
 
-            <!-- N features changed (vs load-time baseline) — collapsed by default -->
+            <!-- N features changed (vs load-time baseline) — EXPANDED by default -->
             {#if entry.features.length > 0}
               <button class="group-toggle" on:click={() => toggleChanged(entry.timestamp)}>
-                <span class="gt-arrow">{expandedChanged.has(entry.timestamp) ? '▾' : '▸'}</span>
-                {entry.features.length} feature{entry.features.length !== 1 ? 's' : ''} changed
+                <span class="gt-arrow">{!collapsedChanged.has(entry.timestamp) ? '▾' : '▸'}</span>
+                {entry.features.length} feature{entry.features.length !== 1 ? 's' : ''} now different from your profile values
               </button>
-              {#if expandedChanged.has(entry.timestamp)}
+              {#if !collapsedChanged.has(entry.timestamp)}
                 <div class="group-list" transition:slide={{ duration: 150 }}>
                   {#each entry.features as feat (feat.featureID)}
                     <div class="feat-row">
@@ -423,9 +426,9 @@
 
     .feat-name {
       min-width: 0;
-      overflow: hidden;
-      white-space: nowrap;
-      text-overflow: ellipsis;
+      // Show the FULL feature name — wrap instead of truncating with an ellipsis.
+      white-space: normal;
+      overflow-wrap: break-word;
       font-size: 15px;
       font-weight: 500;
       color: $gray-800;
@@ -437,7 +440,7 @@
       font-variant-numeric: tabular-nums;
       font-size: 15px;
 
-      .from  { color: $gray-400; font-weight: 500; }
+      .from  { color: $gray-900; font-weight: 500; } // "before" value in black
       .arrow { color: $gray-400; margin: 0 3px; }
       .to    { font-weight: 700; }
       .to.val-up      { color: $c-up; }

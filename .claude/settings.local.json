@@ -108,7 +108,8 @@
       "Bash(cd \"D:/OSU/Dr B research group/GAM_Coach/gam-coach_modified/gamcoach-ui\"; date +%H:%M:%S; grep -iE \"\\\\] Error|Could not resolve|SyntaxError|ParseError\" /tmp/db_warn.log | grep -v Circular | head; ls -la --time-style=+%H:%M:%S public/build/bundle.js)",
       "Bash(cd \"D:/OSU/Dr B research group/GAM_Coach/gam-coach_modified/gamcoach-ui\"; date +%H:%M:%S; grep -iE \"\\\\] Error|Could not resolve|SyntaxError|ParseError\" /tmp/db_acc.log | grep -v Circular | head; ls -la --time-style=+%H:%M:%S public/build/bundle.js)",
       "Bash(cd \"D:/OSU/Dr B research group/GAM_Coach/gam-coach_modified/gamcoach-ui\"; grep -iE \"is not exported|not found|undefined|unresolved|error\" /tmp/db_refactor.log | grep -viE \"Circular|node_modules|ExperimentalWarning\" | head; echo \"=== exit-relevant lines ===\"; grep -iE \"created public|waiting\" /tmp/db_refactor.log | tail -2)",
-      "Bash(cd \"D:/OSU/Dr B research group/GAM_Coach/gam-coach_modified/gamcoach-ui\"; date +%H:%M:%S; grep -iE \"\\\\] Error|Could not resolve|SyntaxError|ParseError|is not defined|is not exported\" /tmp/db_deftt.log | grep -v Circular | head; ls -la --time-style=+%H:%M:%S public/build/bundle.js)"
+      "Bash(cd \"D:/OSU/Dr B research group/GAM_Coach/gam-coach_modified/gamcoach-ui\"; date +%H:%M:%S; grep -iE \"\\\\] Error|Could not resolve|SyntaxError|ParseError|is not defined|is not exported\" /tmp/db_deftt.log | grep -v Circular | head; ls -la --time-style=+%H:%M:%S public/build/bundle.js)",
+      "Bash(cd \"D:/OSU/Dr B research group/GAM_Coach/gam-coach_modified/gamcoach-ui\"; date +%H:%M:%S; grep -iE \"\\\\] Error|Could not resolve|SyntaxError|ParseError|Undefined variable\" /tmp/db_hist2.log | grep -v Circular | head; ls -la --time-style=+%H:%M:%S public/build/bundle.js)"
     ]
   }
 }

@@ -470,12 +470,9 @@
   .main-content-wrapper {
     display: flex;
     flex-direction: column;
-    transition: padding-right 200ms ease-out;
-    padding-right: 0;
-
-    &.sidebar-open {
-      padding-right: 320px;
-    }
+    // The History sidebar is a fixed overlay pinned to the right edge (width 320px)
+    // and does not overlap the main visualization panel, so opening it must NOT
+    // contract the main content — the panel stays exactly as it is.
   }
 
   .main-standalone {

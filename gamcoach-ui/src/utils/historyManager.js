@@ -8,6 +8,22 @@
  * - Restoring previous states
  */
 
+import { appliedLoanDtiContribution } from '../engine/index.mjs';
+
+/**
+ * The applicant's RAW profile DTI (model units), i.e. the load-time baseline DTI
+ * with the applied-for loan's fold removed — matching the DTI feature card's left
+ * (profile) value. Returns null if DTI isn't present.
+ */
+function rawProfileDtiValue(plan) {
+  const dtiFeat = plan.features.find((f) => f.data?.name === 'dti');
+  if (!dtiFeat) return null;
+  const names = plan.features.map((f) => f.data.name);
+  const example = plan.features.map((f) => plan.curExample[f.featureID]);
+  const contribution = appliedLoanDtiContribution(example, names);
+  return (plan.curExample[dtiFeat.featureID] || 0) - contribution;
+}
+
 /**
  * Create a history entry from a plan state.
  *
@@ -23,9 +39,15 @@
  * @param {number} entryNumber - Sequential entry number
  * @returns {HistoryEntry}
  */
-export function createHistoryEntry(planIndex, plan, propagatedFeatures, previousScore, entryNumber) {
+export function createHistoryEntry(planIndex, plan, propagatedFeatures, previousScore, entryNumber, previousEntry = null, initialState = null) {
   const changedFeatures = [];
   const unchangedFeatures = [];
+
+  // State at the PREVIOUS entry (or the post-coach-suggestion initial state for the
+  // first entry). Used to flag which features the user changed in THIS step so they
+  // sort to the top of the list — the change the user just made leads.
+  const prevValues =
+    (previousEntry && previousEntry.allFeatureValues) || initialState || null;
 
   // Per-feature score contributions (log-odds) vs the original profile — the
   // same values that color the score-breakdown and plan-comparison panels:
@@ -53,12 +75,28 @@ export function createHistoryEntry(planIndex, plan, propagatedFeatures, previous
       // Compare on the DECODED labels: the baseline stores category codes while
       // the live sample stores label strings, so raw comparison would misfire.
       if (displayNewValue !== displayBaselineValue) {
+        // Did the user change this feature in THIS step (differs from the previous
+        // entry / initial state)? Those lead the list.
+        const recentlyChanged = prevValues
+          ? formatValue(prevValues[feature.featureID], feature) !== displayNewValue
+          : false;
+        // For DTI, show the applicant's RAW profile DTI on the left (matching the
+        // DTI card's left value) — not the loan-folded baseline. The changed/
+        // unchanged determination above still uses the folded baseline.
+        let displayOldValue = displayBaselineValue;
+        if (featureName === 'dti') {
+          const raw = rawProfileDtiValue(plan);
+          if (raw != null) displayOldValue = formatValue(raw, feature);
+        }
         changedFeatures.push({
           featureID: feature.featureID,
           name: displayName,
-          displayOldValue: displayBaselineValue, // from = load-time baseline
+          displayOldValue,                       // from = profile value (raw for DTI)
           displayNewValue,                       // to = value at this entry
-          contribution: (curScores[featureName] ?? 0) - (origScores[featureName] ?? 0)
+          contribution: (curScores[featureName] ?? 0) - (origScores[featureName] ?? 0),
+          recentlyChanged,
+          // The user's DIRECT edit this step (changed, but not via propagation).
+          propagated: !!(propagatedFeatures && propagatedFeatures.has(featureName))
         });
       } else {
         unchangedFeatures.push({
@@ -72,6 +110,13 @@ export function createHistoryEntry(planIndex, plan, propagatedFeatures, previous
       // Silently skip features with errors; they will simply not be listed.
     }
   }
+
+  // Lead with the change the user just made: their DIRECT edit this step first,
+  // then that edit's propagated effects, then the rest (coach-suggested / earlier
+  // changes). Stable — preserves the original model order within each tier.
+  const rank = (f) =>
+    f.recentlyChanged && !f.propagated ? 0 : f.recentlyChanged ? 1 : 2;
+  changedFeatures.sort((a, b) => rank(a) - rank(b));
 
   const currentProb = Math.round(sigmoid(plan.ebmLocal.predScore) * 100);
   const previousProb = Math.round(sigmoid(previousScore) * 100);
