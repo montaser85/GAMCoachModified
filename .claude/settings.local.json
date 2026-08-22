@@ -118,7 +118,9 @@
       "Bash(cd \"D:/OSU/Dr B research group/GAM_Coach/gam-coach_modified/gamcoach-ui\" && grep -c \"from the saved plans\" public/build/bundle.js; tail -3 /tmp/rollup-dev2.log)",
       "Bash(curl -s \"http://localhost:5005/\")",
       "Read(//d/OSU/Dr B research group/GAM_Coach/gam-coach_modified/**)",
-      "PowerShell(Get-Process node -ErrorAction SilentlyContinue | Select-Object Id, @{N='CPU_s';E={[math]::Round\\($_.CPU,1\\)}}, @{N='MB';E={[math]::Round\\($_.WS/1MB\\)}} | Format-Table -AutoSize)"
+      "PowerShell(Get-Process node -ErrorAction SilentlyContinue | Select-Object Id, @{N='CPU_s';E={[math]::Round\\($_.CPU,1\\)}}, @{N='MB';E={[math]::Round\\($_.WS/1MB\\)}} | Format-Table -AutoSize)",
+      "Bash(python -c \"import json; d=json.load\\(open\\('public/data/lc-classifier.json'\\)\\); f=d['features'] if 'features' in d else d; import sys; print\\(type\\(d\\)\\); print\\(list\\(d.keys\\(\\)\\)[:20] if isinstance\\(d,dict\\) else 'list'\\)\")",
+      "Bash(node -e \"const d=require\\('./public/data/lc-classifier.json'\\); console.log\\(Object.keys\\(d\\).slice\\(0,20\\)\\);\")"
     ]
   }
 }

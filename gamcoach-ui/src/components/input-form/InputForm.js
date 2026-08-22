@@ -1,6 +1,7 @@
 import '../../typedef';
 import d3 from '../../utils/d3-import';
 import { round } from '../../utils/utils';
+import { LINK_POPUP_TEXT } from '../../utils/featureDefinitions';
 
 const formatter = d3.format(',.2~f');
 
@@ -34,7 +35,9 @@ export const getInputLists = (features, curExample) => {
         isCont: f.isCont,
         requiresInt: f.requiresInt,
         name: f.description.displayName,
-        description: f.description.description,
+        // Prefer the new plain-language definition (the "i"-icon popup text on the
+        // feature cards); fall back to the model's built-in description.
+        description: LINK_POPUP_TEXT[f.data.name] || f.description.description,
         featureID: f.featureID
       });
     } else {
@@ -63,7 +66,9 @@ export const getInputLists = (features, curExample) => {
         curValue: curLevel,
         isCont: f.isCont,
         name: f.description.displayName,
-        description: f.description.description,
+        // Prefer the new plain-language definition (the "i"-icon popup text on the
+        // feature cards); fall back to the model's built-in description.
+        description: LINK_POPUP_TEXT[f.data.name] || f.description.description,
         levelName: curExample[f.featureID],
         levelDisplayName: f.description.levelDescription[curLevel]?.displayName,
         allValues: values,
