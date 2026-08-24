@@ -8,10 +8,13 @@
   position: relative;
 
   // Single narrow column (left panel of the two-column layout). Was 990px for
-  // the old full-width multi-column layout.
+  // the old full-width multi-column layout. Height scales with the viewport (the
+  // list scrolls inside) so the whole panel stays short enough that the "What is GAM
+  // Coach" section below is visible without scrolling on any screen height; a floor
+  // keeps it usable on short windows.
   min-width: 0;
   width: 100%;
-  height: 600px;
+  height: max(300px, calc(100vh - 425px));
 
   border-bottom-left-radius: $border-radius;
   border-bottom-right-radius: $border-radius;
@@ -103,7 +106,7 @@
   user-select: none;
 
   .label {
-    font-size: 0.95rem;
+    font-size: 1.15rem;
     font-weight: 400;
     color: $gray-600;
     display: flex;

@@ -94,14 +94,14 @@
   }
 
   .sr-orig-label {
-    font-size: 0.85rem;
+    font-size: 1.02rem;
     color: $gray-700;
     b { color: $gray-900; }
   }
 
   // Approval status — now top-left, above the bar.
   .sr-status {
-    font-size: 0.9rem;
+    font-size: 1.08rem;
     font-weight: 700;
     white-space: nowrap;
     &.approved { color: hsl(140, 55%, 34%); }
@@ -132,7 +132,7 @@
     line-height: 1;
 
     .sr-approval-text {
-      font-size: 0.64rem;
+      font-size: 0.77rem;
       font-weight: 600;
       color: hsl(140, 45%, 34%);
       margin-bottom: 1px;
@@ -191,29 +191,32 @@
   .sr-readout {
     // Fixed width so the score bar to its left NEVER shrinks, regardless of the
     // readout text ("62 points" vs "28 points to approval"). The longer label
-    // wraps within this width — using vertical space, not horizontal.
-    flex: 0 0 118px;
-    width: 118px;
+    // WRAPS within this width (using vertical space, not horizontal) so it can never
+    // overflow left onto the bar.
+    flex: 0 0 156px;
+    width: 156px;
     text-align: right;
 
     .sr-points {
-      // Horizontal, single line (keeps the panel short). The short labels
-      // ("50 points" / "5 pts to go") fit within the fixed readout width.
+      // The number and its unit sit on a line; when the unit is long ("points to
+      // approval") it wraps to the next line within the readout width instead of
+      // overrunning the bar. flex-wrap + normal white-space enable that wrap.
       display: flex;
       flex-direction: row;
+      flex-wrap: wrap;
       align-items: baseline;
       justify-content: flex-end;
-      gap: 4px;
-      white-space: nowrap;
+      gap: 0 4px;
+      white-space: normal;
       color: $gray-900;
-      line-height: 1.1;
+      line-height: 1.15;
 
       .sr-num {
-        font-size: 1.6rem;
+        font-size: 1.92rem;
         font-weight: 800;
       }
       .sr-unit {
-        font-size: 0.9rem;
+        font-size: 1.08rem;
         font-weight: 600;
         color: $gray-700;
       }

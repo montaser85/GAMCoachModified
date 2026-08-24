@@ -86,7 +86,7 @@
     display: flex;
     align-items: center;
     gap: 6px;
-    font-size: 1rem;
+    font-size: 1.2rem;
     font-weight: 700;
     color: $gray-900;
     margin-bottom: 8px;
@@ -103,7 +103,7 @@
   }
 
   .it-status {
-    font-size: 0.88rem;
+    font-size: 1.05rem;
     color: $gray-700;
     margin-bottom: 10px;
   }
@@ -124,7 +124,7 @@
     border: 1px solid #e8d3a0;
     border-radius: 18px;
     color: #000;
-    font-size: 0.88rem;
+    font-size: 1.05rem;
     line-height: 1.2;
     cursor: default;
 

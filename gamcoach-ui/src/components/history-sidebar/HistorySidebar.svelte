@@ -167,7 +167,7 @@
   .sidebar-panel {
     position: fixed;
     right: 0; top: 0; bottom: 0;
-    width: 320px;
+    width: 352px;
     background: white;
     border-left: 1px solid $gray-300;
     box-shadow: -2px 0 8px hsla(0, 0%, 0%, 0.06);
@@ -190,7 +190,7 @@
 
     h2 {
       margin: 0;
-      font-size: 1rem;
+      font-size: 1.2rem;
       font-weight: 700;
       color: $gray-900;
       letter-spacing: 0.05em;
@@ -202,7 +202,7 @@
     flex: 0 0 auto;
     padding: 8px 12px 0;
     text-align: right;
-    font-size: 0.78rem;
+    font-size: 0.92rem;
     font-style: italic;
     color: $gray-500;
   }
@@ -214,7 +214,7 @@
     background: hsl(35, 100%, 94%);
     border: 1px solid hsl(35, 80%, 72%);
     border-radius: 6px;
-    font-size: 0.85rem;
+    font-size: 1.0rem;
     color: hsl(35, 80%, 26%);
   }
 
@@ -231,7 +231,7 @@
     padding: 24px 16px;
     text-align: center;
     color: $gray-500;
-    font-size: 0.9rem;
+    font-size: 1.05rem;
     line-height: 1.4;
   }
 
@@ -266,14 +266,14 @@
   }
 
   .entry-number {
-    font-size: 0.9rem;
+    font-size: 1.05rem;
     font-weight: 700;
     color: $gray-700;
     letter-spacing: 0.04em;
   }
 
   .entry-score {
-    font-size: 22px;
+    font-size: 25px;
     font-weight: 800;
     color: $gray-900;      // ≥ approval: black (current style)
     line-height: 1;
@@ -284,7 +284,7 @@
   // Approval status icon — same glyphs/colors as the main score line
   // ("✓ Approved" green / "✗ Not approved" red).
   .entry-approval {
-    font-size: 1.05rem;
+    font-size: 1.2rem;
     font-weight: 800;
     line-height: 1;
     cursor: default;
@@ -304,7 +304,7 @@
     background: none;
     border: none;
     cursor: pointer;
-    font-size: 1.25rem;
+    font-size: 1.45rem;
     line-height: 1;
     padding: 2px 4px;
     color: $gray-400;
@@ -316,7 +316,7 @@
 
   .restore-btn {
     padding: 5px 14px;
-    font-size: 0.8rem;
+    font-size: 0.94rem;
     font-weight: 600;
     background: $blue-600;
     color: white;
@@ -339,7 +339,7 @@
     background: none;
     border: none;
     cursor: pointer;
-    font-size: 0.9rem;
+    font-size: 1.05rem;
     font-weight: 600;
     color: $gray-600;
     text-align: left;
@@ -366,7 +366,7 @@
       // Show the FULL feature name — wrap instead of truncating with an ellipsis.
       white-space: normal;
       overflow-wrap: break-word;
-      font-size: 15px;
+      font-size: 17px;
       font-weight: 500;
       color: $gray-800;
     }
@@ -375,7 +375,7 @@
       flex: 0 0 auto;
       text-align: right;
       font-variant-numeric: tabular-nums;
-      font-size: 15px;
+      font-size: 17px;
 
       .from  { color: $gray-900; font-weight: 500; } // "before" value in black
       .arrow { color: $gray-400; margin: 0 3px; }
@@ -387,8 +387,8 @@
 
     /* Unchanged rows: quieter */
     &.uc {
-      .feat-name { font-size: 0.85rem; color: $gray-500; font-weight: 400; }
-      .feat-val  { font-size: 0.85rem; color: $gray-500; }
+      .feat-name { font-size: 1.0rem; color: $gray-500; font-weight: 400; }
+      .feat-val  { font-size: 1.0rem; color: $gray-500; }
     }
   }
 

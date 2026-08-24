@@ -587,6 +587,13 @@
   .main-content-wrapper {
     display: flex;
     flex-direction: column;
+    // NOTE: no `zoom` here — a page zoom broke the feature cards' d3 interactions.
+    // Width is (viewport − 676px), centered by the grid (`1fr auto 1fr`) for EQUAL
+    // 338px margins whose right side clears the 320px History sidebar + scrollbar.
+    // The width is as wide as balanced margins allow while staying clear of History;
+    // the feature cards still fit full feature names.
+    width: calc(100vw - 676px);
+    max-width: 1350px;
     // The History sidebar is a fixed overlay pinned to the right edge (width 320px)
     // and does not overlap the main visualization panel, so opening it must NOT
     // contract the main content — the panel stays exactly as it is.
@@ -641,8 +648,8 @@
   }
 
   .left-column {
-    flex: 0 0 324px;
-    width: 324px;
+    flex: 0 0 364px;
+    width: 364px;
     min-width: 0;
     display: flex;
     flex-direction: column;
@@ -653,10 +660,10 @@
     flex: 1 1 auto;
     min-width: 0;
     padding-top: 2px;
-    // Match the left column (plan row + 600px feature panel) and scroll its own
+    // Matches the left column's (viewport-scaled) height and scrolls its own
     // content, so the lower bands (ideas / effects) stay reachable when they grow
     // instead of being clipped by the wrapper's overflow:hidden.
-    max-height: 640px;
+    max-height: max(400px, calc(100vh - 325px));
     overflow-y: auto;
     overflow-x: hidden;
     padding-right: 6px;
@@ -710,10 +717,10 @@
     }
     .note-pencil {
       flex: 0 0 auto;
-      font-size: 0.85rem;
+      font-size: 1.0rem;
     }
     .note-label {
-      font-size: 0.85rem;
+      font-size: 1.0rem;
       font-weight: 600;
       white-space: nowrap;
     }
@@ -757,7 +764,7 @@
           color: $gray-400;
         }
         .q-text {
-          font-size: 0.85rem;
+          font-size: 1.0rem;
           color: $gray-600;
         }
         &:hover .q-text { color: $gray-900; }
@@ -772,7 +779,7 @@
         min-height: 54px;
         resize: vertical; /* multi-line, vertically resizable */
         padding: 6px 8px;
-        font-size: 0.85rem;
+        font-size: 1.0rem;
         font-family: inherit;
         line-height: 1.4;
         color: $gray-800;
@@ -800,7 +807,7 @@
 
     .plan-select {
       select {
-        font-size: 0.95rem;
+        font-size: 1.15rem;
         font-weight: 600;
         padding: 3px 22px 3px 10px;
         cursor: pointer;

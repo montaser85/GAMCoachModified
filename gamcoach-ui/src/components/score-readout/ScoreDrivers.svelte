@@ -93,8 +93,8 @@
 
   $blue: #378ADD;
   $red: #E24B4A;
-  $name-col: 132px;
-  $value-col: 46px;
+  $name-col: 142px;
+  $value-col: 54px;
   $col-gap: 8px;
 
   .score-drivers {
@@ -106,7 +106,7 @@
     display: flex;
     align-items: center;
     gap: 6px;
-    font-size: 1rem;
+    font-size: 1.2rem;
     font-weight: 700;
     color: $gray-900;
     margin-bottom: 8px;
@@ -126,7 +126,7 @@
     display: flex;
     justify-content: space-between;
     margin-bottom: 6px;
-    font-size: 0.82rem;
+    font-size: 0.98rem;
     font-weight: 600;
 
     .sd-hurts { color: $red; }
@@ -146,7 +146,7 @@
   }
 
   .sd-name {
-    font-size: 0.85rem;
+    font-size: 1.02rem;
     color: $gray-800;
     white-space: nowrap;
     overflow: hidden;
@@ -181,7 +181,7 @@
 
   .sd-value {
     text-align: right;
-    font-size: 0.86rem;
+    font-size: 1.03rem;
     font-weight: 700;
     font-variant-numeric: tabular-nums;
     &.pos { color: $blue; }
@@ -205,14 +205,14 @@
       position: absolute;
       top: 3px;
       transform: translateX(-50%);
-      font-size: 0.68rem;
+      font-size: 0.82rem;
       color: $gray-500;
       font-variant-numeric: tabular-nums;
     }
   }
 
   .sd-empty {
-    font-size: 0.85rem;
+    font-size: 1.02rem;
     color: $gray-500;
     padding: 8px 2px;
   }

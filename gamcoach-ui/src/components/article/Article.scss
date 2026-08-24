@@ -9,20 +9,26 @@
 .top {
   position: relative;
   display: grid;
+  // Centered: equal flexible margins on each side (`1fr auto 1fr`) so the left gap
+  // matches the right, with the coach panel in the middle `auto` column. The panel's
+  // own max-width keeps its right edge clear of the fixed History sidebar. Rows: a
+  // small top gap, the panel (its natural height), then a flexible bottom row — and
+  // the whole `.top` is shorter than the viewport so the "What is GAM Coach" section
+  // below stays visible without scrolling.
   grid-template-columns: [start] 1fr [mid-start] auto [mid-end] 1fr [end];
-  grid-template-rows: [start] 1fr [content-start] auto [content-end] 1fr [end];
+  grid-template-rows: [start] 16px [content-start] auto [content-end] 1fr [end];
 
-  height: calc(100vh - 5px);
-  max-height: 800px;
+  height: calc(100vh - 132px);
+  max-height: none;
   width: 100vw;
-  box-sizing: border;
+  box-sizing: border-box;
 }
 
-/* The main GAM Coach panel — widened 20% (from its ~884px content width). The
-   center grid column is `auto`, so an explicit width here drives the whole
-   panel wider (the flexible right column takes the extra space). */
+/* The main GAM Coach panel box. It shrinks to the content's width, which is
+   (viewport − 680px) → equal 340px margins that clear the 320px History sidebar
+   (plus the scrollbar) on the right. */
 .coach-wrapper {
-  width: 1061px;
+  width: fit-content;
   max-width: 100%;
 }
 

@@ -151,7 +151,7 @@
     }
 
     .ce-empty-text {
-      font-size: 0.85rem;
+      font-size: 1.02rem;
       line-height: 1.5;
     }
   }
@@ -162,7 +162,7 @@
     display: flex;
     align-items: center;
     gap: 6px;
-    font-size: 1rem;
+    font-size: 1.2rem;
     font-weight: 700;
     color: $gray-900;
     cursor: pointer;
@@ -211,7 +211,7 @@
     flex-wrap: wrap;
     gap: 4px 16px;
     margin-bottom: 12px;
-    font-size: 0.82rem;
+    font-size: 0.98rem;
     font-weight: 600;
     color: $gray-700;
 
@@ -293,7 +293,7 @@
 
   .ce-source {
     flex: 0 0 auto;
-    width: 148px;
+    width: 146px;
     display: flex;
     flex-direction: column;
     align-items: flex-start;
@@ -301,7 +301,7 @@
     gap: 2px;
 
     .ce-src-name {
-      font-size: 0.84rem;
+      font-size: 1.0rem;
       font-weight: 600;
       color: $gray-800;
       line-height: 1.2;
@@ -315,7 +315,7 @@
     .ce-src-val {
       min-width: 0;
       max-width: 100%;
-      font-size: 0.84rem;
+      font-size: 1.0rem;
       font-weight: 700;
       color: $gray-900;
       line-height: 1.2;
@@ -353,7 +353,7 @@
      not a positive or negative outcome. */
   .ce-none {
     align-self: center;
-    font-size: 0.82rem;
+    font-size: 0.98rem;
     font-style: italic;
     color: $gray-500;
   }
@@ -361,7 +361,7 @@
   .ce-effect {
     flex: 0 0 auto;
     min-width: 64px;
-    max-width: 116px;
+    max-width: 108px;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -371,7 +371,7 @@
     // Full feature name — wraps onto up to TWO lines (uses vertical space),
     // never more.
     .ce-eff-name {
-      font-size: 0.8rem;
+      font-size: 0.96rem;
       color: $gray-700;
       line-height: 1.2;
       overflow-wrap: anywhere;
@@ -382,7 +382,7 @@
     }
 
     .ce-eff-val {
-      font-size: 0.84rem;
+      font-size: 1.0rem;
       font-weight: 700;
       color: $gray-900;
       line-height: 1.2;

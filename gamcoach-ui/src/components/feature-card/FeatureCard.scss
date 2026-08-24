@@ -10,7 +10,7 @@ $card-h-padding: 16px;
   display: flex;
   flex-direction: column;
   height: auto;
-  width: 300px;
+  width: 340px;
   border-radius: $border-radius;
   padding: $card-v-padding $card-h-padding;
   box-shadow: $shadow-border-card;
@@ -318,12 +318,13 @@ $card-h-padding: 16px;
     display: flex;
     align-items: center;
     gap: 8px;
-    height: 24px;
+    height: 28px; // taller so the enlarged feature name fits without auto-shrinking
     flex: 1;
     min-width: 0;  // allow shrinking when feature name is long
     overflow: hidden;
 
     .feature-name {
+      font-size: 1.12rem;
       font-weight: 600;
       overflow: hidden;
       white-space: nowrap;
@@ -410,12 +411,12 @@ $card-h-padding: 16px;
   display: flex;
   flex-direction: row;
   align-items: center;
-  font-size: 0.9rem;
+  font-size: 1.05rem;
 
   // Editable value field — looks like the value text, with a subtle dashed
   // underline hinting it can be typed into, and a clear focus state.
   .value-input {
-    font-size: 0.9rem;
+    font-size: 1.05rem;
     font-family: inherit;
     color: inherit;
     width: 6.5em;
@@ -453,7 +454,7 @@ $card-h-padding: 16px;
   }
 
   .value-change {
-    font-size: 0.8rem;
+    font-size: 0.94rem;
     padding: 0px 14px 8px 5px;
     margin: -5px 0 0 0;
     color: $green-600;
@@ -947,7 +948,7 @@ $card-h-padding: 16px;
   visibility: hidden;
 
   .tag {
-    font-size: 0.9rem;
+    font-size: 1.05rem;
     border-radius: 5px;
     padding: 0px 5px;
     display: inline-block;

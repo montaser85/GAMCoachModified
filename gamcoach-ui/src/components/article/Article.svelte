@@ -353,45 +353,6 @@
       </div>
     </div>
 
-    <div class="coach-right">
-      <div class="icon-container">
-        <a target="_blank" href="https://github.com/xiaohk/gam-coach/">
-          <div class="svg-icon" title="Open-source code">
-            {@html iconGithub}
-          </div>
-          <span>Code</span>
-        </a>
-
-        <a target="_blank" href="https://youtu.be/ubacP34H9XE">
-          <div class="svg-icon" title="Demo video">
-            {@html iconVideo}
-          </div>
-          <span>Video</span>
-        </a>
-
-        <a target="_blank" href="https://arxiv.org/abs/2302.14165">
-          <div class="svg-icon" title="Research paper">
-            {@html iconPdf}
-          </div>
-          <span>Paper</span>
-        </a>
-      </div>
-      <div class="dataset-menu">
-        <span class="dataset-description">Choose a dataset</span>
-        {#each datasetOptions as option, i}
-          <div
-            class="dataset-option"
-            class:selected={option.name === modelName ||
-              (option.name === 'crime' && modelName === 'crime-full')}
-            on:click={(e) => optionClicked(e, option)}
-          >
-            <div class="dataset-place" />
-            <span class="dataset-name">{option.display}</span>
-          </div>
-        {/each}
-      </div>
-    </div>
-
     {#key curExample}
       <div class="coach-wrapper">
         <Coach {windowLoaded} {curExample} {logger} {modelName} />
