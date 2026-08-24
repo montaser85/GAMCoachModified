@@ -10,6 +10,7 @@ import {
 } from '../../ebm/gamcoach';
 import { writable } from 'svelte/store';
 import { Logger } from '../../utils/logger';
+import { appliedLoanDtiContribution } from '../../engine/index.mjs';
 
 const difficultyTextMap = {
   1: 'very-easy',
@@ -225,6 +226,16 @@ export class SavedPlan {
   getChangeList(features) {
     const changeList = [];
 
+    // The applied-for loan's DTI contribution folded into the baseline `dti`. The
+    // DTI "before" must read as the applicant's RAW PROFILE value (pre-application),
+    // not the loan-folded baseline — matching the DTI card, Compare Plans, and the
+    // History panel. Subtracted from the DTI row's original value below.
+    const featureNames = [];
+    features.forEach((f) => {
+      if (f && f.data) featureNames[f.featureID] = f.data.name;
+    });
+    const dtiLoanOffset = appliedLoanDtiContribution(this.curExample, featureNames);
+
     // Iterate through the samples to register changes
     for (let i = 0; i < features.length; i++) {
       if (this.sample[i] !== this.curExample[i]) {
@@ -263,6 +274,13 @@ export class SavedPlan {
               changeValue = newValue - originalValue;
             }
           } else {
+            changeValue = newValue - originalValue;
+          }
+
+          // DTI: show the raw profile value (loan fold removed) as the "before".
+          // Recompute the delta so before + change = after still holds in the box.
+          if (curFeature.data && curFeature.data.name === 'dti' && dtiLoanOffset) {
+            originalValue = originalValue - dtiLoanOffset;
             changeValue = newValue - originalValue;
           }
         }

@@ -6,6 +6,7 @@
   // or decomposition logic lives here.
   import { onDestroy } from 'svelte';
   import { changeEffectsStore } from '../../store';
+  import HeaderInfo from '../header-info/HeaderInfo.svelte';
 
   const BLUE = '#185FA5'; // helps approval
   const RED = '#A32D2D'; // hurts approval
@@ -45,11 +46,7 @@
   <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
   <div class="ce-title" class:ce-title-empty={events.length === 0} on:click={() => (collapsed = !collapsed)}>
     Features affected by suggested or your changes
-    <span
-      class="ce-info"
-      title="How each feature you edit ripples through your application, and whether each ripple helps or hurts your approval."
-      >i</span
-    >
+    <HeaderInfo text="Shows how changing one feature also changes others." />
     <svg class="ce-chev" class:collapsed viewBox="0 0 24 24" width="24" height="24"
          fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
       <path d="M6 9l6 6l6 -6"/>
@@ -161,6 +158,7 @@
 
   /* ── Header + legend ─────────────────────────────────────────────────── */
   .ce-title {
+    position: relative; // positioning context for the HeaderInfo hover popup
     display: flex;
     align-items: center;
     gap: 6px;
@@ -180,25 +178,31 @@
     }
   }
 
+  // Per-row info badge — same look as the left-panel feature-card info icons
+  // (FeatureCard.scss .link-badge): a blue-outlined italic "i" that deepens on hover.
   .ce-info {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 17px;
-    height: 17px;
+    width: 18px;
+    height: 18px;
     border-radius: 50%;
-    border: 1.5px solid $blue-500;
-    color: $blue-600;
-    font-size: 0.72rem;
+    background: transparent;
+    border: 2.5px solid $blue-500;
+    color: $blue-500;
+    font-size: 12px;
     font-weight: 700;
     font-style: italic;
+    font-family: Georgia, serif;
+    -webkit-text-stroke: 0.4px currentColor;
+    line-height: 1;
     cursor: pointer;
     flex: 0 0 auto;
-    transition: background 120ms, color 120ms;
+    transition: border-color 0.15s, color 0.15s;
 
     &:hover {
-      background: $blue-500;
-      color: white;
+      border-color: $blue-700;
+      color: $blue-700;
     }
   }
 
@@ -253,6 +257,9 @@
 
   // Per-row causal-link tooltip — sits BELOW the row so it never covers the source
   // / effect values it explains. Shown only while the row's info icon is hovered.
+  // Per-row tooltip — same look as the left-panel feature-card info popup
+  // (FeatureCard.scss .link-popup): white card, blue border, dark text. Still sits
+  // BELOW the row so it never covers the source / effect values it explains.
   .ce-row-tip {
     position: absolute;
     top: calc(100% - 6px);
@@ -260,14 +267,15 @@
     z-index: 60;
     max-width: 300px;
     width: max-content;
-    background: $gray-900;
-    color: white;
-    padding: 8px 10px;
+    background: white;
+    border: 1px solid $blue-200;
+    color: $gray-700;
+    padding: 9px 11px;
     border-radius: 6px;
-    font-size: 0.78rem;
-    line-height: 1.4;
+    font-size: 0.82rem;
+    line-height: 1.5;
     white-space: pre-line; // render the \n\n between multiple effects as blank lines
-    box-shadow: 0 4px 16px hsla(0, 0%, 0%, 0.28);
+    box-shadow: 0 4px 16px hsla(0, 0%, 0%, 0.14);
     opacity: 0;
     visibility: hidden;
     pointer-events: none;

@@ -153,6 +153,34 @@ export function appliedLoanDtiContribution(curExample, featureNames) {
 }
 
 /**
+ * The full amortized cost of the loan encoded in a model example — the same
+ * loan-amount / term / purpose-APR / monthly-payment numbers the DTI fold uses,
+ * exposed together for a plain-language cost summary (bookmarks panel). Pure
+ * display: reuses aprForPurpose + loanMonthlyPayment, touches no model state.
+ * Operates in model-internal units (loan_amnt raw dollars, term raw months,
+ * purpose the category string). Returns null when the loan can't be resolved.
+ * @param {Array} example model example (feature values by index)
+ * @param {string[]} featureNames feature names, same order as example
+ * @returns {{loanAmount:number, termMonths:number, apr:number, monthly:number,
+ *   total:number, interest:number}|null}
+ */
+export function loanCostFromExample(example, featureNames) {
+  if (!example || !featureNames) return null;
+  const idx = (n) => featureNames.indexOf(n);
+  const loanIdx = idx('loan_amnt');
+  const purpIdx = idx('purpose');
+  const termIdx = idx('term');
+  if (loanIdx < 0) return null;
+  const loanAmount = Number(example[loanIdx]) || 0;
+  const termMonths = termIdx >= 0 ? (parseInt(String(example[termIdx]), 10) || 0) : 0;
+  const apr = purpIdx >= 0 ? aprForPurpose(example[purpIdx]) : aprForPurpose(null);
+  const monthly = loanMonthlyPayment(loanAmount, apr / 12, termMonths);
+  const total = monthly * termMonths;
+  const interest = total - loanAmount;
+  return { loanAmount, termMonths, apr, monthly, total, interest };
+}
+
+/**
  * Return a copy of the raw model example with its `dti` raised to INCLUDE the
  * applied-for loan's monthly payment. Applied once, at the applicant-baseline
  * source, so generation + scoring + display all see the same loan-included DTI.

@@ -32,7 +32,8 @@ export {
   FICO_CEIL,
   MODEL_BOUNDS,
   foldAppliedLoanIntoDti,
-  appliedLoanDtiContribution
+  appliedLoanDtiContribution,
+  loanCostFromExample
 } from './params.mjs';
 
 import { EDGES } from './edges.mjs';

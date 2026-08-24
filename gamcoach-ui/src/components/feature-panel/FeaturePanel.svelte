@@ -2739,6 +2739,11 @@
     <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
     <div class='row-header' on:click={() => toggleGroup('changed')}>
       <span class='label'>Suggested Changes</span>
+      <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
+      <span class='header-info' on:click|stopPropagation>
+        <span class='hi-badge'>i</span>
+        <span class='hi-popup'>Changes GAM Coach suggests to help you get approved.</span>
+      </span>
       <svg class='group-chev' class:collapsed={collapsedGroups.changed} viewBox='0 0 24 24' width='16' height='16'
            fill='none' stroke='currentColor' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'>
         <path d='M6 9l6 6l6 -6'/>
@@ -2904,6 +2909,11 @@
     <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
     <div class='row-header' on:click={() => toggleGroup('configured')}>
       <span class='label'>Configured Features</span>
+      <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
+      <span class='header-info' on:click|stopPropagation>
+        <span class='hi-badge'>i</span>
+        <span class='hi-popup'>Features where you've set your own limits — like which values are allowed, or how hard they are to change.</span>
+      </span>
       <svg class='group-chev' class:collapsed={collapsedGroups.configured} viewBox='0 0 24 24' width='16' height='16'
            fill='none' stroke='currentColor' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'>
         <path d='M6 9l6 6l6 -6'/>
@@ -3069,6 +3079,11 @@
     <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
     <div class='row-header' on:click={() => toggleGroup('other')}>
       <span class='label'>Other Features</span>
+      <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
+      <span class='header-info' on:click|stopPropagation>
+        <span class='hi-badge'>i</span>
+        <span class='hi-popup'>Your other details that are unchanged.</span>
+      </span>
       <svg class='group-chev' class:collapsed={collapsedGroups.other} viewBox='0 0 24 24' width='16' height='16'
            fill='none' stroke='currentColor' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'>
         <path d='M6 9l6 6l6 -6'/>

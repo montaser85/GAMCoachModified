@@ -7,10 +7,31 @@
   import { bookmarkConfigStore } from '../../store';
   import { downloadReceipt } from './BookmarkPanel';
   import { PLAN_NOTE_FIELDS } from '../coach/Coach';
+  import { loanCostFromExample } from '../../engine/index.mjs';
 
   /** True when a frozen note object has at least one answered question. */
   const hasSavedNote = (note) =>
     !!note && Object.values(note).some((v) => v && String(v).trim());
+
+  // ── Loan-cost box (frozen snapshot) ─────────────────────────────────────────
+  // The total the borrower will actually repay, computed from the SAVED plan's
+  // frozen sample (loan amount / term / purpose-APR) via the same amortization the
+  // DTI fold uses — never the live plan. Display-only.
+  const money = (x) => Math.round(x).toLocaleString('en-US');
+  const moneyApprox = (x) => (Math.round(x / 100) * 100).toLocaleString('en-US');
+
+  /** Amortized cost of a saved plan's frozen loan, or null if it can't be resolved. */
+  const getLoanCost = (savedPlan) => {
+    if (!bookmarkConfig.features || !savedPlan) return null;
+    // sample is indexed by featureID; build a name-by-index lookup to match.
+    const names = [];
+    bookmarkConfig.features.forEach((f) => {
+      names[f.featureID] = f.data.name;
+    });
+    const cost = loanCostFromExample(savedPlan.sample, names);
+    if (!cost || !(cost.termMonths > 0)) return null;
+    return cost;
+  };
   import { privateKey, publicKey } from '../../config/key';
   import {
     readKey,
@@ -176,6 +197,7 @@
       </div>
     {:else}
       {#each [...bookmarkConfig.plans] as [planIndex, savedPlan]}
+        {@const cost = getLoanCost(savedPlan)}
         <div class="plan-row">
           <div class="plan-title">
             <span class="plan-title-name">Plan {planIndex}</span>
@@ -185,29 +207,51 @@
               title="Remove this plan">{@html trashIcon}</span
             >
           </div>
-          {#each savedPlan.getChangeList(bookmarkConfig.features) as item}
-            <div class="plan-feature">
-              <div class="feature-name">{item.featureDisplayName}</div>
-              <div class="values">
-                {item.isCont
-                  ? formatter(item.originalValue)
-                  : item.originalValue}
-                <div class="feature-arrow" class:user={false}>
-                  {#if item.isCont}
-                    <span class="value-change">
-                      {`${item.changeValue < 0 ? '' : '+'}${formatter(
-                        item.changeValue
-                      )}`}
-                    </span>
-                    <div class="arrow-right" />
-                  {:else}
-                    <div class="arrow-right-cat" />
-                  {/if}
+          <div class="plan-body">
+            <div class="plan-features">
+              {#each savedPlan.getChangeList(bookmarkConfig.features) as item}
+                <div class="plan-feature">
+                  <div class="feature-name">{item.featureDisplayName}</div>
+                  <div class="values">
+                    {item.isCont
+                      ? formatter(item.originalValue)
+                      : item.originalValue}
+                    <div class="feature-arrow" class:user={false}>
+                      {#if item.isCont}
+                        <span class="value-change">
+                          {`${item.changeValue < 0 ? '' : '+'}${formatter(
+                            item.changeValue
+                          )}`}
+                        </span>
+                        <div class="arrow-right" />
+                      {:else}
+                        <div class="arrow-right-cat" />
+                      {/if}
+                    </div>
+                    {item.isCont ? formatter(item.newValue) : item.newValue}
+                  </div>
                 </div>
-                {item.isCont ? formatter(item.newValue) : item.newValue}
-              </div>
+              {/each}
             </div>
-          {/each}
+
+            <!-- Loan-cost box: fills the empty right-side space. Frozen snapshot. -->
+            {#if cost}
+              <div class="loan-cost-box">
+                <div class="lc-total">
+                  <span class="lc-total-label">Total you'll repay</span>
+                  <span class="lc-total-amt">~${moneyApprox(cost.total)}</span>
+                </div>
+                <div class="lc-split">
+                  Your ${money(cost.loanAmount)} loan
+                  + ~${moneyApprox(cost.interest)} interest
+                </div>
+                <div class="lc-monthly">
+                  ${money(cost.monthly)}/month for {cost.termMonths} months
+                  ({(cost.apr * 100).toFixed(2)}% APR)
+                </div>
+              </div>
+            {/if}
+          </div>
           {#if hasSavedNote(savedPlan.rationale)}
             <div class="plan-rationale">
               <span class="plan-rationale-label">Your notes</span>

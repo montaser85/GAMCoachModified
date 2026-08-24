@@ -2,6 +2,7 @@
   // @ts-check
   import { onDestroy } from 'svelte';
   import { computeScoreDrivers } from './scoreDrivers';
+  import HeaderInfo from '../header-info/HeaderInfo.svelte';
 
   /** Active plan store (writable<Plan>) or null while loading. */
   export let planStore = null;
@@ -38,7 +39,7 @@
   <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
   <div class="sd-header" on:click={() => (collapsed = !collapsed)}>
     How much each change helped or hurt
-    <span class="sd-info" title="Each feature's contribution to the current score, in points.">i</span>
+    <HeaderInfo text="How much each change moved your score up or down from your original score." />
     <svg class="sd-chev" class:collapsed viewBox="0 0 24 24" width="24" height="24"
          fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
       <path d="M6 9l6 6l6 -6"/>
@@ -101,6 +102,7 @@
   }
 
   .sd-header {
+    position: relative; // positioning context for the HeaderInfo hover popup
     display: flex;
     align-items: center;
     gap: 6px;
@@ -117,21 +119,6 @@
       flex: 0 0 auto;
       transition: transform 150ms ease;
       &.collapsed { transform: rotate(-90deg); }
-    }
-
-    .sd-info {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      width: 15px;
-      height: 15px;
-      border-radius: 50%;
-      border: 1px solid $gray-400;
-      color: $gray-500;
-      font-size: 0.68rem;
-      font-weight: 700;
-      font-style: italic;
-      cursor: default;
     }
   }
 

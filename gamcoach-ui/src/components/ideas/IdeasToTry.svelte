@@ -8,6 +8,7 @@
   import { onDestroy } from 'svelte';
   import { sigmoid } from '../../ebm/ebm';
   import { ideasStore } from '../../store';
+  import HeaderInfo from '../header-info/HeaderInfo.svelte';
 
   /** Active plan store (writable<Plan>) or null while loading — used for the
    * points-based status line. */
@@ -47,11 +48,7 @@
     <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
     <div class="it-title" on:click={() => (collapsed = !collapsed)}>
       Ideas to try
-      <span
-        class="it-info"
-        title="Directional next steps our what-if analysis suggests, strongest first. We show a direction only — the amount is up to you."
-        >i</span
-      >
+      <HeaderInfo text="Things you could try to change the current approval score." />
       <svg class="it-chev" class:collapsed viewBox="0 0 24 24" width="24" height="24"
            fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
         <path d="M6 9l6 6l6 -6"/>
@@ -85,6 +82,7 @@
   }
 
   .it-title {
+    position: relative; // positioning context for the HeaderInfo hover popup
     display: flex;
     align-items: center;
     gap: 6px;
@@ -108,22 +106,6 @@
     font-size: 0.88rem;
     color: $gray-700;
     margin-bottom: 10px;
-  }
-
-  .it-info {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 15px;
-    height: 15px;
-    border-radius: 50%;
-    border: 1px solid $gray-400;
-    color: $gray-500;
-    font-size: 0.68rem;
-    font-weight: 700;
-    font-style: italic;
-    cursor: default;
-    flex: 0 0 auto;
   }
 
   .it-chips {

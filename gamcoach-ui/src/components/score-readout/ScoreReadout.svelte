@@ -37,7 +37,14 @@
 
 <div class="score-readout">
   {#if curPoints !== null}
-    <div class="sr-orig-label">Original score: <b>{origPoints}</b></div>
+    <!-- Compact top row above the bar: approval status on the left, original score
+         on the right — moved out of the right readout column to save vertical space. -->
+    <div class="sr-top">
+      <div class="sr-status" class:approved class:rejected={!approved}>
+        {#if approved}✓ Approved{:else}✗ Not approved{/if}
+      </div>
+      <div class="sr-orig-label">Original score: <b>{origPoints}</b></div>
+    </div>
 
     <div class="sr-main">
       <div class="sr-bar-col">
@@ -64,9 +71,6 @@
             <span class="sr-unit">points to approval</span>
           {/if}
         </div>
-        <div class="sr-status" class:approved class:rejected={!approved}>
-          {#if approved}✓ Approved{:else}✗ Not approved{/if}
-        </div>
       </div>
     </div>
   {/if}
@@ -76,14 +80,32 @@
   @import '../../define';
 
   .score-readout {
-    padding: 4px 2px;
+    padding: 1px 2px;
+  }
+
+  // Top row above the bar: status (left) + original score (right), on one line.
+  .sr-top {
+    display: flex;
+    flex-direction: row;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 4px;
   }
 
   .sr-orig-label {
     font-size: 0.85rem;
     color: $gray-700;
-    margin-bottom: 12px;
     b { color: $gray-900; }
+  }
+
+  // Approval status — now top-left, above the bar.
+  .sr-status {
+    font-size: 0.9rem;
+    font-weight: 700;
+    white-space: nowrap;
+    &.approved { color: hsl(140, 55%, 34%); }
+    &.rejected { color: $red-600; }
   }
 
   .sr-main {
@@ -97,7 +119,7 @@
     flex: 1 1 auto;
     min-width: 0;
     position: relative;
-    padding-top: 22px; /* room for the Approval marker above the bar */
+    padding-top: 15px; /* room for the Approval marker above the bar */
   }
 
   .sr-approval {
@@ -110,18 +132,18 @@
     line-height: 1;
 
     .sr-approval-text {
-      font-size: 0.72rem;
+      font-size: 0.64rem;
       font-weight: 600;
       color: hsl(140, 45%, 34%);
-      margin-bottom: 2px;
+      margin-bottom: 1px;
     }
     /* small green downward triangle pointing at the threshold */
     .sr-approval-tri {
       width: 0;
       height: 0;
-      border-left: 5px solid transparent;
-      border-right: 5px solid transparent;
-      border-top: 6px solid hsl(140, 55%, 40%);
+      border-left: 4px solid transparent;
+      border-right: 4px solid transparent;
+      border-top: 5px solid hsl(140, 55%, 40%);
     }
   }
 
@@ -195,13 +217,6 @@
         font-weight: 600;
         color: $gray-700;
       }
-    }
-    .sr-status {
-      margin-top: 4px;
-      font-size: 0.9rem;
-      font-weight: 700;
-      &.approved { color: hsl(140, 55%, 34%); }
-      &.rejected { color: $red-600; }
     }
   }
 </style>

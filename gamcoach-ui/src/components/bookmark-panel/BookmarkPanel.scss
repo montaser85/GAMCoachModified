@@ -165,6 +165,67 @@ $border-radius: 5px;
   }
 }
 
+// Changed-features list (left) + loan-cost box (right), side by side. The features
+// keep their natural left-aligned column; the cost box takes the empty right space.
+.plan-body {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.plan-features {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+// Calm, informative box (not an alarming red) summarizing what the borrower repays.
+.loan-cost-box {
+  flex: 0 0 auto;
+  align-self: stretch;
+  max-width: 52%;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  border: 1px solid hsl(210, 40%, 82%);
+  border-radius: 8px;
+  background: hsl(210, 45%, 97%);
+  font-size: 0.8rem;
+  line-height: 1.35;
+  color: $gray-800;
+
+  .lc-total {
+    display: flex;
+    flex-direction: column;
+    margin-bottom: 4px;
+
+    .lc-total-label {
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      letter-spacing: 0.02em;
+      color: $gray-600;
+    }
+    .lc-total-amt {
+      font-size: 1.15rem;
+      font-weight: 700;
+      color: hsl(210, 55%, 32%);
+    }
+  }
+
+  .lc-split {
+    color: $gray-700;
+    margin-bottom: 2px;
+  }
+
+  .lc-monthly {
+    font-weight: 600;
+    color: $gray-900;
+  }
+}
+
 .plan-title {
   font-size: 0.9rem;
   font-weight: 600;

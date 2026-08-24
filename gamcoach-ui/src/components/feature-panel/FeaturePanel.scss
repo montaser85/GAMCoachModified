@@ -120,6 +120,69 @@
     transition: transform 150ms ease;
     &.collapsed { transform: rotate(-90deg); }
   }
+
+  // Info "i" icon to the right of the group title. Same badge + hover-popup style
+  // as the feature-card info icons (FeatureCard.scss .link-icon), scoped here. The
+  // popup positions against the sticky .row-header (right-aligned so it never
+  // overflows the narrow panel) and shows the one-line group definition on hover.
+  .header-info {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 auto;
+    color: $blue-500;
+    cursor: pointer;
+    padding: 0 2px;
+    transition: color 0.15s;
+
+    .hi-badge {
+      width: 18px;
+      height: 18px;
+      background: transparent;
+      border: 2.5px solid $blue-500;
+      border-radius: 50%;
+      color: $blue-500;
+      font-size: 12px;
+      font-weight: 700;
+      font-style: italic;
+      font-family: Georgia, serif;
+      -webkit-text-stroke: 0.4px currentColor;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      line-height: 1;
+      pointer-events: none;
+      transition: border-color 0.15s, color 0.15s;
+    }
+
+    .hi-popup {
+      display: none;
+      position: absolute;
+      right: 6px;
+      top: 100%;
+      width: 220px;
+      background: white;
+      border: 1px solid $blue-200;
+      border-radius: 6px;
+      padding: 9px 11px;
+      font-size: 0.82rem;
+      font-weight: 400;
+      font-style: normal;
+      color: $gray-700;
+      line-height: 1.5;
+      box-shadow: 0 4px 16px hsla(0, 0%, 0%, 0.14);
+      z-index: 500;
+      white-space: normal;
+      text-align: left;
+      cursor: default;
+    }
+
+    &:hover {
+      color: $blue-700;
+      .hi-badge { border-color: $blue-700; color: $blue-700; }
+      .hi-popup { display: block; }
+    }
+  }
 }
 
 /* Hidden group body — keeps the group name (row-header) visible. */
