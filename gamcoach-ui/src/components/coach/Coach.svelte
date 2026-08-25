@@ -588,11 +588,11 @@
     display: flex;
     flex-direction: column;
     // NOTE: no `zoom` here — a page zoom broke the feature cards' d3 interactions.
-    // Width is (viewport − 676px), centered by the grid (`1fr auto 1fr`) for EQUAL
-    // 338px margins whose right side clears the 320px History sidebar + scrollbar.
-    // The width is as wide as balanced margins allow while staying clear of History;
-    // the feature cards still fit full feature names.
-    width: calc(100vw - 676px);
+    // Width is (viewport − 744px), centered by the grid (`1fr auto 1fr`) for EQUAL
+    // 372px margins whose right side clears the 352px History sidebar + scrollbar (so
+    // the panel never sits under History when it is open). On wide screens this still
+    // leaves a roomy panel; it only feels tight on ~1440-and-narrower displays.
+    width: calc(100vw - 744px);
     max-width: 1350px;
     // The History sidebar is a fixed overlay pinned to the right edge (width 320px)
     // and does not overlap the main visualization panel, so opening it must NOT

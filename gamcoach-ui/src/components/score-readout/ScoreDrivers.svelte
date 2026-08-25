@@ -3,6 +3,7 @@
   import { onDestroy } from 'svelte';
   import { computeScoreDrivers } from './scoreDrivers';
   import HeaderInfo from '../header-info/HeaderInfo.svelte';
+  import { LINK_POPUP_TEXT } from '../../utils/featureDefinitions';
 
   /** Active plan store (writable<Plan>) or null while loading. */
   export let planStore = null;
@@ -33,9 +34,35 @@
   // Tick x-position: 0 → 50%, +9 → 100%, −9 → 0%.
   const tickPct = (t) => 50 + (t / DOMAIN) * 50;
   const signed = (v) => (v >= 0 ? '+' : '−') + Math.abs(v);
+
+  // Uniform name-column width = the widest driver name at the .sd-name font, so every
+  // full feature name fits on ONE line and all the bars still share a zero baseline.
+  let nameColPx = 150;
+  $: nameColPx = computeNameCol(rows);
+  function computeNameCol(rows) {
+    if (!rows || !rows.length || typeof document === 'undefined') return 150;
+    const p =
+      computeNameCol._p ||
+      (() => {
+        const s = document.createElement('span');
+        s.style.cssText =
+          'position:absolute;left:-9999px;top:-9999px;visibility:hidden;' +
+          'white-space:nowrap;font-size:1.02rem;';
+        document.body.appendChild(s);
+        computeNameCol._p = s;
+        return s;
+      })();
+    let max = 0;
+    for (const r of rows) {
+      p.textContent = r.displayName;
+      const w = p.getBoundingClientRect().width;
+      if (w > max) max = w;
+    }
+    return Math.max(90, Math.min(280, Math.ceil(max) + 3));
+  }
 </script>
 
-<div class="score-drivers">
+<div class="score-drivers" style="--sd-name-col: {nameColPx}px">
   <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
   <div class="sd-header" on:click={() => (collapsed = !collapsed)}>
     How much each change helped or hurt
@@ -56,7 +83,12 @@
     <div class="sd-rows">
       {#each rows as r (r.name)}
         <div class="sd-row">
-          <div class="sd-name">{r.displayName}</div>
+          <div class="sd-name">
+            <span class="sd-name-text">{r.displayName}</span>
+            {#if LINK_POPUP_TEXT[r.name]}
+              <span class="sd-name-tip">{LINK_POPUP_TEXT[r.name]}</span>
+            {/if}
+          </div>
           <div class="sd-plot">
             <div class="sd-zero"></div>
             {#if r.actualPP >= 0}
@@ -140,17 +172,45 @@
 
   .sd-row {
     display: grid;
-    grid-template-columns: $name-col 1fr $value-col;
+    grid-template-columns: var(--sd-name-col, #{$name-col}) 1fr $value-col;
     column-gap: $col-gap;
     align-items: center;
   }
 
   .sd-name {
+    position: relative;
     font-size: 1.02rem;
     color: $gray-800;
+    cursor: default; // no help/question cursor on hover
+    // Full feature name on a SINGLE line (the column is sized to the widest name).
     white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    line-height: 1.2;
+
+    // Hover definition — same text as the left-panel feature-card info popup,
+    // styled to match it (white card, blue border).
+    .sd-name-tip {
+      display: none;
+      position: absolute;
+      left: 0;
+      top: 100%;
+      margin-top: 4px;
+      z-index: 600;
+      width: 230px;
+      max-width: 260px;
+      background: white;
+      border: 1px solid $blue-200;
+      border-radius: 6px;
+      padding: 9px 11px;
+      font-size: 0.9rem;
+      font-weight: 400;
+      color: $gray-700;
+      line-height: 1.5;
+      box-shadow: 0 4px 16px hsla(0, 0%, 0%, 0.14);
+      white-space: normal;
+      text-align: left;
+      cursor: default;
+    }
+    &:hover .sd-name-tip { display: block; }
   }
 
   .sd-plot {
@@ -191,7 +251,7 @@
   /* ── Bottom axis ─────────────────────────────────────────────────── */
   .sd-axis {
     display: grid;
-    grid-template-columns: $name-col 1fr $value-col;
+    grid-template-columns: var(--sd-name-col, #{$name-col}) 1fr $value-col;
     column-gap: $col-gap;
     margin-top: 2px;
   }
