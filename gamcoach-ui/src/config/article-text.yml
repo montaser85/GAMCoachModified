@@ -4,25 +4,30 @@
 tool:
   pre:
     - >
-      As Machine Learning (ML) models are increasingly used to inform high-stake
-      decisions, such as loan approvals and school admissions, there has been a
-      surge of interest in the field of algorithmic recourse—designing
-      techniques that suggest actions to alter the outcomes of ML models. In a
-      loan application scenario, a recourse plan that alters a loan rejection
-      decision can have the form of "if you increase your annual income by $5k,
-      you will get the loan." GAM Coach is a web-based interactive tool that
-      <strong>empower end-users to iteratively discover recourse plans that meet
-      their preferences.</strong>
+      GAM Coach is a web-based interactive tool that <strong>helps users identify
+      strategies to obtain a desirable AI decision</strong> (e.g., loan
+      application approval). These strategies can be "if you increase your FICO
+      score (credit score) by 3 points, and increase your credit utilization by
+      2.65%, you will get the loan."
     - >
-      Existing recourse generation techniques have the implicit assumption that
-      ML developers understand what input variables can be changed and how
-      difficult it is to change them. However, the actionability of a recourse
-      plan is ultimately subjective and personal, and unlikely to match
-      developers' expectations completely. To bridge this mismatch, GAM Coach
-      <strong>enable end-users to easily specify recourse preferences</strong>,
-      such as the <em>difficulty</em> and <em>acceptable range</em> of a
-      feature, and <strong>iteratively fine-tune recourse plans</strong> until
-      finding satisfactory ones.
+      In this scenario, you are a loan applicant whose application is rejected by
+      a bank. The bank then gives you a link to GAM Coach to help you improve and
+      succeed in the next application. GAM Coach is pre-loaded with all
+      "information" you provided to the bank, e.g., <code>annual income</code>,
+      <code>employment length</code>, <code>FICO score</code> (credit score). Each
+      piece of the information is called a "feature". For example,
+      <code>FICO score</code> is one feature, and it has your value
+      <code>650</code>.
+    - >
+      GAM Coach uses all these features and values to identify the best strategies
+      that you can use to get the next loan. In addition, you can tell GAM Coach
+      what features are easier to change than others. For example, maybe it's
+      easier for you to change your <code>FICO score</code> than changing
+      <code>employment length</code>, and maybe you only want to change
+      <code>FICO Score</code> in a certain range. As you can see, these strategy
+      preferences vary from user to user, so GAM Coach allows you to specify
+      <strong>your own preference</strong> and generate personalized strategies
+      <strong>just for you</strong>.
 
 youtubeTimes:
   - startTime: 0

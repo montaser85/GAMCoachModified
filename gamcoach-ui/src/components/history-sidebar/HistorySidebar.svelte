@@ -66,6 +66,13 @@
   <div class="sidebar-panel">
     <div class="sidebar-header">
       <h2>Exploration History</h2>
+      <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
+      <button
+        class="sidebar-close"
+        on:click={() => historySidebarOpenStore.set(false)}
+        title="Close"
+        aria-label="Close exploration history"
+      >&times;</button>
     </div>
 
     <div class="list-caption">Newest first</div>
@@ -187,6 +194,11 @@
     padding: 16px;
     border-bottom: 1px solid $gray-200;
     background: $gray-50;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
 
     h2 {
       margin: 0;
@@ -194,6 +206,30 @@
       font-weight: 700;
       color: $gray-900;
       letter-spacing: 0.05em;
+    }
+
+    // "X" close button on the right — hides the sidebar.
+    .sidebar-close {
+      flex: 0 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      padding: 0;
+      background: none;
+      border: none;
+      border-radius: 5px;
+      font-size: 1.5rem;
+      line-height: 1;
+      color: $gray-500;
+      cursor: pointer;
+      transition: background 120ms, color 120ms;
+
+      &:hover {
+        background: $gray-200;
+        color: $gray-900;
+      }
     }
   }
 
