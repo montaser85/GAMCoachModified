@@ -25,7 +25,7 @@
   import ExampleModal from '../example-modal/ExampleModal.svelte';
 
   import '../../typedef';
-  import { Plan, SavedPlan } from '../coach/Coach';
+  import { Plan, SavedPlan, TOTAL_PLAN_NUM } from '../coach/Coach';
   import { InitPlanLabels } from './CoachPanel';
   import { applySuggestedPropagationToPlan } from '../../engine/loadPropagation.mjs';
 
@@ -487,7 +487,7 @@
   const regenerateClicked = () => {
     // Let users wait the current batch to finish or fail before starting the
     // next batch
-    if (plans.failedPlans.size === 0 && localPlans.size !== 5) {
+    if (plans.failedPlans.size === 0 && localPlans.size !== TOTAL_PLAN_NUM) {
       alert(
         ''.concat(
           'Please wait until all pending plans are generated ',
@@ -533,9 +533,9 @@
    */
   const dispatchRegenerateClicked = () => {
     // Save two un-pinked plans for review during user study
-    if (logger && plans.nextPlanIndex === 6) {
+    if (logger && plans.nextPlanIndex === 1 + TOTAL_PLAN_NUM) {
       bookmarkConfig.unpickedPlans = new Map();
-      for (let i = 1; i < 6; i++) {
+      for (let i = 1; i < 1 + TOTAL_PLAN_NUM; i++) {
         if (!bookmarkConfig.plans.has(i)) {
           const curPlan = localPlans.get(i);
           const savedPlan = new SavedPlan(

@@ -676,7 +676,10 @@ $card-h-padding: 16px;
 
 .feature-slider {
   position: absolute;
-  top: 155px;
+  // Raised from 155px to 120px (−35px) to match the shorter hist area after the
+  // value-distribution curve was removed (histHeight 90 → 55). This keeps the
+  // draggable slider line ABOVE the vertical scale/tick marks.
+  top: 120px;
   width: 100%;
   display: flex;
   flex-direction: column;

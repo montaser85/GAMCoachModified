@@ -121,7 +121,11 @@
       "PowerShell(Get-Process node -ErrorAction SilentlyContinue | Select-Object Id, @{N='CPU_s';E={[math]::Round\\($_.CPU,1\\)}}, @{N='MB';E={[math]::Round\\($_.WS/1MB\\)}} | Format-Table -AutoSize)",
       "Bash(python -c \"import json; d=json.load\\(open\\('public/data/lc-classifier.json'\\)\\); f=d['features'] if 'features' in d else d; import sys; print\\(type\\(d\\)\\); print\\(list\\(d.keys\\(\\)\\)[:20] if isinstance\\(d,dict\\) else 'list'\\)\")",
       "Bash(node -e \"const d=require\\('./public/data/lc-classifier.json'\\); console.log\\(Object.keys\\(d\\).slice\\(0,20\\)\\);\")",
-      "Bash(node -e \"console.log\\('svelte', require\\('svelte/package.json'\\).version\\)\")"
+      "Bash(node -e \"console.log\\('svelte', require\\('svelte/package.json'\\).version\\)\")",
+      "Bash(ROLLUP_WATCH=true PUBLIC_URL='' npx rollup -c)",
+      "Bash(powershell.exe -NoProfile -Command 'Get-CimInstance Win32_Process -Filter \"name='\\\\''node.exe'\\\\''\" | Where-Object { $_.CommandLine -like '\\\\''*rollup*'\\\\'' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force; Write-Output \\('\\\\''killed '\\\\'' + $_.ProcessId\\) }')",
+      "Bash(awk '{print $6, $7}')",
+      "Bash(awk '{print $6}')"
     ]
   }
 }

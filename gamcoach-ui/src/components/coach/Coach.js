@@ -12,6 +12,17 @@ import { writable } from 'svelte/store';
 import { Logger } from '../../utils/logger';
 import { appliedLoanDtiContribution } from '../../engine/index.mjs';
 
+/**
+ * How many recourse plans to generate per batch (tabs/dropdown slots reserved).
+ *
+ * TEMPORARILY set to 3 because generating 5 plans is slow for some value
+ * combinations (the approval-filter re-solve loop can dominate). To switch back
+ * to the original behavior, change this to 5. It is the single source of truth:
+ * plan-generation loops, plan-index bookkeeping, the loading placeholders, and
+ * the "wait for the batch to finish" guard all read from it.
+ */
+export const TOTAL_PLAN_NUM = 3;
+
 const difficultyTextMap = {
   1: 'very-easy',
   2: 'easy',
@@ -473,24 +484,69 @@ export class Constraints {
  * @param {object} cfsIn  the initial cfs result to filter
  * @returns {Promise<object>} a passing cfs, or the best-below-approval cfs
  */
-const filterToPassing = async (coach, modelData, curExample, cfsIn) => {
+const filterToPassing = async (coach, modelData, curExample, cfsIn, stats) => {
+  const t0 = performance.now();
   let cfs = cfsIn;
   let best = null;
   let attempts = 0;
+  const finish = (passed, prob) => {
+    if (stats) {
+      stats.attempts = attempts;
+      stats.ms = performance.now() - t0;
+      stats.passed = passed;
+      stats.prob = prob;
+    }
+  };
   while (cfs.isSuccessful && attempts < MAX_FILTER_ATTEMPTS) {
     let prob;
     try {
       prob = foldedApprovalProb(modelData, curExample, cfs.data[0]);
     } catch (e) {
+      finish(true, null);
       return cfs; // never let the filter break generation
     }
-    if (prob >= APPROVAL_PROB) return cfs; // passes → show it
+    if (prob >= APPROVAL_PROB) { finish(true, prob); return cfs; } // passes → show it
     if (!best || prob > best.prob) best = { cfs, prob };
     attempts += 1;
     cfs = await coach.generateSubCfs(cfs.nextCfConfig); // mute + next candidate
   }
   // Exhausted / infeasible: surface the best-below-approval plan if we have one.
+  finish(false, best ? best.prob : null);
   return best ? best.cfs : cfs;
+};
+
+/**
+ * Print a per-plan generation timing breakdown to the console: total time, the
+ * initial MILP solve time, and the approval-filter time / retry count. The filter
+ * re-runs the solver up to MAX_FILTER_ATTEMPTS times when a plan lands below
+ * approval, so a high attempt count is what makes "some combinations" slow to
+ * generate. Slow plans (> 3 s) are highlighted in red.
+ * @param {number} idx plan index
+ * @param {number} solveMs initial solve time (ms)
+ * @param {{attempts?:number, ms?:number, passed?:boolean, prob?:number}} fstats
+ * @param {number} totalMs total time (solve + filter), ms
+ */
+const logPlanTiming = (idx, solveMs, fstats, totalMs) => {
+  const a = fstats.attempts || 0;
+  const filterMs = fstats.ms || 0;
+  const pct = fstats.prob != null ? `${(fstats.prob * 100).toFixed(1)}%` : '?';
+  const status =
+    a === 0
+      ? 'approved on first candidate'
+      : fstats.passed
+      ? `approved after ${a} extra solve${a === 1 ? '' : 's'}`
+      : `NO approving plan — best ${pct} after ${a} solves`;
+  console.log(
+    `%c[GAM Coach] Plan ${idx} generated in ${totalMs.toFixed(0)} ms ` +
+      `— MILP solve ${solveMs.toFixed(0)} ms, approval filter ${filterMs.toFixed(
+        0
+      )} ms / ${a} attempt${a === 1 ? '' : 's'} (${status})`,
+    totalMs > 3000
+      ? 'color:#c0392b;font-weight:700'
+      : totalMs > 1000
+      ? 'color:#b8860b;font-weight:600'
+      : 'color:#2e8b57'
+  );
 };
 
 export const initPlans = async (
@@ -562,7 +618,7 @@ export const initPlans = async (
     constraints.getCleanCopy()
   );
 
-  console.time(`Plan ${tempPlans.nextPlanIndex} generated`);
+  const planStartT = performance.now();
   let cfs = await coach.generateCfs({
     curExample: exampleBatch,
     totalCfs: 1,
@@ -573,11 +629,18 @@ export const initPlans = async (
     verbose: 0,
     maxNumFeaturesToVary: constraints.maxNumFeaturesToVary
   });
-  console.timeEnd(`Plan ${tempPlans.nextPlanIndex} generated`);
+  const planSolveMs = performance.now() - planStartT;
 
   // Post-fold approval filter: replace a below-approval plan with a passing one
   // (or the best-achievable if none pass).
-  cfs = await filterToPassing(coach, modelData, curExample, cfs);
+  const planFilterStats = {};
+  cfs = await filterToPassing(coach, modelData, curExample, cfs, planFilterStats);
+  logPlanTiming(
+    tempPlans.nextPlanIndex,
+    planSolveMs,
+    planFilterStats,
+    performance.now() - planStartT
+  );
 
   // If the plan only uses one feature, we store it to a set and avoid future
   // plans that only uses that feature
@@ -615,7 +678,7 @@ export const initPlans = async (
   if (!cfs.isSuccessful) {
     for (
       let i = tempPlans.nextPlanIndex;
-      i < tempPlans.nextPlanIndex + 5;
+      i < tempPlans.nextPlanIndex + TOTAL_PLAN_NUM;
       i++
     ) {
       plans.failedPlans.add(i);
@@ -637,25 +700,32 @@ export const initPlans = async (
     curPlanStore = writable(curPlan);
     plans.planStores.set(plans.activePlanIndex, curPlanStore);
 
-    plans.nextPlanIndex += 5;
+    plans.nextPlanIndex += TOTAL_PLAN_NUM;
     plansUpdated(plans);
     return;
   }
 
   // Generate other plans
-  const totalPlanNum = 5;
+  const totalPlanNum = TOTAL_PLAN_NUM;
   for (let i = 1; i < totalPlanNum; i++) {
     if (!cfs.isSuccessful) {
       break;
     }
 
     // Run gam coach
-    console.time(`Plan ${tempPlans.nextPlanIndex + i} generated`);
+    const subStartT = performance.now();
     cfs = await coach.generateSubCfs(cfs.nextCfConfig);
-    console.timeEnd(`Plan ${tempPlans.nextPlanIndex + i} generated`);
+    const subSolveMs = performance.now() - subStartT;
 
     // Post-fold approval filter for this candidate.
-    cfs = await filterToPassing(coach, modelData, curExample, cfs);
+    const subFilterStats = {};
+    cfs = await filterToPassing(coach, modelData, curExample, cfs, subFilterStats);
+    logPlanTiming(
+      tempPlans.nextPlanIndex + i,
+      subSolveMs,
+      subFilterStats,
+      performance.now() - subStartT
+    );
 
     // If the new plan uses only one feature, we mute it and repeat again
     if (cfs.isSuccessful && cfs.activeVariables[0].length === 1) {
@@ -692,7 +762,7 @@ export const initPlans = async (
     if (!cfs.isSuccessful) {
       for (
         let j = tempPlans.nextPlanIndex + i;
-        j < tempPlans.nextPlanIndex + 5;
+        j < tempPlans.nextPlanIndex + TOTAL_PLAN_NUM;
         j++
       ) {
         plans.failedPlans.add(j);
@@ -703,7 +773,7 @@ export const initPlans = async (
   }
 
   // Update the next plan index
-  plans.nextPlanIndex += 5;
+  plans.nextPlanIndex += TOTAL_PLAN_NUM;
   plansUpdated(plans);
 };
 
@@ -755,7 +825,7 @@ export const regeneratePlans = async (
     constraints.getCleanCopy()
   );
 
-  console.time(`Plan ${plans.nextPlanIndex} generated`);
+  const regenStartT = performance.now();
   let cfs = await coach.generateCfs({
     curExample: exampleBatch,
     totalCfs: 1,
@@ -766,7 +836,12 @@ export const regeneratePlans = async (
     verbose: 0,
     maxNumFeaturesToVary: constraints.maxNumFeaturesToVary
   });
-  console.timeEnd(`Plan ${plans.nextPlanIndex} generated`);
+  logPlanTiming(
+    plans.nextPlanIndex,
+    performance.now() - regenStartT,
+    {},
+    performance.now() - regenStartT
+  );
 
   // If the plan only uses one feature, we store it to a set and avoid future
   // plans that only uses that feature
@@ -803,7 +878,7 @@ export const regeneratePlans = async (
 
   // Handle failure case
   if (!cfs.isSuccessful) {
-    for (let j = plans.nextPlanIndex; j < plans.nextPlanIndex + 5; j++) {
+    for (let j = plans.nextPlanIndex; j < plans.nextPlanIndex + TOTAL_PLAN_NUM; j++) {
       plans.failedPlans.add(j);
       plansUpdated(plans);
     }
@@ -823,25 +898,38 @@ export const regeneratePlans = async (
     curPlanStore = writable(curPlan);
     plans.planStores.set(plans.activePlanIndex, curPlanStore);
 
-    plans.nextPlanIndex += 5;
+    plans.nextPlanIndex += TOTAL_PLAN_NUM;
     plansUpdated(plans);
     return;
   }
 
   // Generate other plans
-  const totalPlanNum = 5;
+  const totalPlanNum = TOTAL_PLAN_NUM;
   for (let i = 1; i < totalPlanNum; i++) {
     if (!cfs.isSuccessful) {
       break;
     }
 
     // Run gam coach
-    console.time(`Plan ${plans.nextPlanIndex + i} generated`);
+    const regenSubStartT = performance.now();
     cfs = await coach.generateSubCfs(cfs.nextCfConfig);
-    console.timeEnd(`Plan ${plans.nextPlanIndex + i} generated`);
+    const regenSubSolveMs = performance.now() - regenSubStartT;
 
     // Post-fold approval filter for this candidate.
-    cfs = await filterToPassing(coach, modelData, curExample, cfs);
+    const regenSubFilterStats = {};
+    cfs = await filterToPassing(
+      coach,
+      modelData,
+      curExample,
+      cfs,
+      regenSubFilterStats
+    );
+    logPlanTiming(
+      plans.nextPlanIndex + i,
+      regenSubSolveMs,
+      regenSubFilterStats,
+      performance.now() - regenSubStartT
+    );
 
     // If the new plan uses only one feature, we mute it and repeat again
     if (cfs.isSuccessful && cfs.activeVariables[0].length === 1) {
@@ -877,7 +965,7 @@ export const regeneratePlans = async (
 
     // Handle failure case
     if (!cfs.isSuccessful) {
-      for (let j = plans.nextPlanIndex + i; j < plans.nextPlanIndex + 5; j++) {
+      for (let j = plans.nextPlanIndex + i; j < plans.nextPlanIndex + TOTAL_PLAN_NUM; j++) {
         plans.failedPlans.add(j);
         plansUpdated(plans);
       }
@@ -886,6 +974,6 @@ export const regeneratePlans = async (
   }
 
   // Update the next plan index
-  plans.nextPlanIndex += 5;
+  plans.nextPlanIndex += TOTAL_PLAN_NUM;
   plansUpdated(plans);
 };

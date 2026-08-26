@@ -1,5 +1,6 @@
 import '../../typedef';
 import d3 from '../../utils/d3-import';
+import { TOTAL_PLAN_NUM } from '../coach/Coach';
 
 /**
  * Update the plan labels with the new plan information
@@ -32,7 +33,7 @@ export const InitPlanLabels = (plans, tabInputLabel) => {
     }
   }
 
-  for (let i = 0; i < 5; i++) {
+  for (let i = 0; i < TOTAL_PLAN_NUM; i++) {
     localPlanLabels.push({
       name: `Plan ${curIndex}`,
       planIndex: curIndex,

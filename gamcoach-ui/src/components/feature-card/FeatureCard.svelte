@@ -1035,9 +1035,9 @@
     <svg class="svg-hist" />
 
     <div class="feature-annotations">
+      <!-- The "Value Distribution of All Users" caption + info icon were removed
+           along with the density curve; only the difficulty selector remains. -->
       <div class="annotation annotation-name show">
-        <div class="svg-icon icon-info" />
-        <span>Value Distribution of All Users</span>
         <div class="feature-difficulty" on:click={() => diffClickedHandler()}>
           <div
             class={`icon icon-${feature.difficulty}`}

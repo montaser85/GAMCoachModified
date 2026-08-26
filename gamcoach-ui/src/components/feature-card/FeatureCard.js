@@ -446,7 +446,9 @@ const syncFeature = (state) => {
 };
 
 export const initHistSize = (component, state) => {
-  const histHeight = 90;
+  // Keep in sync with initHist() below. Shortened from 90 because the value
+  // distribution density curve is no longer drawn.
+  const histHeight = 55;
   const tickHeight = 30;
   const vGap = 15;
   const height = histHeight + tickHeight + vGap;
@@ -470,7 +472,10 @@ export const initHist = (component, state) => {
   const parentBBox = parentDiv.node().getBoundingClientRect();
 
   const width = parentBBox.width;
-  const histHeight = 90;
+  // The value-distribution density curve is no longer drawn, so this area only
+  // needs enough room for the value marks between the slider and the ticks.
+  // Shortened from 90 to make the expanded card more compact.
+  const histHeight = 55;
   const tickHeight = 30;
   const vGap = 15;
   const height = histHeight + tickHeight + vGap;
@@ -496,22 +501,9 @@ export const initHist = (component, state) => {
 
   const totalWidth = width - padding.left - padding.right;
 
-  // Draw a bounding box for this density plot
-  state.histSVG
-    .append('g')
-    .attr('class', 'border')
-    .attr('transform', `translate(${0}, ${padding.top})`)
-    .append('rect')
-    .attr('width', totalWidth + 2 * thumbWidth)
-    .attr('height', histHeight - padding.top)
-    .style('fill', 'none')
-    .style('stroke', colors['gray-200']);
-
-  // Add density plot
-  const histGroup = state.histSVG
-    .append('g')
-    .attr('class', 'hist-group')
-    .attr('transform', `translate(${thumbWidth}, ${padding.top})`);
+  // (The gray bounding box that framed the density plot was removed along with
+  // the density curve — with only the value marks left, the box's top edge and
+  // side edges just looked like stray gray lines.)
 
   const tickGroup = state.histSVG
     .append('g')
@@ -524,59 +516,18 @@ export const initHist = (component, state) => {
     .attr('class', 'mark-group')
     .attr('transform', `translate(${thumbWidth}, ${padding.top})`);
 
-  // Compute the frequency
-  const totalSampleNum = state.feature.histCount.reduce((a, b) => a + b);
-  const curDensity = state.feature.histCount.map((d, i) => [
-    state.feature.histEdge[i],
-    d / totalSampleNum
-  ]);
-  curDensity.unshift([state.feature.histEdge[0], 0]);
-  curDensity.push([
-    state.feature.histEdge[state.feature.histEdge.length - 1],
-    0
-  ]);
-
-  // Create the axis scales
+  // Create the axis scale (feature value → x position). Kept even though the
+  // value-distribution density curve has been removed, because the slider
+  // thumbs, ticks, and value marks all rely on it for horizontal positioning.
   state.tickXScale = d3
     .scaleLinear()
     .domain([state.feature.valueMin, state.feature.valueMax])
     .range([0, totalWidth]);
 
-  const yScale = d3
-    .scaleLinear()
-    //@ts-ignore
-    .domain([0, d3.max(curDensity, (d) => d[1])])
-    .range([histHeight - padding.bottom - padding.top, padding.histTop]);
-
-  const curve = d3
-    .line()
-    .curve(d3.curveBasis)
-    .x((d) => state.tickXScale(d[0]))
-    .y((d) => yScale(d[1]));
-
-  // Draw the area curve
-  const underArea = histGroup
-    .append('path')
-    .attr('class', 'area-path')
-    .datum(curDensity)
-    .attr('d', curve);
-
-  const upperArea = underArea.clone(true).classed('selected', true);
-
-  // Create a clip path
-  state.densityClip = histGroup
-    .append('clipPath')
-    .attr('id', `${state.feature.id}-area-clip`)
-    .append('rect')
-    .attr('x', state.tickXScale(state.feature.curMin))
-    .attr(
-      'width',
-      state.tickXScale(state.feature.curMax) -
-        state.tickXScale(state.feature.curMin)
-    )
-    .attr('height', histHeight);
-
-  upperArea.attr('clip-path', `url(#${state.feature.id}-area-clip)`);
+  // The density curve (crests/troughs) has been removed by request; only the
+  // scale, range slider, and value marks remain. There is no area to clip, so
+  // syncRangeTrack's clip update is skipped via this null guard.
+  state.densityClip = null;
 
   // Add vertical marks on the plot
   // const lineHeight = histHeight - padding.top + vGap +
