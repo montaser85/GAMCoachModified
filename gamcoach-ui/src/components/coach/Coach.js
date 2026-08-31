@@ -566,6 +566,9 @@ export const initPlans = async (
   plansUpdated,
   logger = null
 ) => {
+  // Total wall-clock time to generate the whole batch of plans (logged at the end).
+  const genStartT = performance.now();
+
   /**@type {Plans}*/
   const tempPlans = {
     isRegression: false,
@@ -784,6 +787,13 @@ export const initPlans = async (
   // Update the next plan index
   plans.nextPlanIndex += TOTAL_PLAN_NUM;
   plansUpdated(plans);
+
+  // Total time to generate the whole batch (in seconds).
+  const genTotalSec = (performance.now() - genStartT) / 1000;
+  console.log(
+    `%c[GAM Coach] Generated ${TOTAL_PLAN_NUM} plans in ${genTotalSec.toFixed(1)} seconds`,
+    'color:#2e8b57;font-weight:700'
+  );
 };
 
 /**
