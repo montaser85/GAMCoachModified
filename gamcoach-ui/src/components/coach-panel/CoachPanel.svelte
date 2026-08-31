@@ -583,6 +583,9 @@
    * Toggle the plan comparison modal.
    */
   const compareClicked = () => {
+    // Before "Done with Setup" there are no plans to compare, so keep the button
+    // visible (no layout shift) but do not open the panel.
+    if (plans === null) return;
     compareOpenStore.update(v => !v);
     logger?.addLog({ eventName: 'compare opened', elementName: 'compare' });
   };
@@ -701,21 +704,16 @@
        the far right. -->
   <div class="coach-toolbar-row">
     <div class="coach-controls">
-      <!-- Hide "Compare Plans" until plans exist (i.e. after "Done with Setup").
-           During first-time setup there are no plans to compare, so the panel is
-           not shown — the same way regenerate has nothing to act on yet. -->
-      {#if plans !== null}
-        <div class="icon-wrapper" on:click={compareClicked} title="Compare all plans side by side">
-          <svg class="compare-svg" viewBox="0 0 20 20" width="18" height="18"
-               fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="1.5" y="2.5" width="7" height="15" rx="1.5"/>
-            <rect x="11.5" y="2.5" width="7" height="15" rx="1.5"/>
-            <line x1="5" y1="6.5" x2="5" y2="6.5"/>
-            <line x1="15" y1="6.5" x2="15" y2="6.5"/>
-          </svg>
-          <span class="icon-label">Compare Plans</span>
-        </div>
-      {/if}
+      <div class="icon-wrapper" on:click={compareClicked} title="Compare all plans side by side">
+        <svg class="compare-svg" viewBox="0 0 20 20" width="18" height="18"
+             fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="1.5" y="2.5" width="7" height="15" rx="1.5"/>
+          <rect x="11.5" y="2.5" width="7" height="15" rx="1.5"/>
+          <line x1="5" y1="6.5" x2="5" y2="6.5"/>
+          <line x1="15" y1="6.5" x2="15" y2="6.5"/>
+        </svg>
+        <span class="icon-label">Compare Plans</span>
+      </div>
       <!-- Watch example — persistent, subtle entry point -->
       <button class="watch-example-btn" on:click={openExample} title="Watch a short worked example">
         <svg viewBox="0 0 20 20" width="13" height="13" aria-hidden="true">
