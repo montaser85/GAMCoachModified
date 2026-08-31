@@ -149,6 +149,12 @@ export const changeEffectsStore = writable([]);
 // publishes it here; IdeasToTry.svelte renders the amber lever chips.
 export const ideasStore = writable([]);
 
+// Dismiss-request channel for "Ideas to try". IdeasToTry.svelte writes the
+// feature `name` of the idea the user dismissed; FeaturePanel (which owns the
+// idea state + the speculative "what helps next" logic) reacts by removing that
+// idea and adding a directional replacement, then resets this back to null.
+export const ideaDismissStore = writable(null);
+
 // Transient inline hint for the Derogatory-Records floor guard: when the user
 // tries to set Number of Derogatory Records below their current Number of
 // Bankruptcies, the edit is clamped and a brief message is shown on that card.

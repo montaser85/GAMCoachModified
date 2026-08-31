@@ -45,7 +45,7 @@
 <div class="change-effects">
   <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
   <div class="ce-title" class:ce-title-empty={events.length === 0} on:click={() => (collapsed = !collapsed)}>
-    Features affected by suggested or your changes
+    Features affected by your changes
     <HeaderInfo text="Shows how changing one feature also changes others." />
     <svg class="ce-chev" class:collapsed viewBox="0 0 24 24" width="24" height="24"
          fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">

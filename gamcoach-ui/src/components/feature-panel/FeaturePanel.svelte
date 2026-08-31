@@ -14,7 +14,7 @@
 
   import { onMount, onDestroy, tick } from 'svelte';
   import { fade } from 'svelte/transition';
-  import { tooltipConfigStore, featureValueOverrideStore, cardToggleStore, propagatedFeaturesStore, historySidebarOpenStore, changeEffectsStore, ideasStore, derogFloorHintStore } from '../../store';
+  import { tooltipConfigStore, featureValueOverrideStore, cardToggleStore, propagatedFeaturesStore, historySidebarOpenStore, changeEffectsStore, ideasStore, ideaDismissStore, derogFloorHintStore } from '../../store';
   import { sigmoid } from '../../ebm/ebm';
   import {
     STRUCTURAL_EXCLUSIONS,
@@ -443,16 +443,14 @@
     // offset is 0. Reading one immutable source keeps the suggested-driven and
     // user-driven breakdowns from diverging (and never depends on fold timing, which
     // is what produced the $0 base).
-    const rawBal = plan.cfDataRaw
-      ? (buildEngineState((f) => plan.cfDataRaw[f.featureID]).revol_bal || 0)
-      : profileBal;
-    coachRevolDelta = rawBal - profileBal;
-    // Anchor at the PROFILE utilization: every util-driven balance change (the coach's
-    // suggested utilization OR a later user edit) is measured from there, so the
-    // breakdown decomposes honestly — profile/suggested base + util change = total.
-    revolAnchorBal = profileBal + coachRevolDelta; // = rawBal (bal-suggested) or profile (util-suggested)
+    // RE-BASELINE: no coach suggestion is applied, so the revolving anchor is the
+    // user's OWN profile balance and the coach offset is always zero. The anchor
+    // (profile balance + profile utilization) is still needed so the revolving /
+    // utilization breakdowns decompose the user's own edits honestly.
+    coachRevolDelta = 0;
+    revolAnchorBal = profileBal;
     revolAnchorUtil = Number(baseline.revol_util) || 0;
-    userRevolDelta = coachRevolDelta;
+    userRevolDelta = 0;
   };
 
   // Set up the GAM Coach feature cards
@@ -463,18 +461,26 @@
     unsubscribes.push(
       planStore.subscribe(value => {
         plan = value;
-        // Any state change (edit / propagation / reset) → re-evaluate "Ideas to
-        // try" from the new current state (debounced, isolated).
-        scheduleIdeas();
+        // Ideas are the plan's fixed suggested changes (set once per plan in
+        // initIdeas); they no longer recompute on every edit. The live status
+        // line in IdeasToTry tracks the score instead.
       })
     );
 
     unsubscribes.push(
       constraintsStore.subscribe(value => {
         constraints = value;
-        // A difficulty change may flip the "Impossible to Change" runtime
-        // exclusion → re-evaluate suggestions.
-        scheduleIdeas();
+      })
+    );
+
+    // Dismiss channel: IdeasToTry writes the dismissed idea's feature name here;
+    // remove it and add a directional "what helps next" replacement.
+    unsubscribes.push(
+      ideaDismissStore.subscribe((name) => {
+        if (name) {
+          handleIdeaDismiss(name);
+          ideaDismissStore.set(null);
+        }
       })
     );
 
@@ -508,14 +514,14 @@
     featureGrid.loadFeatures(plan.features, constraints);
     featureGrid = featureGrid;
 
-    // Start the affected-features section empty on (re)init — a fresh mount happens
-    // on plan switch / regenerate / history restore, matching the FeaturePanel's own
-    // per-mount reset of propagation tracking — then seed it with the coach's
-    // suggested-change ripples so they show from load (user edits add rows on top).
+    // Start the affected-features section empty on (re)init. RE-BASELINE: nothing
+    // is suggested-and-applied at load, so there are no suggested-change ripples
+    // to seed — the panel fills only from the user's own edits.
     changeEffectsStore.set([]);
-    recordSuggestedChangeEffects();
-    // Same for "Ideas to try" (recomputed immediately by the store subscription).
-    ideasStore.set([]);
+
+    // Build "Ideas to try" for this plan: the plan's suggested changes, with
+    // amounts. Fixed per plan; dismissals swap in directional replacements.
+    initIdeas();
 
     // console.log(featureGrid);
   };
@@ -1077,6 +1083,16 @@
    * is left untouched here).
    */
   const propagateSuggestedChangesAtLoad = () => {
+    // RE-BASELINE: the coach's suggestions are no longer applied to the cards or
+    // the score — they surface only as text hints in "Ideas to try". So this
+    // load-time fold is intentionally a no-op: nothing is applied, no provenance
+    // deltas are seeded, and suggestedAtLoad stays empty (every card shows the
+    // user's own baseline). The one baseline shift, loan->DTI, is folded into
+    // curExample earlier (Coach.svelte / foldAppliedLoanIntoDti) and so is
+    // already in ebmLocal; nothing else propagates at load.
+    return;
+
+    /* eslint-disable no-unreachable */
     if (!plan || !applicantBaselineState) return;
 
     const baseline = applicantBaselineState;
@@ -2427,44 +2443,101 @@
     return { direction: 'change', gain: best };
   };
 
-  /** Recompute the "Ideas to try" suggestions from the current state. */
-  const computeIdeas = () => {
-    if (!plan || !applicantBaselineState) return;
-    const ideas = [];
+  // ── "Ideas to try" — two render modes ──────────────────────────────────────
+  // Initial ideas are the PLAN'S suggested changes, shown WITH amounts (the
+  // coach's counterfactual diff). When the user dismisses one, it is replaced by
+  // a DIRECTION-ONLY idea from the same speculative "what helps next" mechanism.
+  // Ideas are fixed per plan (recomputed only on plan switch / mount), not on
+  // every edit — the live status line in IdeasToTry tracks the score instead.
+
+  /** @type {Set<string>} Feature names already shown or dismissed (never re-suggested). */
+  let ideaExcluded = new Set();
+  /** @type {Array} The ideas currently displayed in the panel. */
+  let visibleIdeas = [];
+
+  /**
+   * The plan's suggested changes as initial ideas WITH amounts: diff the coach's
+   * raw counterfactual (cfDataRaw) against the applicant baseline; each changed,
+   * actionable feature becomes "Raise/Lower/Change X to <amount>".
+   */
+  const buildInitialIdeas = () => {
+    if (!plan || !plan.cfDataRaw || !applicantBaselineState) return [];
+    const baseline = applicantBaselineState;
+    const suggested = buildEngineState((f) => plan.cfDataRaw[f.featureID]);
+    const out = [];
     plan.features.forEach((feature) => {
       const name = feature.data.name;
-      // Gate 1 — runtime exclusion FIRST: "Impossible to Change" (difficulty
-      // 'lock') overrides baseline actionability.
+      if (engineValuesEqual(suggested[name], baseline[name])) return; // coach didn't change it
       if (constraints?.difficulties?.get(name) === IMPOSSIBLE_TO_CHANGE) return;
-      // Gate 1 — baseline actionable set (structural + policy exclusions).
       if (!isBaselineActionable(name)) return;
-
-      const res = evaluateIdea(feature);
-      if (!res) return;
-      ideas.push({
+      const direction = feature.isCont
+        ? Number(suggested[name]) > Number(baseline[name])
+          ? 'raise'
+          : 'lower'
+        : 'change';
+      out.push({
         name,
         displayName:
           DISPLAY_NAMES[name] || feature.data.description?.displayName || name,
-        verb: ideaVerb(feature.isCont, res.direction),
-        direction: res.direction,
-        gain: res.gain
+        verb: ideaVerb(feature.isCont, direction),
+        direction,
+        mode: 'amount',
+        targetDisplay: formatEffectValue(name, suggested[name])
       });
     });
-
-    // Gate 4 — rank by achievable propagated gain (sign-agnostic wrt the
-    // feature's current contribution); strongest first; keep the top 2–3.
-    ideas.sort((a, b) => b.gain - a.gain);
-    ideasStore.set(ideas.slice(0, 3));
+    return out;
   };
 
-  /** Debounced recompute so rapid edits settle before re-evaluating. */
-  const scheduleIdeas = () => {
-    if (ideasDebounceTimer) clearTimeout(ideasDebounceTimer);
-    ideasDebounceTimer = setTimeout(() => {
-      ideasDebounceTimer = null;
-      // Speculative evaluation must never break the UI.
-      try { computeIdeas(); } catch (e) { /* no-op */ }
-    }, 250);
+  /**
+   * One directional replacement idea from the existing speculative mechanism
+   * (evaluateIdea → the strongest propagated approval gain), excluding features
+   * already shown or dismissed. Rendered with direction only (no amount).
+   */
+  const buildReplacementIdea = () => {
+    if (!plan || !applicantBaselineState) return null;
+    let best = null;
+    plan.features.forEach((feature) => {
+      const name = feature.data.name;
+      if (ideaExcluded.has(name)) return;
+      if (constraints?.difficulties?.get(name) === IMPOSSIBLE_TO_CHANGE) return;
+      if (!isBaselineActionable(name)) return;
+      let res = null;
+      try { res = evaluateIdea(feature); } catch (e) { res = null; }
+      if (!res) return;
+      if (!best || res.gain > best.gain) {
+        best = {
+          name,
+          displayName:
+            DISPLAY_NAMES[name] || feature.data.description?.displayName || name,
+          verb: ideaVerb(feature.isCont, res.direction),
+          direction: res.direction,
+          mode: 'direction'
+        };
+      }
+    });
+    return best;
+  };
+
+  /** Initialize the idea list for the current plan (mount / plan switch). */
+  const initIdeas = () => {
+    visibleIdeas = buildInitialIdeas();
+    ideaExcluded = new Set(visibleIdeas.map((i) => i.name));
+    ideasStore.set(visibleIdeas);
+  };
+
+  /** Remove a dismissed idea; replace it with a directional "what helps next" idea. */
+  const handleIdeaDismiss = (name) => {
+    if (!name) return;
+    if (!visibleIdeas.some((i) => i.name === name)) return;
+    visibleIdeas = visibleIdeas.filter((i) => i.name !== name);
+    ideaExcluded.add(name); // a dismissed feature is never re-suggested
+    let replacement = null;
+    try { replacement = buildReplacementIdea(); } catch (e) { replacement = null; }
+    if (replacement) {
+      ideaExcluded.add(replacement.name);
+      visibleIdeas = [...visibleIdeas, replacement];
+    }
+    ideasStore.set(visibleIdeas);
   };
 
   /**

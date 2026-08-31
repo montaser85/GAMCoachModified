@@ -421,7 +421,7 @@
            never an unexplained blank/frozen screen. -->
       <div class="plan-loading">
         <div class="plan-loading-spinner" />
-        <div class="plan-loading-text">Generating your plans…</div>
+        <div class="plan-loading-text">Generating ideas…</div>
         <div class="plan-loading-sub">This can take a few moments.</div>
       </div>
     {:else}

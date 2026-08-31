@@ -27,7 +27,6 @@
   import '../../typedef';
   import { Plan, SavedPlan, TOTAL_PLAN_NUM } from '../coach/Coach';
   import { InitPlanLabels } from './CoachPanel';
-  import { applySuggestedPropagationToPlan } from '../../engine/loadPropagation.mjs';
 
   import refreshIcon from '../../img/icon-refresh2.svg';
   import starIconSolid from '../../img/icon-star-solid.svg';
@@ -456,16 +455,11 @@
         let isFirstUpdate = true;
         unsubscribes.push(
           planStore.subscribe((value) => {
-            // Capture the initial feature state (after coach suggestions are applied)
-            // on the very first update for this plan
+            // Capture the initial feature state on the very first update for this
+            // plan. RE-BASELINE: the coach's suggestions are no longer applied to
+            // any plan's ebmLocal/score — plans exist only to supply ideas — so we
+            // snapshot the plan's baseline sample as-is (no fold).
             if (isFirstUpdate) {
-              // Eagerly fold the coach's suggested changes into THIS plan's stored
-              // state (ebmLocal / coachSample / predScore) — the same propagation a
-              // FeaturePanel runs on mount, but applied to every plan up front so
-              // consumers that read all plans (Compare Plans) match the main panel on
-              // first open, not only after each plan has been visited. Idempotent and
-              // a no-op in the original study condition.
-              applySuggestedPropagationToPlan(value);
               const initialState = {};
               for (const feature of value.features) {
                 initialState[feature.featureID] = value.ebmLocal.sample[feature.featureID];

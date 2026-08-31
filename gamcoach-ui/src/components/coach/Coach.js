@@ -78,17 +78,22 @@ export class Plan {
    */
   constructor(modelData, curExample, plans, cfData, planIndex) {
     this.features = this.initFeatures(modelData, curExample, cfData);
-    this.coachSample = cfData;
+    // RE-BASELINE: the plan's live state starts at the USER'S baseline
+    // (curExample, already loan-folded), NOT the coach's applied suggestion.
+    // coachSample is the reference the "isChangedByUser" check diffs against, so
+    // it must be the baseline too (no coach values are applied any more).
+    this.coachSample = curExample.slice();
     // Immutable snapshot of the RAW counterfactual (the coach's actual suggested
-    // values, before any load-time propagation fold). coachSample === cfData and
-    // both get MUTATED by the fold, so this preserves the original for a
-    // deterministic, idempotent re-derivation on every plan (re)mount.
+    // values). It is NO LONGER applied to the cards or the displayed score — it
+    // is kept ONLY to render the plan's "Ideas to try" hints.
     this.cfDataRaw = cfData.slice();
     this.curExample = curExample;
     this.planIndex = planIndex;
 
-    // Initialize an EBM model associating with the plan
-    this.ebmLocal = new EBMLocal(modelData, cfData);
+    // Initialize an EBM model from the user's baseline, so the displayed score
+    // reflects the user's own application (loan-folded DTI + entered values),
+    // not the counterfactual. The user climbs to >=50% by editing.
+    this.ebmLocal = new EBMLocal(modelData, curExample.slice());
 
     this.originalScore = plans.originalScore;
   }
@@ -126,9 +131,12 @@ export class Plan {
           requiresInt: config.requiresInt,
           labelEncoder: null,
           originalValue: curExample[i],
-          coachValue: cfData[i],
-          myValue: cfData[i],
-          isChanged: cfData[i] === curExample[i] ? 0 : 1,
+          // RE-BASELINE: cards start at the user's baseline; no coach-suggested
+          // value is applied. coachValue mirrors the baseline so the green
+          // "suggested" marker never appears and reset returns to the baseline.
+          coachValue: curExample[i],
+          myValue: curExample[i],
+          isChanged: 0,
           difficulty: difficultyTextMap[config.difficulty],
           isConstrained: false,
           acceptableRange: config.acceptableRange,
@@ -145,10 +153,11 @@ export class Plan {
           // Decode the category to number
           curFeature.originalValue =
             labelDecoder[modelData.features[i].name][curExample[i]];
+          // RE-BASELINE: categorical cards also start at the user's baseline.
           curFeature.coachValue =
-            labelDecoder[modelData.features[i].name][cfData[i]];
+            labelDecoder[modelData.features[i].name][curExample[i]];
           curFeature.myValue =
-            labelDecoder[modelData.features[i].name][cfData[i]];
+            labelDecoder[modelData.features[i].name][curExample[i]];
         }
 
         curFeature.isConstrained =

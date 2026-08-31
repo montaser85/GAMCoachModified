@@ -1,7 +1,7 @@
 <script>
   import { onDestroy } from 'svelte';
   import { compareOpenStore, constraintsStore } from '../../store';
-  import { computeIdeasForPlan } from '../ideas/planIdeas';
+  import { planSuggestedIdeas } from '../ideas/planIdeas';
   import { appliedLoanDtiContribution } from '../../engine/index.mjs';
 
   /** @type {import('../coach/Coach').Plans} */
@@ -230,38 +230,17 @@
         const pts = points(p);
         const approved = pts >= APPROVAL_POINTS;
 
-        const changes = [];
-        p.features.forEach((f) => {
-          const i = f.featureID;
-          const curD = formatVal(p.ebmLocal.sample[i], f);
-          // "before" = raw profile DTI for `dti` (the baseline folds the applied
-          // loan into DTI); the plan's baseline example value otherwise.
-          const origD = formatVal(originalValueFor(p, f), f);
-          if (curD === origD) return; // unchanged from the applicant's original
-          const coachD = formatVal(p.coachSample[i], f);
-          changes.push({
-            featureID: i,
-            displayName: f.data?.description?.displayName ?? f.data?.name ?? `Feature ${i}`,
-            // Suggested if the current value is exactly the system's suggestion;
-            // otherwise the user moved it (or changed a feature the coach didn't).
-            provenance: curD === coachD ? 'suggested' : 'you-changed',
-            before: origD,
-            after: curD,
-            importance: f.data?.importance ?? 0
-          });
-        });
-        changes.sort((a, b) => b.importance - a.importance);
-
+        // RE-BASELINE: every plan's live state is the same user baseline now, so
+        // the old applied-value comparison is degenerate. Compare Plans instead
+        // shows each plan's distinct IDEA SET (its suggested changes, with
+        // amounts) — that is what differs between plans.
         return {
           planIndex: idx,
           name: label?.name ?? `Plan ${idx}`,
           approvalPoints: pts,
           approved,
           isHighest: false,
-          // "Ideas to try" chips for every plan — including approved ones, where
-          // they're further tweaks the user could still make.
-          ideas: computeIdeasForPlan(p, constraints),
-          changes
+          ideas: planSuggestedIdeas(p, constraints)
         };
       })
       .filter(Boolean);
@@ -292,21 +271,10 @@
   <div class="cmp-overlay" on:click|self={() => compareOpenStore.set(false)} role="dialog" aria-modal="true">
     <div class="cmp-modal">
 
-      <!-- ── View toggle (Summarized · Detailed) ──────────────────── -->
-      <div class="cmp-view-toggle">
-        <div class="cvt-tabs" role="tablist">
-          <button
-            class="cvt-tab"
-            class:active={viewMode === 'summarized'}
-            on:click={() => (viewMode = 'summarized')}
-          >Summarized</button>
-          <button
-            class="cvt-tab"
-            class:active={viewMode === 'detailed'}
-            on:click={() => (viewMode = 'detailed')}
-          >Detailed</button>
-        </div>
-      </div>
+      <!-- RE-BASELINE: Compare Plans now shows each plan's idea set (its suggested
+           changes). The old side-by-side applied-value comparison is degenerate
+           (every plan's live state is the same user baseline), so the view toggle
+           and the detailed matrix below are no longer shown. -->
 
     {#if viewMode === 'detailed'}
       <!-- ══ DETAILED VIEW — unchanged existing matrix ══════════════ -->
@@ -423,21 +391,20 @@
           <button class="cmp-x" on:click={() => compareOpenStore.set(false)} title="Close">✕</button>
         </div>
         <div class="sum-subtitle">
-          Each plan reaches approval a different way. You can adjust any plan to
-          fit your situation.
-        </div>
-        <div class="sum-legend">
-          <span class="sum-legend-item">
-            <span class="sum-prov suggested">suggested</span>
-            <span class="sum-legend-desc">{provTip('suggested')}</span>
-          </span>
-          <span class="sum-legend-item">
-            <span class="sum-prov you-changed">you changed</span>
-            <span class="sum-legend-desc">{provTip('you-changed')}</span>
-          </span>
+          Each plan suggests a different set of changes that would reach approval.
+          Try any idea by editing that feature yourself.
         </div>
       </div>
 
+      {#if summaryPlans.length === 0}
+        <!-- Ideas depend on generation (the ~70s solve) — show a loading state
+             rather than an empty/stale grid. -->
+        <div class="sum-loading">
+          <div class="plan-loading-spinner" />
+          <div class="sum-loading-text">Generating ideas…</div>
+          <div class="sum-loading-sub">This can take a few moments.</div>
+        </div>
+      {:else}
       <div class="sum-scroll">
         <div
           class="sum-grid"
@@ -469,37 +436,25 @@
             </div>
           {/each}
 
-          <!-- CHANGED FEATURES -->
-          <div class="sg-rowlabel">CHANGED FEATURES</div>
-          {#each summaryPlans as p (p.planIndex)}
-            <div class="sg-cell sg-changes-cell">
-              {#each p.changes as c (c.featureID)}
-                <div class="sg-change">
-                  <div class="sg-feat-line">
-                    <span class="sg-feat-name">{c.displayName}</span>
-                    <span class="sum-prov {c.provenance}" title={provTip(c.provenance)}
-                      >{c.provenance === 'suggested' ? 'suggested' : 'you changed'}</span
-                    >
-                  </div>
-                  <div class="sg-vals">{c.before} &rarr; {c.after}</div>
-                </div>
-              {/each}
-            </div>
-          {/each}
-
-          <!-- IDEAS TO TRY -->
+          <!-- IDEAS TO TRY — each plan's own set of suggested changes (with amounts) -->
           <div class="sg-rowlabel">IDEAS TO TRY</div>
           {#each summaryPlans as p (p.planIndex)}
             <div class="sg-cell sg-ideas-cell">
               <div class="sg-chips">
                 {#each p.ideas as idea (idea.name)}
-                  <span class="sg-chip">{idea.verb} {idea.displayName}</span>
+                  <span class="sg-chip"
+                    >{idea.verb} {idea.displayName}{idea.mode === 'amount' &&
+                    idea.targetDisplay
+                      ? ` to ${idea.targetDisplay}`
+                      : ''}</span
+                  >
                 {/each}
               </div>
             </div>
           {/each}
         </div>
       </div>
+      {/if}
     {/if}
 
     </div>
@@ -508,6 +463,37 @@
 
 <style lang="scss">
   @import '../../define';
+
+  // Loading state shown while plans/ideas are still generating.
+  .sum-loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 60px 20px;
+
+    .plan-loading-spinner {
+      width: 34px;
+      height: 34px;
+      border: 3px solid $gray-200;
+      border-top-color: $blue-500;
+      border-radius: 50%;
+      animation: cmp-spin 0.9s linear infinite;
+    }
+    .sum-loading-text {
+      font-size: 1.15rem;
+      font-weight: 600;
+      color: $gray-800;
+    }
+    .sum-loading-sub {
+      font-size: 0.95rem;
+      color: $gray-500;
+    }
+  }
+  @keyframes cmp-spin {
+    to { transform: rotate(360deg); }
+  }
 
   $c-up-text: #185FA5;
   $c-up-bar: #185FA5;

@@ -246,3 +246,56 @@ export function computeIdeasForPlan(plan, constraints) {
   ideas.sort((a, b) => b.gain - a.gain);
   return ideas.slice(0, 3);
 }
+
+// Features displayed as currency (mirrors FeaturePanel.MONEY_FEATURES).
+const MONEY_FEATURES = new Set(['loan_amnt', 'annual_inc', 'revol_bal']);
+
+/** Unit-aware display of a value in engine display units (mirrors FeaturePanel). */
+const formatEffectValue = (name, val) => {
+  if (val === null || val === undefined) return '';
+  if (typeof val === 'string') {
+    return val
+      .replace(/_/g, ' ')
+      .toLowerCase()
+      .replace(/\b\w/g, (c) => c.toUpperCase());
+  }
+  if (name === 'dti' || name === 'revol_util') return Number(val).toFixed(2);
+  const s = Math.round(Number(val)).toLocaleString();
+  return MONEY_FEATURES.has(name) ? `$${s}` : s;
+};
+
+/**
+ * A plan's SUGGESTED CHANGES as ideas WITH amounts — the coach's counterfactual
+ * (cfDataRaw) diffed against the applicant baseline. Each plan yields its own,
+ * distinct set (this is what makes Compare Plans meaningful now that every plan's
+ * live state is re-baselined to the same user baseline). Mirrors FeaturePanel's
+ * buildInitialIdeas so the main panel and Compare Plans agree.
+ * @param {import('../coach/Coach').Plan} plan
+ * @param {import('../coach/Coach').Constraints} [constraints]
+ */
+export function planSuggestedIdeas(plan, constraints) {
+  if (!plan || !plan.cfDataRaw) return [];
+  const baseline = buildEngineState(plan, (f) => f.originalValue);
+  const suggested = buildEngineState(plan, (f) => plan.cfDataRaw[f.featureID]);
+  const out = [];
+  plan.features.forEach((feature) => {
+    const name = feature.data.name;
+    if (engineValuesEqual(suggested[name], baseline[name])) return; // coach didn't change it
+    if (constraints?.difficulties?.get(name) === IMPOSSIBLE_TO_CHANGE) return;
+    if (!isBaselineActionable(name)) return;
+    const direction = feature.isCont
+      ? Number(suggested[name]) > Number(baseline[name])
+        ? 'raise'
+        : 'lower'
+      : 'change';
+    out.push({
+      name,
+      displayName: DISPLAY_NAMES[name] || feature.data.description?.displayName || name,
+      verb: ideaVerb(feature.isCont, direction),
+      direction,
+      mode: 'amount',
+      targetDisplay: formatEffectValue(name, suggested[name])
+    });
+  });
+  return out;
+}

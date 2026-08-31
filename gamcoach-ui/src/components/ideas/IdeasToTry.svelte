@@ -1,13 +1,16 @@
 <script>
   // @ts-check
   // "Ideas to try" — right-panel section (below "What's driving this score").
-  // Display-only: renders the directional suggestions computed by FeaturePanel's
-  // isolated speculative what-if evaluation. Verb + feature name only — no target
-  // values and no magnitudes (users engage their own reasoning; a specific number
-  // would imply precision the model can't guarantee).
+  // Display-only. Two render modes per idea:
+  //   - mode 'amount'    → the plan's suggested change WITH a target amount,
+  //                        e.g. "Raise Annual Income to $90,000".
+  //   - mode 'direction' → a directional replacement (after the user dismisses an
+  //                        original idea), e.g. "Raise Annual Income".
+  // Each idea has a dismiss (×) button; dismissing publishes the feature name to
+  // ideaDismissStore, and FeaturePanel swaps in a directional replacement.
   import { onDestroy } from 'svelte';
   import { sigmoid } from '../../ebm/ebm';
-  import { ideasStore } from '../../store';
+  import { ideasStore, ideaDismissStore } from '../../store';
   import HeaderInfo from '../header-info/HeaderInfo.svelte';
 
   /** Active plan store (writable<Plan>) or null while loading — used for the
@@ -16,7 +19,7 @@
 
   const THRESHOLD = 50; // approval threshold, in points (matches ScoreReadout)
 
-  /** @type {Array<{name:string, displayName:string, verb:string, direction:string}>} */
+  /** @type {Array<{name:string, displayName:string, verb:string, direction:string, mode:string, targetDisplay?:string}>} */
   let ideas = [];
   const unsubIdeas = ideasStore.subscribe((v) => (ideas = v));
   onDestroy(unsubIdeas);
@@ -62,9 +65,17 @@
 
       <div class="it-chips">
         {#each ideas as idea (idea.name)}
-          <span class="it-chip" title="{idea.verb} {idea.displayName}">
+          <span class="it-chip">
             <span class="it-verb">{idea.verb}</span>
             <span class="it-feat">{idea.displayName}</span>
+            {#if idea.mode === 'amount' && idea.targetDisplay}
+              <span class="it-target">to {idea.targetDisplay}</span>
+            {/if}
+            <button
+              class="it-dismiss"
+              title="Dismiss this idea"
+              on:click|stopPropagation={() => ideaDismissStore.set(idea.name)}
+            >&times;</button>
           </span>
         {/each}
       </div>
@@ -134,6 +145,35 @@
 
     .it-feat {
       font-weight: 500;
+    }
+
+    // Target amount shown only for original (mode 'amount') ideas.
+    .it-target {
+      font-weight: 600;
+    }
+
+    // Per-idea dismiss (×) button — replaces the idea with a directional one.
+    .it-dismiss {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      margin-left: 2px;
+      width: 18px;
+      height: 18px;
+      padding: 0;
+      border: none;
+      border-radius: 50%;
+      background: transparent;
+      color: #8a6d3b;
+      font-size: 1.1rem;
+      line-height: 1;
+      cursor: pointer;
+      transition: background 120ms ease, color 120ms ease;
+
+      &:hover {
+        background: #e8d3a0;
+        color: #000;
+      }
     }
   }
 </style>
