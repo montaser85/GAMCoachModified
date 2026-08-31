@@ -132,7 +132,13 @@
       "Bash(powershell.exe -NoProfile -Command 'Get-CimInstance Win32_Process -Filter \"name='\\\\''node.exe'\\\\''\" | Where-Object { $_.CommandLine -like '\\\\''*rollup*'\\\\'' -or $_.CommandLine -like '\\\\''*sirv*'\\\\'' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force; Write-Output \\('\\\\''killed '\\\\'' + $_.ProcessId\\) }')",
       "Bash(awk '{print \"mtime:\",$6}')",
       "Bash(powershell.exe -NoProfile -Command 'Get-CimInstance Win32_Process -Filter \"name='\\\\''node.exe'\\\\''\" | Where-Object { $_.CommandLine -like '\\\\''*rollup*'\\\\'' -or $_.CommandLine -like '\\\\''*sirv*'\\\\'' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }')",
-      "Bash(awk '{print \"css mtime:\",$6}')"
+      "Bash(awk '{print \"css mtime:\",$6}')",
+      "Bash(node -e \"const m=require\\('./lc-classifier.json'\\); console.log\\('modelName?', m.modelName||''\\); const fs=m.features.filter\\(f=>f.type!=='interaction'\\); console.log\\('count', fs.length\\); fs.forEach\\(\\(f,i\\)=>console.log\\(i, f.name, '|', f.type, '| imp=', \\(f.importance!==undefined?f.importance.toFixed\\(3\\):'?'\\), '| diff=', f.config&&f.config.difficulty, '| accR=', f.config&&JSON.stringify\\(f.config.acceptableRange\\)\\)\\);\")",
+      "Bash(git add *)",
+      "Bash(git commit -m '@ *)",
+      "Bash(git commit *)",
+      "Bash(:)",
+      "Bash(grep -n \"featureGrid = new FeatureGrid\\\\|featureGrid = \\\\|new FeatureGrid\\(\\)\\\\|\\\\$:.*init\\\\|\\\\$:.*featureGrid\\\\|\\\\$:.*constraints\\\\|windowLoaded && planStore\" FeaturePanel.svelte)"
     ]
   }
 }
