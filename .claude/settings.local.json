@@ -131,7 +131,8 @@
       "Bash(powershell.exe -NoProfile -Command '\\(Get-CimInstance Win32_Process -Filter \"name='\\\\''node.exe'\\\\''\" | Where-Object { $_.CommandLine -like '\\\\''*rollup*'\\\\'' } | Measure-Object\\).Count')",
       "Bash(powershell.exe -NoProfile -Command 'Get-CimInstance Win32_Process -Filter \"name='\\\\''node.exe'\\\\''\" | Where-Object { $_.CommandLine -like '\\\\''*rollup*'\\\\'' -or $_.CommandLine -like '\\\\''*sirv*'\\\\'' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force; Write-Output \\('\\\\''killed '\\\\'' + $_.ProcessId\\) }')",
       "Bash(awk '{print \"mtime:\",$6}')",
-      "Bash(powershell.exe -NoProfile -Command 'Get-CimInstance Win32_Process -Filter \"name='\\\\''node.exe'\\\\''\" | Where-Object { $_.CommandLine -like '\\\\''*rollup*'\\\\'' -or $_.CommandLine -like '\\\\''*sirv*'\\\\'' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }')"
+      "Bash(powershell.exe -NoProfile -Command 'Get-CimInstance Win32_Process -Filter \"name='\\\\''node.exe'\\\\''\" | Where-Object { $_.CommandLine -like '\\\\''*rollup*'\\\\'' -or $_.CommandLine -like '\\\\''*sirv*'\\\\'' } | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }')",
+      "Bash(awk '{print \"css mtime:\",$6}')"
     ]
   }
 }

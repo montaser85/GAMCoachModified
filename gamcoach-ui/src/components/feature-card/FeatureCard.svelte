@@ -1044,7 +1044,7 @@
 
       <div class="annotation annotation-coach">GAM Coach Suggestion</div>
 
-      <div class="annotation annotation-range">Your Acceptable Range</div>
+      <div class="annotation annotation-range">Acceptable range for regenerated plans</div>
     </div>
   </div>
 
