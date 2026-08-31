@@ -89,8 +89,40 @@ export class FeatureGrid {
       }
     }
 
-    // Iterate through the features and put each feature into the correct
-    // block and column
+    // Fixed, type-based grouping. A feature's group is determined by its type
+    // and never changes (this replaces the old dynamic placement based on
+    // isChanged / isConstrained). The three FeatureBox members are repurposed:
+    //   changed    -> Actionable Features
+    //   configured -> Computed Features
+    //   other      -> Profile Features
+    // The member names are kept so the render sites in FeaturePanel.svelte don't
+    // have to change; only the section header labels do.
+    const GROUP_BY_NAME = {
+      // Actionable Features
+      loan_amnt: 'changed',
+      term: 'changed',
+      purpose: 'changed',
+      application_type: 'changed',
+      revol_bal: 'changed',
+      annual_inc: 'changed',
+      // Computed Features
+      dti: 'configured',
+      revol_util: 'configured',
+      total_acc: 'configured',
+      fico_score: 'configured',
+      // Profile Features
+      emp_length: 'other',
+      home_ownership: 'other',
+      verification_status: 'other',
+      earliest_cr_line: 'other',
+      inq_last_6mths: 'other',
+      open_acc: 'other',
+      mort_acc: 'other',
+      pub_rec: 'other',
+      pub_rec_bankruptcies: 'other',
+      delinq_2yrs: 'other'
+    };
+
     const nextKey = {
       changed: 0,
       configured: 0,
@@ -99,19 +131,12 @@ export class FeatureGrid {
 
     const keys = ['left', 'mid', 'right'];
 
+    // Place each feature into its fixed type group, filling the three columns
+    // round-robin in the features' current (importance-ranked) order.
     features.forEach((f) => {
-      if (f.isChanged > 0) {
-        this.changed[keys[nextKey.changed]].push(f);
-        nextKey.changed = (nextKey.changed + 1) % 3;
-      } else {
-        if (f.isConstrained) {
-          this.configured[keys[nextKey.configured]].push(f);
-          nextKey.configured = (nextKey.configured + 1) % 3;
-        } else {
-          this.other[keys[nextKey.other]].push(f);
-          nextKey.other = (nextKey.other + 1) % 3;
-        }
-      }
+      const box = GROUP_BY_NAME[f.data.name] || 'other';
+      this[box][keys[nextKey[box]]].push(f);
+      nextKey[box] = (nextKey[box] + 1) % 3;
     });
   };
 }

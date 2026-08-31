@@ -2738,11 +2738,11 @@
   <div class='card-block'>
     <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
     <div class='row-header' on:click={() => toggleGroup('changed')}>
-      <span class='label'>Suggested Changes</span>
+      <span class='label'>Actionable Features</span>
       <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
       <span class='header-info' on:click|stopPropagation>
         <span class='hi-badge'>i</span>
-        <span class='hi-popup'>Changes GAM Coach suggests to help you get approved.</span>
+        <span class='hi-popup'>Features you can directly act on to change your application.</span>
       </span>
       <svg class='group-chev' class:collapsed={collapsedGroups.changed} viewBox='0 0 24 24' width='16' height='16'
            fill='none' stroke='currentColor' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'>
@@ -2908,11 +2908,11 @@
   <div class='card-block'>
     <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
     <div class='row-header' on:click={() => toggleGroup('configured')}>
-      <span class='label'>Configured Features</span>
+      <span class='label'>Computed Features</span>
       <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
       <span class='header-info' on:click|stopPropagation>
         <span class='hi-badge'>i</span>
-        <span class='hi-popup'>Features where you've set your own limits — like which values are allowed, or how hard they are to change.</span>
+        <span class='hi-popup'>Values calculated from your other inputs — these update automatically.</span>
       </span>
       <svg class='group-chev' class:collapsed={collapsedGroups.configured} viewBox='0 0 24 24' width='16' height='16'
            fill='none' stroke='currentColor' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'>
@@ -3078,11 +3078,11 @@
   <div class='card-block'>
     <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
     <div class='row-header' on:click={() => toggleGroup('other')}>
-      <span class='label'>Other Features</span>
+      <span class='label'>Profile Features</span>
       <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
       <span class='header-info' on:click|stopPropagation>
         <span class='hi-badge'>i</span>
-        <span class='hi-popup'>Your other details that are unchanged.</span>
+        <span class='hi-popup'>Your background details.</span>
       </span>
       <svg class='group-chev' class:collapsed={collapsedGroups.other} viewBox='0 0 24 24' width='16' height='16'
            fill='none' stroke='currentColor' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'>
