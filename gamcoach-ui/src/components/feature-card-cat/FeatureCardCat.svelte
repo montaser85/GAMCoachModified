@@ -811,12 +811,12 @@
         <span class="cat-col-value">Value</span>
         <span
           class="cat-col-pick"
-          title="Pick ONE value to try (shown after the arrow on the card)"
+          title="Pick ONE value to try in this plan"
           >Try</span
         >
         <span
           class="cat-col-accept"
-          title="Allow one or more values for new plans"
+          title="Allow one or more values for regenerated plans"
           >Accept</span
         >
       </div>
@@ -866,17 +866,8 @@
     class:expanded={isExpanded}
     on:click={headerClicked}
   >
-    <span
-      class="tag acceptable-tag"
-      class:shown={feature.acceptableRange !== null}
-    >
-      {displayAcceptableRange(feature.acceptableRange)}
-      <div class="local-tooltip">
-        <span class="content"
-          >New strategies will only consider options within this range</span
-        >
-      </div>
-    </span>
+    <!-- The "New plans consider .." acceptable-range tag was removed from
+         categorical feature cards by request. -->
 
     <!-- Interactive difficulty selector (emoji): moved here from the top of the
          card, sitting to the LEFT of the difficulty name. stopPropagation keeps
