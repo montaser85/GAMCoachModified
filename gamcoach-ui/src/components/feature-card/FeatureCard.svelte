@@ -1035,19 +1035,9 @@
     <svg class="svg-hist" />
 
     <div class="feature-annotations">
-      <!-- The "Value Distribution of All Users" caption + info icon were removed
-           along with the density curve; only the difficulty selector remains. -->
-      <div class="annotation annotation-name show">
-        <div class="feature-difficulty" on:click={() => diffClickedHandler()}>
-          <div
-            class={`icon icon-${feature.difficulty}`}
-            title="Specify how easy for you to change this feature"
-          >
-            {@html difficultyIconMap[feature.difficulty]}
-          </div>
-        </div>
-      </div>
-
+      <!-- The difficulty selector was moved down to the configuration bar (to the
+           left of the difficulty name); this overlay now only holds the value
+           marker hover labels. -->
       <div class="annotation annotation-user">Your Hypothetical Value</div>
 
       <div class="annotation annotation-original">Your Original Value</div>
@@ -1065,25 +1055,27 @@
     class:expanded={isExpanded}
     on:click={headerClicked}
   >
-    <span
-      class="tag acceptable-tag"
-      class:shown={feature.acceptableRange !== null}
+    <!-- The "New plans consider from .. to .." acceptable-range tag was removed
+         from continuous feature cards by request. -->
+
+    <!-- Interactive difficulty selector (emoji): moved here from the top of the
+         card. Clicking opens the difficulty picker; stopPropagation prevents the
+         config bar's headerClicked from toggling the card. Sits to the LEFT of
+         the difficulty name below. -->
+    <div
+      class="feature-difficulty"
+      title="Specify how easy for you to change this feature"
+      on:click|stopPropagation={() => diffClickedHandler()}
     >
-      {displayAcceptableRange(feature.acceptableRange, state.feature)}
-      <div class="local-tooltip">
-        <span class="content"
-          >New strategies will only consider options within this range</span
-        >
+      <div class={`icon icon-${feature.difficulty}`}>
+        {@html difficultyIconMap[feature.difficulty]}
       </div>
-    </span>
+    </div>
 
     <span
       class="tag difficulty-tag"
       class:shown={feature.difficulty !== 'neutral'}
     >
-      <div class={`icon icon-${feature.difficulty}`}>
-        {@html difficultyIconMap[feature.difficulty]}
-      </div>
       {difficultyTextMap[feature.difficulty]}
       <div class="local-tooltip">
         <span class="content"

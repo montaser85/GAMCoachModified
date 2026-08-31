@@ -4,15 +4,13 @@
   import { Logger } from '../../utils/logger';
   import { bindInlineSVG } from '../../utils/utils';
   import { onMount, onDestroy, tick, createEventDispatcher } from 'svelte';
-  import { fade, fly, scale } from 'svelte/transition';
-  import { cubicInOut } from 'svelte/easing';
+  import { fade } from 'svelte/transition';
   import { tooltipConfigStore, diffPickerConfigStore, featureValueOverrideStore, derogFloorHintStore } from '../../store';
 
-  import {
-    initHist,
-    initHistSize,
-    syncBars
-  } from './FeatureCardCat';
+  // The categorical card now renders its values as a native HTML 3-column grid
+  // (value / single-select radio / multi-select checkbox) instead of the old
+  // SVG bar chart, so the SVG drawing helpers (initHist/initHistSize/syncBars)
+  // are no longer imported.
 
   import rightArrowIcon from '../../img/icon-right-arrow.svg';
   import levelThumbIcon from '../../img/icon-level-thumb.svg';
@@ -271,12 +269,8 @@
 
     state.logger = logger;
 
-    // Draw the histogram
-    // Record the x center values for each bar. The original return value is
-    // at the global absolute coordinate. Convert it to local coordinate here.
-    initHistSize(component, state);
-
-    // Need to wait the view is updated so we can recenter labels
+    // The value grid is plain reactive HTML (no SVG to size/draw here).
+    // Wait for the view to update, then fit the feature name to the header.
     await tick();
     fitFeatureName();
 
@@ -381,13 +375,7 @@
     );
 
     animation.onfinish = () => {
-      if (!histDrawn) {
-        // Init the density plot and ticks
-        initHist(component, state);
-
-        histDrawn = true;
-      }
-
+      // The value grid is reactive HTML, so there is nothing to draw here.
       isExpanded = !isExpanded;
     };
 
@@ -494,18 +482,13 @@
     // NOT call stateUpdated('value'), which dispatches curValueUpdated as an
     // edit and would trigger propagation).
     state.feature.curValue = state.feature.coachValue;
-    state.stateUpdated();
 
-    d3.select(component)
-      .select('.svg-hist')
-      .select('.y-label-group')
-      .selectAll('.y-label')
-      .classed('user', false);
-
-    // Make all bars in the acceptable range
+    // Make all values acceptable again (no constraint).
     state.feature.searchValues = new Set(state.feature.histEdge);
     feature.acceptableRange = null;
-    syncBars(component, state);
+
+    // Re-render the value grid (single-select radio + acceptable checkboxes).
+    state.stateUpdated();
 
     // Change difficulty to default
     feature.difficulty = 'neutral';
@@ -524,6 +507,71 @@
       difficulty: feature.difficulty,
       acceptableRange: encodeAcceptableRange(feature.acceptableRange)
     });
+  };
+
+  /**
+   * Single-select (round radio button): pick ONE value to try as the
+   * hypothetical value. This is the value shown to the right of the arrow on the
+   * card. Mirrors the old text-click behavior.
+   * @param {string|number} edge The selected value code
+   */
+  const selectSingleValue = (edge) => {
+    if (edge === state.feature.curValue) return;
+
+    logger?.addLog({
+      eventName: `[${state.feature.featureName}] value changed`,
+      elementName: 'radio',
+      valueName: 'curValue',
+      oldValue: state.feature.labelEncoder[state.feature.curValue],
+      newValue: state.feature.labelEncoder[edge]
+    });
+
+    state.feature.curValue = edge;
+    // Propagates the new hypothetical value to FeaturePanel and re-renders.
+    state.stateUpdated('value');
+  };
+
+  /**
+   * Multi-select (square checkbox): toggle a value in/out of the acceptable set.
+   * This does the same job as the old acceptable-range selection. Mirrors the
+   * old bar-click + syncFeature logic.
+   * @param {string|number} edge The value code to toggle
+   */
+  const toggleAcceptableValue = (edge) => {
+    const oldRange = Array.from(state.feature.searchValues);
+
+    if (state.feature.searchValues.has(edge)) {
+      state.feature.searchValues.delete(edge);
+    } else {
+      state.feature.searchValues.add(edge);
+    }
+
+    logger?.addLog({
+      eventName: `[${state.feature.featureName}] range changed`,
+      elementName: 'checkbox',
+      valueName: 'range',
+      oldValue: oldRange,
+      newValue: Array.from(state.feature.searchValues)
+    });
+
+    // Mirror syncFeature(): acceptableRange is null when every value is accepted.
+    if (state.feature.searchValues.size !== state.feature.histEdge.length) {
+      state.featurePtr.acceptableRange = Array.from(state.feature.searchValues);
+    } else {
+      state.featurePtr.acceptableRange = null;
+    }
+
+    if (
+      state.featurePtr.difficulty === 'neutral' &&
+      state.featurePtr.acceptableRange === null
+    ) {
+      state.featurePtr.isConstrained = false;
+    } else {
+      state.featurePtr.isConstrained = true;
+    }
+
+    // Dispatches constraintUpdated to FeaturePanel and re-renders the checkboxes.
+    state.featureUpdated('constraint');
   };
 
   onMount(() => {
@@ -571,8 +619,7 @@
         if (newCode !== null && newCode !== state.feature.curValue) {
           feature.hypotheticalValue = overrideLabel;
           state.feature.curValue = newCode;
-          syncBars(component, state);
-          state = state; // trigger reactivity so the header value updates
+          state = state; // trigger reactivity so the header value + grid update
         }
       }
     }
@@ -756,27 +803,59 @@
     class:collapsed={isCollapsed}
     class:expanded={isExpanded}
   >
-    <svg class="svg-hist" />
-
-    <div class="feature-annotations">
-      <div class="annotation annotation-name show">
-        <div class="svg-icon icon-info" />
-
-        {#key state.helperMessage}
-          <span in:fade={{ duration: 200, easing: cubicInOut }}>
-            {@html state.helperMessage}
-          </span>
-        {/key}
-
-        <div class="feature-difficulty" on:click={diffClickedHandler}>
-          <div
-            class={`icon icon-${feature.difficulty}`}
-            title="Specify how easy for you to change this feature"
-          >
-            {@html difficultyIconMap[feature.difficulty]}
-          </div>
-        </div>
+    <!-- Value grid: (1) value name, (2) round radio to pick ONE value to try,
+         (3) square checkbox to mark one or more acceptable values. Replaces the
+         old SVG bar chart / value-distribution view. -->
+    <div class="cat-value-table">
+      <div class="cat-row cat-head">
+        <span class="cat-col-value">Value</span>
+        <span
+          class="cat-col-pick"
+          title="Pick ONE value to try (shown after the arrow on the card)"
+          >Try</span
+        >
+        <span
+          class="cat-col-accept"
+          title="Allow one or more values for new plans"
+          >Accept</span
+        >
       </div>
+
+      {#each state.feature.histEdge as edge (edge)}
+        <div
+          class="cat-row"
+          class:is-current={edge === state.feature.curValue}
+        >
+          <span class="cat-col-value">
+            {displayLevel(state, edge)}
+            {#if edge === state.feature.originalValue}
+              <span class="cat-badge orig">original</span>
+            {/if}
+            {#if edge === state.feature.coachValue && edge !== state.feature.originalValue}
+              <span class="cat-badge coach">suggested</span>
+            {/if}
+          </span>
+
+          <span class="cat-col-pick">
+            <input
+              type="radio"
+              name={`cat-single-${state.feature.featureName}`}
+              aria-label={`Try ${displayLevel(state, edge)}`}
+              checked={edge === state.feature.curValue}
+              on:change={() => selectSingleValue(edge)}
+            />
+          </span>
+
+          <span class="cat-col-accept">
+            <input
+              type="checkbox"
+              aria-label={`Accept ${displayLevel(state, edge)}`}
+              checked={state.feature.searchValues.has(edge)}
+              on:change={() => toggleAcceptableValue(edge)}
+            />
+          </span>
+        </div>
+      {/each}
     </div>
   </div>
 
@@ -799,13 +878,23 @@
       </div>
     </span>
 
-    <span
-      class="tag difficulty-tag"
-      class:shown={feature.difficulty !== 'neutral'}
+    <!-- Interactive difficulty selector (emoji): moved here from the top of the
+         card, sitting to the LEFT of the difficulty name. stopPropagation keeps
+         the config bar's headerClicked from toggling the card. -->
+    <div
+      class="feature-difficulty"
+      title="Specify how easy for you to change this feature"
+      on:click|stopPropagation={diffClickedHandler}
     >
       <div class={`icon icon-${feature.difficulty}`}>
         {@html difficultyIconMap[feature.difficulty]}
       </div>
+    </div>
+
+    <span
+      class="tag difficulty-tag"
+      class:shown={feature.difficulty !== 'neutral'}
+    >
       {difficultyTextMap[feature.difficulty]}
       <div class="local-tooltip">
         <span class="content"

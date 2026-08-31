@@ -208,6 +208,92 @@ $card-h-padding: 16px;
   }
 }
 
+// New categorical value grid (replaces the SVG bar chart): three columns —
+// value name, a round radio to pick one value to try, and a square checkbox to
+// mark one or more acceptable values.
+.cat-value-table {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+
+  .cat-row {
+    display: grid;
+    grid-template-columns: 1fr 3rem 3.6rem;
+    align-items: center;
+    column-gap: 8px;
+    padding: 6px 2px;
+    border-bottom: 1px solid $gray-100;
+
+    &:last-child {
+      border-bottom: none;
+    }
+
+    &.cat-head {
+      font-size: 0.82rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.02em;
+      color: $gray-500;
+      border-bottom: 1px solid $gray-200;
+      padding-bottom: 5px;
+    }
+
+    // Subtle highlight for the currently selected (try) value's row.
+    &.is-current .cat-col-value {
+      color: $blue-800;
+      font-weight: 600;
+    }
+  }
+
+  .cat-col-value {
+    font-size: 1rem;
+    color: $gray-800;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+
+  // Small inline markers for the user's original value and GAM Coach suggestion.
+  .cat-badge {
+    font-size: 0.68rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+    padding: 1px 5px;
+    border-radius: 3px;
+    line-height: 1.4;
+    white-space: nowrap;
+
+    &.orig {
+      background: $gray-200;
+      color: $gray-700;
+    }
+    &.coach {
+      background: $green-50;
+      color: $green-700;
+    }
+  }
+
+  .cat-col-pick,
+  .cat-col-accept {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+  }
+
+  input[type='radio'],
+  input[type='checkbox'] {
+    width: 1.05rem;
+    height: 1.05rem;
+    margin: 0;
+    cursor: pointer;
+    accent-color: $blue-600;
+  }
+}
+
 .thumb-label {
   &.thumb-label-middle {
     top: 15px;

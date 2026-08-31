@@ -446,11 +446,11 @@ const syncFeature = (state) => {
 };
 
 export const initHistSize = (component, state) => {
-  // Keep in sync with initHist() below. Shortened from 90 because the value
-  // distribution density curve is no longer drawn.
-  const histHeight = 55;
+  // Keep in sync with initHist() below. Shortened (was 90, then 55) because the
+  // density curve and the top emoji/caption were removed.
+  const histHeight = 30;
   const tickHeight = 30;
-  const vGap = 15;
+  const vGap = 12;
   const height = histHeight + tickHeight + vGap;
 
   state.histSVG = d3
@@ -474,10 +474,10 @@ export const initHist = (component, state) => {
   const width = parentBBox.width;
   // The value-distribution density curve is no longer drawn, so this area only
   // needs enough room for the value marks between the slider and the ticks.
-  // Shortened from 90 to make the expanded card more compact.
-  const histHeight = 55;
+  // Shortened (was 90, then 55) to keep the expanded card compact.
+  const histHeight = 30;
   const tickHeight = 30;
-  const vGap = 15;
+  const vGap = 12;
   const height = histHeight + tickHeight + vGap;
 
   state.histSVG = d3
@@ -492,7 +492,9 @@ export const initHist = (component, state) => {
     d3.select(component).select('#slider-left-thumb').node().offsetWidth;
 
   const padding = {
-    top: 35,
+    // Reduced from 35: this top gap used to hold the difficulty emoji / caption,
+    // which have been moved out, so most of it was just empty space.
+    top: 10,
     left: thumbWidth,
     right: thumbWidth,
     bottom: 0,
