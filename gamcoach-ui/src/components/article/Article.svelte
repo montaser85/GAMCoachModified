@@ -283,13 +283,8 @@
           You're {getApplicantName(modelName)}
         </div>
         <div class="input-number">
-          <div
-            class="svg-icon"
-            title="Edit the input values"
-            on:click={() => editClicked()}
-          >
-            {@html iconEditSVG}
-          </div>
+          <!-- The "Edit Input Values" form option was removed; users enter their
+               values directly in the feature cards during first-time setup. -->
           <div
             class="svg-icon"
             title="Try a random input sample"

@@ -99,6 +99,11 @@
   // applied at Save (inside initModel).
   let setupMode = true;
   let setupEntered = false;
+  // True once "Done with Setup" is clicked: hides the banner/button and keeps the
+  // (frozen) setup cards on screen while generation runs, so the whole panel is
+  // not replaced by a blank loading screen — the "Generating…" message shows in
+  // the empty right column instead.
+  let setupSubmitted = false;
   /** @type {import('svelte/store').Writable<Plan>|null} */
   let setupPlanStore = null;
   /** Live value of setupPlanStore (kept via subscription; drives the Done gate). */
@@ -361,7 +366,10 @@
     if (!setupPlan || !allSetupFilled(setupPlan)) return;
     // The setup plan's live sample carries the user's entered values.
     enteredBaseline = setupPlan.ebmLocal.sample.slice();
-    setupMode = false;
+    // Hide the banner/button but keep the setup cards visible while generating.
+    // (setupMode stays true so the setup panel keeps rendering until plans exist;
+    // once plans arrive, the real feature panel replaces it.)
+    setupSubmitted = true;
     initModel();
   };
 
@@ -499,15 +507,6 @@
   </div>
 
   <div class="two-column">
-    {#if generating}
-      <!-- Plan generation in flight — honest progress feedback so the panel is
-           never an unexplained blank/frozen screen. -->
-      <div class="plan-loading">
-        <div class="plan-loading-spinner" />
-        <div class="plan-loading-text">Generating ideas…</div>
-        <div class="plan-loading-sub">This can take a few moments.</div>
-      </div>
-    {:else}
     <!-- Left panel: plan dropdown + save star (aligned with the feature cards,
          parallel to the right-column score readout), then the feature list.
          Scrolls independently. -->
@@ -586,11 +585,16 @@
 
       {#if plans === null}
         {#if setupMode && setupPlanStore}
-          <!-- First-time in-card setup: all 20 cards editable, no score/propagation. -->
-          <div class="setup-banner">
-            Enter your details in the cards below, then press
-            <strong>Done with Setup</strong> to see your result.
-          </div>
+          <!-- First-time in-card setup: all 20 cards editable, no score/propagation.
+               After "Done with Setup" the banner/button hide but the cards stay
+               (frozen) while generation runs; the "Generating…" message shows in
+               the right column so the whole panel is never blanked. -->
+          {#if !setupSubmitted}
+            <div class="setup-banner">
+              Enter your details in the cards below, then press
+              <strong>Done with Setup</strong> to see your result.
+            </div>
+          {/if}
           <div class="feature-panel-wrapper">
             <FeaturePanel
               {windowLoaded}
@@ -600,11 +604,13 @@
               setupMode={true}
             />
           </div>
-          <button
-            class="setup-done-btn"
-            disabled={!allSetupFilled(setupPlanCur)}
-            on:click={finishSetup}
-          >Done with Setup</button>
+          {#if !setupSubmitted}
+            <button
+              class="setup-done-btn"
+              disabled={!allSetupFilled(setupPlanCur)}
+              on:click={finishSetup}
+            >Done with Setup</button>
+          {/if}
         {:else}
           <div class="feature-panel-wrapper">
             <FeaturePanel {logger} planStore={null} {constraintsStore} />
@@ -627,7 +633,16 @@
     <!-- Right panel band order: score readout → "what's driving this score" →
          "ideas to try" → "effects of your changes" (the propagation ripple). -->
     <div class="right-column">
-      {#if plans !== null}
+      {#if generating}
+        <!-- Plan/idea generation in flight — the message shows HERE (in the
+             otherwise-empty right column) so the left cards stay visible instead
+             of the whole panel going blank. -->
+        <div class="rc-generating">
+          <div class="plan-loading-spinner" />
+          <div class="plan-loading-text">Generating ideas…</div>
+          <div class="plan-loading-sub">This can take a few moments.</div>
+        </div>
+      {:else if plans !== null}
         <ScoreReadout planStore={activePlanStore} />
         <div class="rc-drivers">
           <ScoreDrivers planStore={activePlanStore} />
@@ -638,7 +653,6 @@
         </div>
       {/if}
     </div>
-    {/if}
   </div>
 </div>
 
@@ -651,7 +665,8 @@
 <style lang="scss">
   @import '../../define';
 
-  .plan-loading {
+  .plan-loading,
+  .rc-generating {
     display: flex;
     flex-direction: column;
     align-items: center;

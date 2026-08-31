@@ -42,7 +42,8 @@
     derogRank,
     derogSubtract,
     loanMonthlyPayment,
-    aprForPurpose
+    aprForPurpose,
+    appliedLoanDtiContribution
   } from '../../engine/index.mjs';
 
   export let windowLoaded = false;
@@ -523,6 +524,9 @@
     // is suggested-and-applied at load, so there are no suggested-change ripples
     // to seed — the panel fills only from the user's own edits.
     changeEffectsStore.set([]);
+    // Show the one baseline shift — the applied loan folded into DTI — as an
+    // affected-features row (only after setup, when the fold has been applied).
+    if (!setupMode) recordLoanFoldEffect();
 
     // Build "Ideas to try" for this plan: the plan's suggested changes, with
     // amounts. Fixed per plan; dismissals swap in directional replacements.
@@ -1860,6 +1864,10 @@
    */
   const refreshDtiBreakdown = () => {
     if (!plan || !applicantBaselineState) return;
+    // SETUP: no propagation or loan→DTI fold is shown during first-time entry, so
+    // leave the breakdown blocks null — the DTI card shows a plain value with no
+    // fold arrow until the user presses "Done with Setup".
+    if (setupMode) return;
     const current = buildCurrentEngineState();
     const params = computeParams(
       applicantBaselineState, current, modifiedFeatures, userFicoDelta, userDtiDelta, userRevolDelta
@@ -2268,6 +2276,27 @@
       event,
       ...list.filter((ev) => ev.sourceName !== sourceName)
     ]);
+  };
+
+  /**
+   * Record the one baseline shift — the applied-for loan folded into DTI — as an
+   * affected-features row at load (after "Done with Setup"). The applied loan
+   * raised the borrower's DTI from their raw profile value to the loan-included
+   * value; this shows that as "Loan Amount → DTI" in the panel.
+   */
+  const recordLoanFoldEffect = () => {
+    if (!plan || !applicantBaselineState) return;
+    const featureNames = [];
+    plan.features.forEach((f) => {
+      featureNames[f.featureID] = f.data.name;
+    });
+    // DTI points contributed by the applied-for loan (from loan/income/purpose/term).
+    const contribution = appliedLoanDtiContribution(plan.ebmLocal.sample, featureNames);
+    if (!contribution || contribution <= 0.05) return; // negligible / no loan
+    const foldedDti = applicantBaselineState.dti;
+    const rawDti = foldedDti - contribution;
+    const effect = buildEffectEntry('loan_amnt', 'dti', rawDti, foldedDti);
+    recordChangeEffects('loan_amnt', applicantBaselineState.loan_amnt, [effect]);
   };
 
   /**
