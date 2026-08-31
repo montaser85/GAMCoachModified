@@ -511,7 +511,7 @@
          parallel to the right-column score readout), then the feature list.
          Scrolls independently. -->
     <div class="left-column">
-      {#if plans !== null}
+      {#if !generating && plans !== null}
         <div class="plan-row">
           <div class="select plan-select">
             <select
@@ -583,7 +583,11 @@
         {/if}
       {/if}
 
-      {#if plans === null}
+      {#if generating || plans === null}
+        <!-- While generating, `plans` becomes non-null EARLY (with empty plan
+             stores) — so we gate the real cards on `!generating` and keep the
+             setup cards up until generation actually finishes. This prevents the
+             left panel from momentarily emptying after "Done with Setup". -->
         {#if setupMode && setupPlanStore}
           <!-- First-time in-card setup: all 20 cards editable, no score/propagation.
                After "Done with Setup" the banner/button hide but the cards stay
