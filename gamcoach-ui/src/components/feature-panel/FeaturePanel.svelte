@@ -49,6 +49,11 @@
   export let planStore = null;
   export let constraintsStore = null;
 
+  // First-time setup (Change 2): when true, this panel is the pre-generation
+  // "setup plan". Card edits are captured as raw baseline values but do NOT
+  // propagate to dependents, and no score is involved.
+  export let setupMode = false;
+
   /** @type {Logger} */
   export let logger = null;
 
@@ -588,6 +593,14 @@
 
     // Update the store
     planStore.set(plan);
+
+    // SETUP: capture the raw entered value only — no propagation to dependents,
+    // no delta tracking, no breakdowns. The user enters every value themselves
+    // (including the computed ones); Done then locks this sample as the baseline.
+    if (setupMode) {
+      lastKnownValues[feature.data.name] = newValue;
+      return;
+    }
 
     // Only trigger propagation if the value actually changed from what was last seen.
     // This prevents arrows firing when a card is expanded (which replays the current value).

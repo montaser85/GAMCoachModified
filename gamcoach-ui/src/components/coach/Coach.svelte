@@ -25,7 +25,7 @@
   import d3 from '../../utils/d3-import';
   import { Logger } from '../../utils/logger';
   import { onMount, onDestroy, tick } from 'svelte';
-  import { writable } from 'svelte/store';
+  import { writable, get } from 'svelte/store';
   import { fade, fly } from 'svelte/transition';
   import {
     tooltipConfigStore,
@@ -91,6 +91,21 @@
   /** @type {Constraints} */
   let constraints = null;
 
+  // ── First-time in-card setup (Change 2) ─────────────────────────────────────
+  // Before any plans exist, the user enters/adjusts all 20 feature values
+  // directly in the cards (a lightweight, non-generated "setup plan"), then
+  // clicks "Done with Setup" to lock the baseline and run generation. No
+  // propagation and no score are shown during setup; only the loan→DTI fold is
+  // applied at Save (inside initModel).
+  let setupMode = true;
+  let setupEntered = false;
+  /** @type {import('svelte/store').Writable<Plan>|null} */
+  let setupPlanStore = null;
+  /** Live value of setupPlanStore (kept via subscription; drives the Done gate). */
+  let setupPlanCur = null;
+  /** Baseline (internal-value array) the user entered in setup; null before Done. */
+  let enteredBaseline = null;
+
   /**
    * Workaround to trigger an update to the plans variable.
    * @param {Plans} newPlans
@@ -105,15 +120,18 @@
   const initModel = async () => {
     initialized = true;
 
-    // Load the model data
-    curModelData = await d3.json(
-      `PUBLIC_URL/data/${modelName}-classifier.json`
-    );
-    // console.log(modelData);
+    // Load the model data (reuse it if setup already loaded it).
+    if (!curModelData) {
+      curModelData = await d3.json(
+        `PUBLIC_URL/data/${modelName}-classifier.json`
+      );
+    }
 
-    // Initialize an ebm model
-    ebm = new EBM(curModelData);
-    ebmStore.set(ebm);
+    // Initialize an ebm model (reuse if setup already built it).
+    if (!ebm) {
+      ebm = new EBM(curModelData);
+      ebmStore.set(ebm);
+    }
 
     // Re-initialize the bookmark config
     const bookmarkConfig = {
@@ -125,11 +143,13 @@
     };
     bookmarkConfigStore.set(bookmarkConfig);
 
-    // Fold the applied-for loan into the applicant's baseline DTI at the single
+    // The locked baseline: the values the user entered during setup, else the
+    // starting sample. Fold the applied-for loan into its DTI at this single
     // source point, so generation, scoring, and the feature-panel baseline all use
-    // the same loan-included DTI.
+    // the same loan-included DTI. This is the ONE baseline shift at Save.
+    const base = enteredBaseline || curExample;
     const baselineExample = foldAppliedLoanIntoDti(
-      curExample,
+      base,
       curModelData.features.map((f) => f.name)
     );
 
@@ -280,7 +300,70 @@
   };
 
 
-  $: curExample && !initialized && initModel();
+  // First-time flow: enter in-card setup instead of generating immediately.
+  // Generation runs only when the user clicks "Done with Setup" (finishSetup).
+  $: curExample && !setupEntered && enterSetup();
+
+  /**
+   * Enter first-time setup: load the model and build a lightweight, NON-generated
+   * "setup plan" from the raw sample so all 20 cards render editable (no coach
+   * suggestion, no score, no propagation) before the user commits.
+   */
+  const enterSetup = async () => {
+    setupEntered = true;
+
+    if (!curModelData) {
+      curModelData = await d3.json(
+        `PUBLIC_URL/data/${modelName}-classifier.json`
+      );
+    }
+    if (!ebm) {
+      ebm = new EBM(curModelData);
+      ebmStore.set(ebm);
+    }
+
+    // Default constraints so the setup FeaturePanel has a constraints store.
+    constraints = new Constraints(curModelData, curExample);
+    constraintsStore.set(constraints);
+
+    // A setup plan with cfData === the sample → no suggestions; ebmLocal is the
+    // raw baseline; cards are editable and show the user's own starting values.
+    const setupPlan = new Plan(
+      curModelData,
+      curExample,
+      { originalScore: 0 },
+      curExample.slice(),
+      0
+    );
+    setupPlanStore = writable(setupPlan);
+    // Keep a live copy so the Done button's enabled state reacts to edits.
+    unsubscribes.push(setupPlanStore.subscribe((v) => (setupPlanCur = v)));
+  };
+
+  /** True once every feature in the setup plan has a value (gates the Done button). */
+  const allSetupFilled = (p) =>
+    !!p &&
+    p.features.length > 0 &&
+    p.features.every(
+      (f) =>
+        p.ebmLocal.sample[f.featureID] !== undefined &&
+        p.ebmLocal.sample[f.featureID] !== null &&
+        p.ebmLocal.sample[f.featureID] !== ''
+    );
+
+  /**
+   * "Done with Setup": lock the entered values as the baseline, leave setup, and
+   * run the existing generation path (initModel folds loan→DTI, builds
+   * constraints, generates, computes the first score, activates propagation).
+   */
+  const finishSetup = () => {
+    const setupPlan = setupPlanStore ? get(setupPlanStore) : null;
+    if (!setupPlan || !allSetupFilled(setupPlan)) return;
+    // The setup plan's live sample carries the user's entered values.
+    enteredBaseline = setupPlan.ebmLocal.sample.slice();
+    setupMode = false;
+    initModel();
+  };
 
   // ── Two-column layout helpers ──────────────────────────────────────────────
   // The active plan's store (shared by the left-column FeaturePanel and the
@@ -502,9 +585,31 @@
       {/if}
 
       {#if plans === null}
-        <div class="feature-panel-wrapper">
-          <FeaturePanel {logger} planStore={null} {constraintsStore} />
-        </div>
+        {#if setupMode && setupPlanStore}
+          <!-- First-time in-card setup: all 20 cards editable, no score/propagation. -->
+          <div class="setup-banner">
+            Enter your details in the cards below, then press
+            <strong>Done with Setup</strong> to see your result.
+          </div>
+          <div class="feature-panel-wrapper">
+            <FeaturePanel
+              {windowLoaded}
+              {logger}
+              planStore={setupPlanStore}
+              {constraintsStore}
+              setupMode={true}
+            />
+          </div>
+          <button
+            class="setup-done-btn"
+            disabled={!allSetupFilled(setupPlanCur)}
+            on:click={finishSetup}
+          >Done with Setup</button>
+        {:else}
+          <div class="feature-panel-wrapper">
+            <FeaturePanel {logger} planStore={null} {constraintsStore} />
+          </div>
+        {/if}
       {:else}
         {#key `${plans.activePlanIndex}-${restorationCounter}`}
           <div class="feature-panel-wrapper">
@@ -654,6 +759,40 @@
     display: flex;
     flex-direction: column;
     gap: 8px;
+  }
+
+  // First-time in-card setup (Change 2).
+  .setup-banner {
+    font-size: 1.02rem;
+    line-height: 1.4;
+    color: $gray-700;
+    background: $blue-50;
+    border: 1px solid $blue-200;
+    border-radius: 8px;
+    padding: 10px 12px;
+    margin-bottom: 4px;
+
+    strong { color: $blue-700; }
+  }
+
+  .setup-done-btn {
+    align-self: stretch;
+    margin-top: 10px;
+    padding: 12px 16px;
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: white;
+    background: $blue-600;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: background 120ms ease;
+
+    &:hover:not(:disabled) { background: $blue-700; }
+    &:disabled {
+      background: $gray-300;
+      cursor: not-allowed;
+    }
   }
 
   .right-column {
