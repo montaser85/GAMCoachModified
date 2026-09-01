@@ -10,7 +10,7 @@
   // ideaDismissStore, and FeaturePanel swaps in a directional replacement.
   import { onDestroy } from 'svelte';
   import { sigmoid } from '../../ebm/ebm';
-  import { ideasStore, ideaDismissStore } from '../../store';
+  import { ideasStore, ideaDismissStore, ideaApplyStore } from '../../store';
   import HeaderInfo from '../header-info/HeaderInfo.svelte';
 
   /** Active plan store (writable<Plan>) or null while loading — used for the
@@ -65,7 +65,18 @@
 
       <div class="it-chips">
         {#each ideas as idea (idea.name)}
-          <span class="it-chip">
+          <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
+          <span
+            class="it-chip"
+            class:it-chip-apply={idea.mode === 'amount'}
+            title={idea.mode === 'amount'
+              ? `Click to apply: ${idea.verb} ${idea.displayName} to ${idea.targetDisplay}`
+              : ''}
+            on:click={() => {
+              if (idea.mode === 'amount')
+                ideaApplyStore.set({ name: idea.name, value: idea.applyValue });
+            }}
+          >
             <span class="it-verb">{idea.verb}</span>
             <span class="it-feat">{idea.displayName}</span>
             {#if idea.mode === 'amount' && idea.targetDisplay}
@@ -125,7 +136,7 @@
     gap: 8px 10px;
   }
 
-  /* Amber lever chips (finalized style). */
+  /* Amber lever chips (directional ideas). */
   .it-chip {
     display: inline-flex;
     align-items: center;
@@ -138,6 +149,19 @@
     font-size: 1.05rem;
     line-height: 1.2;
     cursor: default;
+
+    /* Initial (amount) ideas: a very light blue, clickable to apply the change. */
+    &.it-chip-apply {
+      background: #eaf4fd;
+      border-color: #bcdcf5;
+      cursor: pointer;
+      transition: background 120ms ease, border-color 120ms ease;
+
+      &:hover {
+        background: #d8ebfb;
+        border-color: #93c6ef;
+      }
+    }
 
     .it-verb {
       font-weight: 700;

@@ -155,6 +155,12 @@ export const ideasStore = writable([]);
 // idea and adding a directional replacement, then resets this back to null.
 export const ideaDismissStore = writable(null);
 
+// Apply-request channel for "Ideas to try". Clicking an initial (amount) idea
+// writes { name, value } here; FeaturePanel applies that value to the feature
+// (updating the card + running the same propagation/score path as a manual
+// edit), then resets this back to null.
+export const ideaApplyStore = writable(null);
+
 // Transient inline hint for the Derogatory-Records floor guard: when the user
 // tries to set Number of Derogatory Records below their current Number of
 // Bankruptcies, the edit is clamped and a brief message is shown on that card.

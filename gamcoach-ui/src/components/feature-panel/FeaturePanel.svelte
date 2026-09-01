@@ -14,7 +14,7 @@
 
   import { onMount, onDestroy, tick } from 'svelte';
   import { fade } from 'svelte/transition';
-  import { tooltipConfigStore, featureValueOverrideStore, cardToggleStore, propagatedFeaturesStore, historySidebarOpenStore, changeEffectsStore, ideasStore, ideaDismissStore, derogFloorHintStore } from '../../store';
+  import { tooltipConfigStore, featureValueOverrideStore, cardToggleStore, propagatedFeaturesStore, historySidebarOpenStore, changeEffectsStore, ideasStore, ideaDismissStore, ideaApplyStore, derogFloorHintStore } from '../../store';
   import { sigmoid } from '../../ebm/ebm';
   import {
     STRUCTURAL_EXCLUSIONS,
@@ -486,6 +486,16 @@
         if (name) {
           handleIdeaDismiss(name);
           ideaDismissStore.set(null);
+        }
+      })
+    );
+
+    // Apply channel: clicking an initial (amount) idea applies its suggested value.
+    unsubscribes.push(
+      ideaApplyStore.subscribe((req) => {
+        if (req && req.name !== undefined) {
+          applyIdea(req.name, req.value);
+          ideaApplyStore.set(null);
         }
       })
     );
@@ -2537,7 +2547,12 @@
         verb: ideaVerb(feature.isCont, direction),
         direction,
         mode: 'amount',
-        targetDisplay: formatEffectValue(name, suggested[name])
+        targetDisplay: formatEffectValue(name, suggested[name]),
+        // Value to APPLY on click: internal for continuous (what the card + model
+        // use), the level LABEL for categorical.
+        applyValue: feature.isCont
+          ? displayToInternal(name, suggested[name])
+          : suggested[name]
       });
     });
     return out;
@@ -2616,6 +2631,30 @@
     if (!visibleIdeas.some((i) => i.name === name)) return;
     dismissedNames.add(name); // a dismissed feature is not re-suggested
     rebuildIdeas();
+  };
+
+  /**
+   * Apply an initial (amount) idea: set the feature to the suggested value,
+   * updating the card display AND running the same propagation / score / provenance
+   * path as a manual edit. `value` is internal for continuous, the level label for
+   * categorical (as produced in buildInitialIdeas).
+   */
+  const applyIdea = (name, value) => {
+    if (!plan || value === undefined || value === null) return;
+    const feature = plan.features.find((f) => f.data.name === name);
+    if (!feature) return;
+    // Push the value into the card's displayed value (same channel propagation
+    // uses): continuous cards read the internal value, categorical cards read the
+    // level LABEL — `value` already matches (internal for cont, label for cat).
+    featureValueOverrideStore.set({ [name]: value });
+    setTimeout(() => featureValueOverrideStore.set({}), 400);
+    // The edit handler wants the internal value for continuous, but the level CODE
+    // for categorical (it re-encodes code → label itself); `value` is a label for
+    // categorical, so convert it to a code first.
+    const handlerValue = feature.isCont
+      ? value
+      : codeFromLabel(value, feature.labelEncoder);
+    curValueUpdatedHandler({ detail: { newValue: handlerValue } }, feature);
   };
 
   /**
