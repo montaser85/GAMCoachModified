@@ -2357,14 +2357,16 @@
         .join(', ');
       const prefix = tooltipPrefixOverride || `${sourcePart}, ${depsPart}`;
       if (showApprovalChange) {
-        // Prior and new approval scores (percent), each the sigmoid of the log-odds
-        // with / without the summed dependent contribution — same math the score
-        // readout shows. We display both endpoints, not their difference.
-        const netDelta = effects.reduce((s, e) => s + (e.contributionDelta || 0), 0);
-        const afterLogOdds = plan?.ebmLocal?.predScore ?? 0;
-        const beforeLogOdds = afterLogOdds - netDelta;
-        const priorPct = Math.round(sigmoid(beforeLogOdds) * 100);
-        const newPct = Math.round(sigmoid(afterLogOdds) * 100);
+        // Original and new approval scores (percent). The ORIGINAL is the user's
+        // profile baseline — the score computed with the loan-folded DTI
+        // (plan.originalScore), the SAME value the score readout shows as "original".
+        // The NEW is the current score (predScore). Both use sigmoid(log-odds), and
+        // we display the two endpoints, not their difference. Earlier this derived
+        // the prior as predScore − (this row's dependent-contribution delta), which
+        // omitted the source feature's own contribution and drifted per row — so the
+        // "original" was wrong; anchoring it to plan.originalScore fixes that.
+        const priorPct = Math.round(sigmoid(plan?.originalScore ?? 0) * 100);
+        const newPct = Math.round(sigmoid(plan?.ebmLocal?.predScore ?? 0) * 100);
         tooltip =
           `${prefix}, which changed your approval score from ` +
           `${priorPct}% to ${newPct}%.`;
