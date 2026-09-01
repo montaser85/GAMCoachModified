@@ -653,7 +653,7 @@
         </div>
         <IdeasToTry planStore={activePlanStore} />
         <div class="rc-effects">
-          <ChangeEffects />
+          <ChangeEffects planStore={activePlanStore} />
         </div>
       {/if}
     </div>

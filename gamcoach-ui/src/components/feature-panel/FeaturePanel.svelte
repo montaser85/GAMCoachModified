@@ -2340,14 +2340,20 @@
       ? `${sourceVerb} the ${sourceDisplay.toLowerCase()} from ${srcBeforeDisplay} to ${srcAfterDisplay}`
       : `${sourceVerb} the ${sourceDisplay.toLowerCase()}`;
 
-    // One combined sentence: a prefix (the source change + every dependent it
-    // moved, inline) — a caller may override just this prefix (e.g. the applied-
-    // loan baseline fold) — then the approval score BEFORE and AFTER these ripples.
-    // A caller may suppress the approval clause entirely (showApprovalChange=false,
-    // e.g. the load-time Loan Amount → DTI fold).
-    let tooltip;
+    // Store only the CAUSAL body of the sentence (source change + every dependent it
+    // moved, inline) — a caller may override just this body (e.g. the applied-loan
+    // baseline fold). The approval-score clause is NOT baked here: ChangeEffects.svelte
+    // appends it at render time from the LIVE current score, so every row's "new"
+    // score always equals the score readout (they read the same plan store). Baking it
+    // here froze each row's score at edit time, so after a later edit the readout moved
+    // on while older rows kept a stale score — the mismatch this fixes.
+    // `showApprovalChange` is false when there is no score clause (the loan fold and
+    // the no-effect rows).
+    let tooltipBody;
+    let showApproval = showApprovalChange;
     if (!effects || effects.length === 0) {
-      tooltip = `Changing the ${sourceDisplay.toLowerCase()} didn't change any other feature.`;
+      tooltipBody = `Changing the ${sourceDisplay.toLowerCase()} didn't change any other feature`;
+      showApproval = false;
     } else {
       const depsPart = effects
         .map(
@@ -2355,24 +2361,7 @@
             `${e.depVerb} the ${e.depDisplayName.toLowerCase()} from ${e.beforeDisplay} to ${e.afterDisplay}`
         )
         .join(', ');
-      const prefix = tooltipPrefixOverride || `${sourcePart}, ${depsPart}`;
-      if (showApprovalChange) {
-        // Original and new approval scores (percent). The ORIGINAL is the user's
-        // profile baseline — the score computed with the loan-folded DTI
-        // (plan.originalScore), the SAME value the score readout shows as "original".
-        // The NEW is the current score (predScore). Both use sigmoid(log-odds), and
-        // we display the two endpoints, not their difference. Earlier this derived
-        // the prior as predScore − (this row's dependent-contribution delta), which
-        // omitted the source feature's own contribution and drifted per row — so the
-        // "original" was wrong; anchoring it to plan.originalScore fixes that.
-        const priorPct = Math.round(sigmoid(plan?.originalScore ?? 0) * 100);
-        const newPct = Math.round(sigmoid(plan?.ebmLocal?.predScore ?? 0) * 100);
-        tooltip =
-          `${prefix}, which changed your approval score from ` +
-          `${priorPct}% to ${newPct}%.`;
-      } else {
-        tooltip = `${prefix}.`;
-      }
+      tooltipBody = tooltipPrefixOverride || `${sourcePart}, ${depsPart}`;
     }
 
     const event = {
@@ -2380,7 +2369,8 @@
       sourceDisplayName: sourceDisplay,
       sourceValueDisplay: formatSourceValue(sourceName, sourceValueRaw),
       effects,
-      tooltip
+      tooltipBody,
+      showApproval
     };
     changeEffectsStore.update((list) => [
       event,

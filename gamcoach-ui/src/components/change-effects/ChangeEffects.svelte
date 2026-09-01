@@ -5,16 +5,36 @@
   // FeaturePanel from the engine's existing propagation output. No propagation
   // or decomposition logic lives here.
   import { onDestroy } from 'svelte';
+  import { sigmoid } from '../../ebm/ebm';
   import { changeEffectsStore } from '../../store';
   import HeaderInfo from '../header-info/HeaderInfo.svelte';
 
   const BLUE = '#185FA5'; // helps approval
   const RED = '#A32D2D'; // hurts approval
 
+  /** Active plan store (writable<Plan>) or null while loading — the SAME store the
+   * score readout uses, so the row hovers' "new" score always matches the readout. */
+  export let planStore = null;
+
   /** @type {Array<any>} */
   let events = [];
   const unsub = changeEffectsStore.subscribe((v) => (events = v));
   onDestroy(unsub);
+
+  // Live plan → current & original approval scores in "points" (probability × 100),
+  // identical math to ScoreReadout. Re-subscribe when the store prop changes.
+  let plan = null;
+  let unsubPlan = null;
+  $: resubscribe(planStore);
+  function resubscribe(store) {
+    if (unsubPlan) { unsubPlan(); unsubPlan = null; }
+    plan = null;
+    if (store) unsubPlan = store.subscribe((v) => { plan = v; });
+  }
+  onDestroy(() => { if (unsubPlan) unsubPlan(); });
+
+  $: curPct = plan ? Math.round(sigmoid(plan.ebmLocal.predScore) * 100) : null;
+  $: origPct = plan ? Math.round(sigmoid(plan.originalScore) * 100) : null;
 
   let collapsed = false; // section hide/unhide (name stays visible)
 
@@ -35,13 +55,27 @@
     hand: `<svg ${A}><path d="M8 13v-8.5a1.5 1.5 0 0 1 3 0v7.5"/><path d="M11 11.5v-2a1.5 1.5 0 0 1 3 0v2.5"/><path d="M14 10.5a1.5 1.5 0 0 1 3 0v1.5"/><path d="M17 11.5a1.5 1.5 0 0 1 3 0v4.5a6 6 0 0 1 -6 6h-2h.208a6 6 0 0 1 -5.012 -2.7a69.74 69.74 0 0 1 -.196 -.3c-.312 -.479 -1.407 -2.388 -3.286 -5.728a1.5 1.5 0 0 1 .536 -2.022a1.867 1.867 0 0 1 2.28 .28l1.988 1.984"/></svg>`
   };
 
-  // Combined causal explanation for the per-row hover — one sentence built in
-  // FeaturePanel.recordChangeEffects (source change + all dependents + net effect).
-  const rowTooltip = (ev) =>
-    ev.tooltip ||
-    (ev.effects.length === 0
-      ? `Changing ${ev.sourceDisplayName} didn't change any other feature.`
-      : '');
+  // Per-row hover sentence: the causal body built in FeaturePanel.recordChangeEffects
+  // (source change + every dependent it moved) PLUS a live approval-score clause when
+  // the row carries one. The score endpoints are read here (not baked at edit time),
+  // so the "new" score is always the CURRENT score — the same value the readout shows.
+  // `curPct`/`origPct` are referenced so the tooltips recompute when the score changes.
+  function buildTooltip(ev, orig, cur) {
+    const body =
+      ev.tooltipBody ||
+      // Back-compat / no-body fallback.
+      (ev.effects && ev.effects.length === 0
+        ? `Changing the ${ev.sourceDisplayName.toLowerCase()} didn't change any other feature`
+        : '');
+    if (ev.showApproval && orig !== null && cur !== null) {
+      return `${body}, which changed your approval score from ${orig}% to ${cur}%.`;
+    }
+    return `${body}.`;
+  }
+
+  // Reactive rows: rebuild whenever the events OR the live scores change, so an older
+  // row's "new" score follows the readout after a later edit instead of going stale.
+  $: rows = events.map((ev) => ({ ev, tip: buildTooltip(ev, origPct, curPct) }));
 </script>
 
 <div class="change-effects">
@@ -80,13 +114,13 @@
 
     <!-- Rows -->
     <div class="ce-rows">
-      {#each events as ev (ev.sourceName)}
+      {#each rows as { ev, tip } (ev.sourceName)}
         <!-- Names + thumbs only; the numbers live in the hover tooltip shown when
              the per-row info icon is hovered, so they never crowd the display. -->
         <div class="ce-row">
           <!-- Per-row info icon (gray) — hover it to reveal the causal sentence. -->
           <span class="ce-info ce-row-info">i</span>
-          <div class="ce-row-tip">{rowTooltip(ev)}</div>
+          <div class="ce-row-tip">{tip}</div>
 
           <!-- Source: full feature name -->
           <div class="ce-source">
