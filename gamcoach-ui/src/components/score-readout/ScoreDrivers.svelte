@@ -198,7 +198,7 @@
   .sd-total {
     display: flex;
     align-items: baseline;
-    justify-content: flex-start; // label sits right next to its sum, not pushed apart
+    justify-content: flex-end; // sits on the right, below the per-bar point values
     gap: 6px;
     margin-top: 6px;
     padding-top: 8px;
