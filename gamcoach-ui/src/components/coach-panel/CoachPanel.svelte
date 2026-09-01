@@ -8,7 +8,6 @@
     tooltipConfigStore,
     confirmModalConfigStore,
     bookmarkConfigStore,
-    inputFormConfigStore,
     checkModalConfigStore,
     compareOpenStore,
     propagatedFeaturesStore,
@@ -184,15 +183,6 @@
     })
   );
 
-  // Set up the input form store
-  /** @type {InputFormConfig}*/
-  let inputFormConfig = null;
-  unsubscribes.push(
-    inputFormConfigStore.subscribe((value) => {
-      inputFormConfig = value;
-    })
-  );
-
   const starClicked = (e, plan) => {
     e.preventDefault();
     e.stopPropagation();
@@ -353,11 +343,6 @@
       bookmarkConfig.features = value.features;
       bookmarkConfig.plansInfo = plans;
       bookmarkConfigStore.set(bookmarkConfig);
-    }
-    if (inputFormConfig && inputFormConfig.features === null) {
-      inputFormConfig.features = value.features;
-      inputFormConfig.plansInfo = plans;
-      inputFormConfigStore.set(inputFormConfig);
     }
 
     // ─── History tracking: capture entry if score changed ─────────────────

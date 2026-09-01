@@ -29,7 +29,6 @@
   import { fade, fly } from 'svelte/transition';
   import {
     tooltipConfigStore,
-    inputFormConfigStore,
     ebmStore,
     constraintsStore,
     bookmarkConfigStore,
@@ -66,12 +65,6 @@
     tooltipConfigStore.subscribe((value) => {
       tooltipConfig = value;
     })
-  );
-
-  // Set up the input form config store
-  let inputFormConfig = null;
-  unsubscribes.push(
-    inputFormConfigStore.subscribe((value) => (inputFormConfig = value))
   );
 
   // Set up the GAM Coach object
@@ -184,11 +177,6 @@
     } finally {
       generating = false;
     }
-
-    // Initialize the input form
-    // inputFormConfig.ebm = ebm;
-    // inputFormConfig.curExample = curExample;
-    // inputFormConfigStore.set(inputFormConfig);
 
     // Log the plans
     logger?.addRecord('plans', plans);

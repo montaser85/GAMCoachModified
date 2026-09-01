@@ -56,26 +56,6 @@ export const constraintRatingFormConfigStore = writable({
   action: ''
 });
 
-export const inputFormConfigStore = writable({
-  show: false,
-  ebm: null,
-  features: null,
-  plansInfo: null,
-  curExample: [],
-  action: null
-});
-
-export const getInputFormConfigStore = () => {
-  return writable({
-    show: false,
-    ebm: null,
-    features: null,
-    plansInfo: null,
-    curExample: [],
-    action: null
-  });
-};
-
 export const ebmStore = writable({});
 
 export const checkModalConfigStore = writable({

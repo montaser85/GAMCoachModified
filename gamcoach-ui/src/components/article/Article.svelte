@@ -4,7 +4,6 @@
   import Coach from '../coach/Coach.svelte';
   import DiffPicker from '../DiffPicker.svelte';
   import ConfirmModal from '../confirm-modal/ConfirmModal.svelte';
-  import InputForm from '../input-form/InputForm.svelte';
   import BookmarkPanel from '../bookmark-panel/BookmarkPanel.svelte';
   import CheckModal from '../check-modal/CheckModal.svelte';
   import Tooltip from '../Tooltip.svelte';
@@ -17,7 +16,6 @@
   import { fade, fly } from 'svelte/transition';
   import {
     tooltipConfigStore,
-    inputFormConfigStore,
     constraintsStore,
     bookmarkConfigStore,
     ebmStore
@@ -27,7 +25,6 @@
 
   import pointArrowSVG from '../../img/point-arrow.svg';
   import iconRefreshSVG from '../../img/icon-refresh3.svg';
-  import iconEditSVG from '../../img/icon-edit.svg';
   import iconGithub from '../../img/icon-github.svg';
   import iconVideo from '../../img/icon-youtube.svg';
   import iconGT from '../../img/icon-gt.svg';
@@ -195,22 +192,6 @@
     })
   );
 
-  /** @type {InputFormConfig} */
-  let inputFormConfig = null;
-  unsubscribes.push(
-    inputFormConfigStore.subscribe((value) => {
-      inputFormConfig = value;
-
-      // Update curExample if it is changed
-      if (inputFormConfig.action === 'saved') {
-        inputFormConfig.action = null;
-        updated = true;
-        curExample = inputFormConfig.curExample;
-        inputFormConfigStore.set(inputFormConfig);
-      }
-    })
-  );
-
   const refreshClicked = () => {
     // Resample the cur example
     curIndex = random(0, curSamples.length - 1);
@@ -226,14 +207,6 @@
     if (option.name === modelName) return;
 
     ebmStore.set({});
-    inputFormConfigStore.set({
-      show: false,
-      ebm: null,
-      features: null,
-      plansInfo: null,
-      curExample: [],
-      action: null
-    });
     bookmarkConfigStore.set({
       show: false,
       features: null,
@@ -246,13 +219,6 @@
     modelName = option.name;
     initModelInfo();
     curExample = curSamples[curIndex];
-  };
-
-  const editClicked = () => {
-    inputFormConfig.show = true;
-    inputFormConfig.curExample = curExample;
-    inputFormConfig.action = null;
-    inputFormConfigStore.set(inputFormConfig);
   };
 
   onMount(() => {
@@ -357,10 +323,6 @@
     <DiffPicker {logger} />
     <ConfirmModal />
     <CheckModal />
-
-    {#key modelName}
-      <InputForm />
-    {/key}
 
     {#key modelName}
       <BookmarkPanel {windowLoaded} {logger} />

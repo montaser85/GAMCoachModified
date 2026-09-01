@@ -4,7 +4,6 @@
   import Coach from '../coach/Coach.svelte';
   import DiffPicker from '../DiffPicker.svelte';
   import ConfirmModal from '../confirm-modal/ConfirmModal.svelte';
-  import InputForm from '../input-form/InputForm.svelte';
   import RatingForm from '../input-form/RatingForm.svelte';
   import ConstraintRatingForm from '../input-form/ConstraintRatingForm.svelte';
   import BookmarkPanel from '../bookmark-panel/BookmarkPanel.svelte';
@@ -18,7 +17,6 @@
   import { fade, fly } from 'svelte/transition';
   import {
     tooltipConfigStore,
-    inputFormConfigStore,
     constraintsStore,
     bookmarkConfigStore,
     ratingFormConfigStore,
@@ -29,7 +27,6 @@
 
   import pointArrowSVG from '../../img/point-arrow.svg';
   import iconRefreshSVG from '../../img/icon-refresh3.svg';
-  import iconEditSVG from '../../img/icon-edit.svg';
 
   import text from '../../config/user-text.yml';
   import samples from '../../config/lc-classifier-random-samples.json';
@@ -141,31 +138,6 @@
     })
   );
 
-  /** @type {InputFormConfig} */
-  let inputFormConfig = null;
-  unsubscribes.push(
-    inputFormConfigStore.subscribe((value) => {
-      inputFormConfig = value;
-
-      // Update curExample if it is changed
-      if (inputFormConfig.action === 'saved') {
-        // Log the interaction
-        logger?.addLog({
-          eventName: 'curExampleUpdated',
-          elementName: 'input form',
-          valueName: 'curExample',
-          oldValue: curExample,
-          newValue: inputFormConfig.curExample
-        });
-
-        inputFormConfig.action = null;
-        updated = true;
-        curExample = inputFormConfig.curExample;
-        inputFormConfigStore.set(inputFormConfig);
-      }
-    })
-  );
-
   /** @type {RatingFormConfig} */
   let ratingFormConfig = null;
   unsubscribes.push(
@@ -242,13 +214,6 @@
     console.log(logger?.toJSON());
   };
 
-  const editClicked = () => {
-    inputFormConfig.show = true;
-    inputFormConfig.curExample = curExample;
-    inputFormConfig.action = null;
-    inputFormConfigStore.set(inputFormConfig);
-  };
-
   const submitClicked = () => {
     if (verificationCode !== null) return;
 
@@ -315,13 +280,6 @@
         <div class="input-number">
           <div
             class="svg-icon"
-            title="Edit the input values"
-            on:click={() => editClicked()}
-          >
-            {@html iconEditSVG}
-          </div>
-          <div
-            class="svg-icon"
             title="Try a random input sample"
             on:click={() => refreshClicked()}
           >
@@ -384,7 +342,6 @@
 
     <DiffPicker {logger} />
     <ConfirmModal />
-    <InputForm />
     <RatingForm />
     <ConstraintRatingForm />
     <BookmarkPanel {windowLoaded} {logger} />
