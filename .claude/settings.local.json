@@ -148,7 +148,12 @@
       "Bash(node ./_revolTest.mjs)",
       "Bash(rm -f ./_revolTest.mjs)",
       "Bash(grep -oiE \"localhost:[0-9]+|:[0-9]{4,5}\" \"C:/Users/monta/AppData/Local/Temp/claude/D--OSU-Dr-B-research-group-GAM-Coach-gam-coach-modified/8c4c60b6-96b7-43c4-ae72-14fbe576e739/scratchpad/build33.log\")",
-      "Bash(grep -v \"^\\\\s*//\")"
+      "Bash(grep -v \"^\\\\s*//\")",
+      "Bash(curl -s -o /dev/null -w \"server:%{http_code}\\\\n\" http://localhost:5005)",
+      "Bash(echo \"exit: $?  \\(1 = no matches, good\\)\")",
+      "Bash(git restore *)",
+      "Bash(grep -iE \"\\\\.top\\\\s*[\\\\{,]|#top|\\\\.top\\\\s+\\\\{\")",
+      "Bash(echo \"exit $? \\(1=clean except plan.dismissedIdeaNames uses\\)\")"
     ]
   }
 }
