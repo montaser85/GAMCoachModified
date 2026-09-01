@@ -33,6 +33,49 @@
   }
 }
 
+// Repayment breakdown box — mirrors the bookmarks panel's "Total you'll repay"
+// card, shown at the top of the panel for approved plans (score ≥ 50). Inset 8px
+// horizontally to line up with the feature cards below it.
+.loan-cost-box {
+  box-sizing: border-box;
+  margin: 10px 8px 12px 8px;
+  padding: 8px 10px;
+  border: 1px solid hsl(210, 40%, 82%);
+  border-radius: 8px;
+  background: hsl(210, 45%, 97%);
+  font-size: 0.95rem;
+  line-height: 1.35;
+  color: $gray-800;
+
+  .lc-total {
+    display: flex;
+    flex-direction: column;
+    margin-bottom: 4px;
+
+    .lc-total-label {
+      font-size: 0.85rem;
+      text-transform: uppercase;
+      letter-spacing: 0.02em;
+      color: $gray-600;
+    }
+    .lc-total-amt {
+      font-size: 1.35rem;
+      font-weight: 700;
+      color: hsl(210, 55%, 32%);
+    }
+  }
+
+  .lc-split {
+    color: $gray-700;
+    margin-bottom: 2px;
+  }
+
+  .lc-monthly {
+    font-weight: 600;
+    color: $gray-900;
+  }
+}
+
 @keyframes blink3 {
   0%   { opacity: 1; }
   16%  { opacity: 0.05; }

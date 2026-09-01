@@ -43,7 +43,8 @@
     derogSubtract,
     loanMonthlyPayment,
     aprForPurpose,
-    appliedLoanDtiContribution
+    appliedLoanDtiContribution,
+    loanCostFromExample
   } from '../../engine/index.mjs';
 
   export let windowLoaded = false;
@@ -3034,6 +3035,23 @@
 
   $: windowLoaded && planStore && !initialized && initFeatureCards();
 
+  // ── Loan-cost summary (repayment breakdown) ─────────────────────────────────
+  // The same "Total you'll repay" box the bookmarks panel shows for SAVED plans,
+  // but rendered live at the top of the panel for the CURRENT plan whenever it has
+  // reached approval (displayed score ≥ 50) — no need to save first. Computed from
+  // the live sample via the engine's amortization helper; display-only.
+  const money = (x) => Math.round(x).toLocaleString('en-US');
+  const moneyApprox = (x) => (Math.round(x / 100) * 100).toLocaleString('en-US');
+  $: loanCost =
+    !setupMode && plan && plan.ebmLocal &&
+    Math.round(sigmoid(plan.ebmLocal.predScore) * 100) >= 50
+      ? (() => {
+          const names = [];
+          plan.features.forEach((f) => { names[f.featureID] = f.data.name; });
+          return loanCostFromExample(plan.ebmLocal.sample, names);
+        })()
+      : null;
+
 </script>
 
 <style lang='scss'>
@@ -3041,6 +3059,25 @@
 </style>
 
 <div class='feature-panel' bind:this={component}>
+
+  <!-- Repayment breakdown — shown between the plan name and the actionable features
+       for any plan that has reached approval (score ≥ 50), saved or not. -->
+  {#if loanCost}
+    <div class="loan-cost-box">
+      <div class="lc-total">
+        <span class="lc-total-label">Total you'll repay</span>
+        <span class="lc-total-amt">~${moneyApprox(loanCost.total)}</span>
+      </div>
+      <div class="lc-split">
+        Your ${money(loanCost.loanAmount)} loan
+        + ~${moneyApprox(loanCost.interest)} interest
+      </div>
+      <div class="lc-monthly">
+        ${money(loanCost.monthly)}/month for {loanCost.termMonths} months
+        ({(loanCost.apr * 100).toFixed(2)}% APR)
+      </div>
+    </div>
+  {/if}
 
   <div class='card-block'>
     <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
