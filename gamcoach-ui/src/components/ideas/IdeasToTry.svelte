@@ -10,7 +10,7 @@
   // ideaDismissStore, and FeaturePanel swaps in a directional replacement.
   import { onDestroy } from 'svelte';
   import { sigmoid } from '../../ebm/ebm';
-  import { ideasStore, ideaDismissStore, ideaApplyStore } from '../../store';
+  import { ideasStore, ideaApplyStore } from '../../store';
   import HeaderInfo from '../header-info/HeaderInfo.svelte';
 
   /** Active plan store (writable<Plan>) or null while loading — used for the
@@ -82,11 +82,6 @@
             {#if idea.mode === 'amount' && idea.targetDisplay}
               <span class="it-target">to {idea.targetDisplay}</span>
             {/if}
-            <button
-              class="it-dismiss"
-              title="Dismiss this idea"
-              on:click|stopPropagation={() => ideaDismissStore.set(idea.name)}
-            >&times;</button>
           </span>
         {/each}
       </div>
@@ -174,30 +169,6 @@
     // Target amount shown only for original (mode 'amount') ideas.
     .it-target {
       font-weight: 600;
-    }
-
-    // Per-idea dismiss (×) button — replaces the idea with a directional one.
-    .it-dismiss {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      margin-left: 2px;
-      width: 18px;
-      height: 18px;
-      padding: 0;
-      border: none;
-      border-radius: 50%;
-      background: transparent;
-      color: #8a6d3b;
-      font-size: 1.1rem;
-      line-height: 1;
-      cursor: pointer;
-      transition: background 120ms ease, color 120ms ease;
-
-      &:hover {
-        background: #e8d3a0;
-        color: #000;
-      }
     }
   }
 </style>
