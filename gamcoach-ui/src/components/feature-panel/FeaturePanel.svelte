@@ -669,7 +669,7 @@
 
       // Debounce — only fire after user stops dragging (350ms of silence)
       if (propagationDebounceTimer) clearTimeout(propagationDebounceTimer);
-      propagationDebounceTimer = setTimeout(() => {
+      propagationDebounceTimer = setTimeout(async () => {
         propagationDebounceTimer = null;
         // DTI is a leaf: capture the manual delta and re-settle HERE (debounced),
         // never per drag increment. Running applyManualDtiEdit synchronously on each
@@ -680,7 +680,9 @@
         if (featureName === 'dti') {
           applyManualDtiEdit();
         } else {
-          triggerPropagation(featureName);
+          // Await so the ideas recompute below always reads the SETTLED state, even
+          // if propagation becomes truly async later.
+          await triggerPropagation(featureName);
         }
         // Dynamic "Ideas to try": recompute the directional ideas against the now-
         // SETTLED state. This runs AFTER propagation completes (and is already
@@ -2493,12 +2495,13 @@
     return { direction: 'change', gain: best };
   };
 
-  // ── "Ideas to try" — two render modes ──────────────────────────────────────
-  // Initial ideas are the PLAN'S suggested changes, shown WITH amounts (the
-  // coach's counterfactual diff). When the user dismisses one, it is replaced by
-  // a DIRECTION-ONLY idea from the same speculative "what helps next" mechanism.
-  // Ideas are fixed per plan (recomputed only on plan switch / mount), not on
-  // every edit — the live status line in IdeasToTry tracks the score instead.
+  // ── "Ideas to try" ──────────────────────────────────────────────────────────
+  // FIRST TIME (fresh plan, before any interaction): show ONLY the plan's
+  // suggested changes WITH amounts — any number of them (the coach's diff).
+  // AFTER the first edit/dismiss: always show exactly THREE ideas — the remaining
+  // (non-dismissed) suggestions, topped up with DIRECTIONAL "what helps next"
+  // ideas recomputed against the user's current (settled) state on every edit.
+  const TARGET_IDEA_COUNT = 3;
 
   /** @type {Array} The plan's initial amount ideas (fixed per plan). */
   let amountIdeas = [];
@@ -2574,31 +2577,37 @@
   };
 
   /**
-   * Rebuild the visible ideas: the remaining (non-dismissed) amount ideas stay
-   * fixed; the freed slots are filled with DIRECTIONAL ideas recomputed against
-   * the CURRENT state. Called on init, on dismiss, and after each edit settles —
-   * so the directional ideas stay relevant to where the user is now.
+   * Rebuild the visible ideas to a fixed count of THREE (used after the first
+   * interaction): keep up to three remaining (non-dismissed) suggestions, then
+   * top up with DIRECTIONAL ideas recomputed against the CURRENT state. Called on
+   * every dismiss and after each edit settles, so the ideas stay relevant to where
+   * the user is now. The directional recompute is cheap (~2–4 ms) and is debounced
+   * with propagation (fires post-settle), so it never lags editing and never
+   * triggers the MILP solver.
    */
   const rebuildIdeas = () => {
     const remainingAmount = amountIdeas.filter((i) => !dismissedNames.has(i.name));
-    const slots = amountIdeas.length - remainingAmount.length; // # of dismissed amount ideas
+    const shownAmount = remainingAmount.slice(0, TARGET_IDEA_COUNT);
+    const needed = Math.max(0, TARGET_IDEA_COUNT - shownAmount.length);
     const exclude = new Set([
-      ...remainingAmount.map((i) => i.name),
+      ...shownAmount.map((i) => i.name),
       ...dismissedNames
     ]);
-    // The directional recompute is cheap (~2–4 ms for a handful of candidates) and
-    // is already debounced with propagation (fires post-settle), so it never lags
-    // editing and never triggers the MILP solver.
-    const directional = buildDirectionalIdeas(slots, exclude);
-    visibleIdeas = [...remainingAmount, ...directional];
+    const directional = buildDirectionalIdeas(needed, exclude);
+    visibleIdeas = [...shownAmount, ...directional].slice(0, TARGET_IDEA_COUNT);
     ideasStore.set(visibleIdeas);
   };
 
-  /** Initialize the idea list for the current plan (mount / plan switch). */
+  /**
+   * Initialize the idea list for the current plan (mount / plan switch). FIRST
+   * TIME: show only the plan's suggested changes, however many there are. The
+   * switch to the fixed three-idea view happens on the first edit/dismiss.
+   */
   const initIdeas = () => {
     amountIdeas = buildInitialIdeas();
     dismissedNames = new Set();
-    rebuildIdeas();
+    visibleIdeas = [...amountIdeas];
+    ideasStore.set(visibleIdeas);
   };
 
   /** Dismiss an idea (amount or directional); recompute the directional ideas. */
