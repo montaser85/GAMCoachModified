@@ -81,9 +81,11 @@
     <!-- Rows -->
     <div class="ce-rows">
       {#each events as ev (ev.sourceName)}
-        <!-- Names + thumbs only; the numbers live in the hover tooltip below the
-             row (shown on row hover) so they never crowd the compact display. -->
+        <!-- Names + thumbs only; the numbers live in the hover tooltip shown when
+             the per-row info icon is hovered, so they never crowd the display. -->
         <div class="ce-row">
+          <!-- Per-row info icon (gray) — hover it to reveal the causal sentence. -->
+          <span class="ce-info ce-row-info">i</span>
           <div class="ce-row-tip">{rowTooltip(ev)}</div>
 
           <!-- Source: full feature name -->
@@ -220,11 +222,42 @@
     padding: 16px 2px;
     border-top: 1px solid $gray-200;
     position: relative; // anchor for the per-row hover tooltip
-    cursor: help; // hover the row to reveal the detailed sentence (with numbers)
 
     &:first-child {
       border-top: none;
     }
+  }
+
+  // Per-row info icon — GRAY circle + gray italic "i" (same shape as the
+  // left-panel feature-card info icons, but neutral gray instead of blue).
+  .ce-info {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: transparent;
+    border: 2.5px solid $gray-500;
+    color: $gray-500;
+    font-size: 12px;
+    font-weight: 700;
+    font-style: italic;
+    font-family: Georgia, serif;
+    -webkit-text-stroke: 0.4px currentColor;
+    line-height: 1;
+    cursor: pointer;
+    flex: 0 0 auto;
+    transition: border-color 0.15s, color 0.15s;
+
+    &:hover {
+      border-color: $gray-700;
+      color: $gray-700;
+    }
+  }
+
+  .ce-row-info {
+    align-self: center;
   }
 
   // Per-row causal-link tooltip — sits BELOW the row so it never covers the source
@@ -254,7 +287,7 @@
     transition: opacity 120ms ease;
   }
 
-  .ce-row:hover .ce-row-tip {
+  .ce-row-info:hover ~ .ce-row-tip {
     opacity: 1;
     visibility: visible;
   }

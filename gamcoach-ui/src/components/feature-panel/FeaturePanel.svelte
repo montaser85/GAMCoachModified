@@ -2283,7 +2283,7 @@
    * moves to the top (newest first). An empty `effects` array records a
    * "no effect" row (the user changed this feature but it propagated to nothing).
    */
-  const recordChangeEffects = (sourceName, sourceValueRaw, effects) => {
+  const recordChangeEffects = (sourceName, sourceValueRaw, effects, tooltipOverride = null) => {
     const sourceDisplay = DISPLAY_NAMES[sourceName] || sourceName;
 
     // Source-change direction + amounts for the hover sentence.
@@ -2305,9 +2305,12 @@
       : `${sourceVerb} the ${sourceDisplay.toLowerCase()}`;
 
     // One combined sentence: the source change, every dependent it moved (inline,
-    // comma-separated), then the NET effect on the approval score.
+    // comma-separated), then the NET effect on the approval score. A caller may
+    // supply a custom sentence (e.g. the applied-loan baseline fold).
     let tooltip;
-    if (!effects || effects.length === 0) {
+    if (tooltipOverride) {
+      tooltip = tooltipOverride;
+    } else if (!effects || effects.length === 0) {
       tooltip = `Changing the ${sourceDisplay.toLowerCase()} didn't change any other feature.`;
     } else {
       const depsPart = effects
@@ -2352,7 +2355,18 @@
     const foldedDti = applicantBaselineState.dti;
     const rawDti = foldedDti - contribution;
     const effect = buildEffectEntry('loan_amnt', 'dti', rawDti, foldedDti);
-    recordChangeEffects('loan_amnt', applicantBaselineState.loan_amnt, [effect]);
+    // Custom sentence for the applied-loan baseline fold: the loan itself didn't
+    // change, it ADDED new debt, so phrase it that way rather than "Changing …".
+    const foldTooltip =
+      `The loan amount added new debt and raised the debt to income ratio ` +
+      `from ${effect.beforeDisplay} to ${effect.afterDisplay}, which ` +
+      `${effect.helps ? 'raised' : 'lowered'} your approval score.`;
+    recordChangeEffects(
+      'loan_amnt',
+      applicantBaselineState.loan_amnt,
+      [effect],
+      foldTooltip
+    );
   };
 
   /**
