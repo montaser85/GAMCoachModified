@@ -46,6 +46,10 @@
   // export let curModelData = modelDataLC;
   export let windowLoaded = false;
   export let curExample = null;
+  /** When true, the setup panel starts BLANK (an input form): empty continuous
+   *  fields, categoricals defaulted to their first value, and no difficulty —
+   *  instead of a dataset profile. Cleared once the user loads one via refresh. */
+  export let blankStart = false;
 
   /** @type {Logger} */
   export let logger = null;
@@ -298,6 +302,34 @@
   $: curExample && !setupEntered && enterSetup();
 
   /**
+   * Build a BLANK model example for the input-form start: every continuous feature
+   * empty (''), every categorical defaulted to its FIRST value (the lowest level's
+   * label). Indexed parallel to modelData.features, exactly as Plan/initFeatures
+   * expects; interaction slots are left as-is (the cards never read them).
+   */
+  const buildBlankExample = (modelData) => {
+    // Start from a real example so the array's length / index layout matches exactly
+    // what the EBM + Plan expect (interaction slots included), then only overwrite the
+    // editable features' VALUES: continuous → '' (empty), categorical → first value.
+    const ex = curExample ? curExample.slice() : [];
+    modelData.features.forEach((f, i) => {
+      if (i >= ex.length) return;
+      if (f.type === 'categorical') {
+        const enc = modelData.labelEncoder[f.name] || {};
+        const levels = Object.keys(enc)
+          .map(Number)
+          .filter((n) => !Number.isNaN(n))
+          .sort((a, b) => a - b);
+        if (levels.length) ex[i] = enc[String(levels[0])]; // first value's label
+      } else if (f.type === 'continuous') {
+        ex[i] = '';
+      }
+      // interaction / other slots keep the source example's value (never read).
+    });
+    return ex;
+  };
+
+  /**
    * Enter first-time setup: load the model and build a lightweight, NON-generated
    * "setup plan" from the raw sample so all 20 cards render editable (no coach
    * suggestion, no score, no propagation) before the user commits.
@@ -315,19 +347,33 @@
       ebmStore.set(ebm);
     }
 
+    // BLANK-START input form: build an empty example — continuous fields empty (''),
+    // categoricals defaulted to their FIRST value — so the user enters their own
+    // application rather than editing a dataset profile. Otherwise use the loaded
+    // profile as before.
+    const baseExample = blankStart ? buildBlankExample(curModelData) : curExample;
+
     // Default constraints so the setup FeaturePanel has a constraints store.
-    constraints = new Constraints(curModelData, curExample);
+    constraints = new Constraints(curModelData, baseExample);
     constraintsStore.set(constraints);
 
     // A setup plan with cfData === the sample → no suggestions; ebmLocal is the
     // raw baseline; cards are editable and show the user's own starting values.
     const setupPlan = new Plan(
       curModelData,
-      curExample,
+      baseExample,
       { originalScore: 0 },
-      curExample.slice(),
+      baseExample.slice(),
       0
     );
+    // Blank input form: strip any model-config difficulty so no feature shows an
+    // assigned difficulty level on load (the user sets these later if they wish).
+    if (blankStart) {
+      setupPlan.features.forEach((f) => {
+        f.difficulty = 'neutral';
+        f.isConstrained = false;
+      });
+    }
     setupPlanStore = writable(setupPlan);
     // Keep a live copy so the Done button's enabled state reacts to edits.
     unsubscribes.push(setupPlanStore.subscribe((v) => (setupPlanCur = v)));

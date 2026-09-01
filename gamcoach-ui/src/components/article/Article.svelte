@@ -162,6 +162,15 @@
   // curIndex = random(0, curSamples.length - 1);
   let curExample = curSamples[curIndex];
 
+  // On first load the left panel is a BLANK input form (empty continuous fields,
+  // categoricals defaulted to their first value, no difficulty) rather than a
+  // dataset profile — Coach builds those blanks when blankStart is true, and the
+  // applicant number shows "#XYZ". Clicking refresh loads a real dataset profile
+  // (blankStart → false, real number). `coachRemountKey` forces the {#key} to
+  // remount Coach on every load/refresh/model-change (curExample alone can repeat).
+  let blankStart = true;
+  let coachRemountKey = 0;
+
   const pointArrowSVGProcessed = pointArrowSVG.replaceAll(
     'white',
     'currentcolor'
@@ -193,12 +202,15 @@
   );
 
   const refreshClicked = () => {
-    // Resample the cur example
+    // Resample the cur example — this loads a REAL dataset profile (leaves the blank
+    // input-form state and shows the real applicant number).
     curIndex = random(0, curSamples.length - 1);
     const newExample = curSamples[curIndex];
 
     updated = false;
+    blankStart = false;
     curExample = newExample;
+    coachRemountKey += 1; // force Coach to remount even if the same index recurs
 
     // console.log(logger?.toJSON());
   };
@@ -219,6 +231,7 @@
     modelName = option.name;
     initModelInfo();
     curExample = curSamples[curIndex];
+    coachRemountKey += 1; // remount Coach for the new model
   };
 
   onMount(() => {
@@ -259,7 +272,7 @@
             {@html iconRefreshSVG}
           </div>
           <div class="number">
-            #{indexFormatter(curIndex)}{updated ? '*' : ''}
+            {#if blankStart}#XYZ{:else}#{indexFormatter(curIndex)}{updated ? '*' : ''}{/if}
           </div>
         </div>
         <div class="description">
@@ -314,9 +327,9 @@
       </div>
     </div>
 
-    {#key curExample}
+    {#key coachRemountKey}
       <div class="coach-wrapper">
-        <Coach {windowLoaded} {curExample} {logger} {modelName} />
+        <Coach {windowLoaded} {curExample} {logger} {modelName} {blankStart} />
       </div>
     {/key}
 

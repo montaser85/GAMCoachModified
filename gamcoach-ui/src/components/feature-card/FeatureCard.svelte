@@ -262,8 +262,13 @@
 
   /** The string shown in the value input (formatted like the value text). Takes
    * the value as an argument so the template expression depends on
-   * state.feature.curValue and Svelte re-evaluates it on every change. */
-  const valueInputStr = (val) => formatter(dispNum(val));
+   * state.feature.curValue and Svelte re-evaluates it on every change. An unset
+   * value (blank input-form field) renders EMPTY rather than "NaN". */
+  const valueInputStr = (val) =>
+    val === '' || val === null || val === undefined ||
+    (typeof val === 'number' && isNaN(val))
+      ? ''
+      : formatter(dispNum(val));
 
   /**
    * Apply a typed value: strip formatting, clamp to the ORIGINAL feature range,
