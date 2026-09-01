@@ -29,6 +29,15 @@
   $: drivers = plan ? computeScoreDrivers(plan) : { features: [] };
   $: rows = [...drivers.features].sort((a, b) => b.actualPP - a.actualPP);
 
+  // Net total = the SUM OF THE DISPLAYED BARS (approach (a)). The per-feature
+  // actualPP values are already scaled so their unrounded sum equals the true net
+  // score change (current − original); summing the displayed (1-decimal) values here
+  // makes the title, the bars, and the bottom total use ONE identical figure that
+  // always agrees — the only difference from the raw net is sub-0.1 rounding.
+  $: panelTotal = rows.length
+    ? Math.round(rows.reduce((s, r) => s + r.actualPP, 0) * 10) / 10
+    : 0;
+
   // Bar length: |value| as a fraction of the half-axis (a value of 9 fills 50%).
   const barPct = (v) => (Math.min(Math.abs(v), DOMAIN) / DOMAIN) * 50;
   // Tick x-position: 0 → 50%, +9 → 100%, −9 → 0%.
@@ -65,8 +74,10 @@
 <div class="score-drivers" style="--sd-name-col: {nameColPx}px">
   <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
   <div class="sd-header" on:click={() => (collapsed = !collapsed)}>
-    How much each change helped or hurt
-    <HeaderInfo text="How much each change moved your score up or down from your original score." />
+    <span class="sd-title-text">Your score changed by <span
+        class="sd-title-net" class:pos={panelTotal >= 0} class:neg={panelTotal < 0}
+      >{signed(panelTotal)} points</span> from the original</span>
+    <HeaderInfo text="How much each change moved your score up or down from your original score. The bars break down the net change above." />
     <svg class="sd-chev" class:collapsed viewBox="0 0 24 24" width="24" height="24"
          fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
       <path d="M6 9l6 6l6 -6"/>
@@ -74,6 +85,9 @@
   </div>
 
   {#if !collapsed}
+  {#if rows.length > 0}
+    <div class="sd-subtitle">Here's what each change contributed:</div>
+  {/if}
   <div class="sd-axis-labels">
     <span class="sd-hurts">&larr; hurts</span>
     <span class="sd-helps">helps &rarr;</span>
@@ -114,6 +128,13 @@
       </div>
       <div class="sd-axis-spacer sd-axis-spacer-value"></div>
     </div>
+
+    <!-- Summed total — the bars above add up to this (same figure as the title). -->
+    <div class="sd-total">
+      <span class="sd-total-label">Total</span>
+      <span class="sd-total-value" class:pos={panelTotal >= 0} class:neg={panelTotal < 0}
+        >{signed(panelTotal)} points</span>
+    </div>
   {:else}
     <div class="sd-empty">No differences from the original application yet.</div>
   {/if}
@@ -151,6 +172,48 @@
       flex: 0 0 auto;
       transition: transform 150ms ease;
       &.collapsed { transform: rotate(-90deg); }
+    }
+  }
+
+  // Dynamic net-change title. The signed net is tinted blue (up) / red (down) to
+  // match the bars; a value of 0 stays blue (the "+0" neutral state).
+  .sd-title-text {
+    min-width: 0; // allow the long title to wrap instead of shoving the chevron out
+    line-height: 1.25;
+  }
+  .sd-title-net {
+    font-variant-numeric: tabular-nums;
+    &.pos { color: $blue; }
+    &.neg { color: $red; }
+  }
+
+  .sd-subtitle {
+    font-size: 1.0rem;
+    color: $gray-600;
+    margin-bottom: 8px;
+  }
+
+  // Summed total row — the per-change bars add up to this (the same figure as the
+  // title). A top border sets it apart as the sum.
+  .sd-total {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    margin-top: 6px;
+    padding-top: 8px;
+    border-top: 2px solid $gray-300;
+
+    .sd-total-label {
+      font-size: 1.05rem;
+      font-weight: 700;
+      color: $gray-800;
+    }
+    .sd-total-value {
+      font-size: 1.08rem;
+      font-weight: 800;
+      font-variant-numeric: tabular-nums;
+      &.pos { color: $blue; }
+      &.neg { color: $red; }
     }
   }
 
