@@ -138,8 +138,15 @@ export const ideaDismissStore = writable(null);
 // Apply-request channel for "Ideas to try". Clicking an initial (amount) idea
 // writes { name, value } here; FeaturePanel applies that value to the feature
 // (updating the card + running the same propagation/score path as a manual
-// edit), then resets this back to null.
+// edit), then resets this back to null. The SAME channel drives Compare Plans'
+// clickable amount chips, so applying from either surface takes the identical path.
 export const ideaApplyStore = writable(null);
+
+// Feature names the active plan has DISMISSED or APPLIED in "Ideas to try"
+// (FeaturePanel's dismissedNames). Published so the Compare Plans modal can drop
+// the same ideas and stay in sync with the panel — apply/dismiss an idea in one
+// place and it disappears from both. A Set<string>; empty on plan (re)init.
+export const dismissedIdeaNamesStore = writable(new Set());
 
 // Transient inline hint for the Derogatory-Records floor guard: when the user
 // tries to set Number of Derogatory Records below their current Number of

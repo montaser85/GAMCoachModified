@@ -1,7 +1,7 @@
 <script>
   import { onDestroy } from 'svelte';
-  import { compareOpenStore, constraintsStore } from '../../store';
-  import { planSuggestedIdeas } from '../ideas/planIdeas';
+  import { compareOpenStore, constraintsStore, ideaApplyStore, dismissedIdeaNamesStore } from '../../store';
+  import { planSuggestedIdeas, computeIdeasForPlan } from '../ideas/planIdeas';
   import { appliedLoanDtiContribution } from '../../engine/index.mjs';
 
   /** @type {import('../coach/Coach').Plans} */
@@ -36,6 +36,50 @@
   let constraints = null;
   const _constraintsUnsub = constraintsStore.subscribe((v) => (constraints = v));
   onDestroy(() => _constraintsUnsub());
+
+  // Whether the modal is open — the directional-filler ideas run a small
+  // speculative propagation per plan, so they're only computed while open.
+  let modalOpen = false;
+
+  // Ideas the active plan has applied/dismissed in the "Ideas to try" panel. Kept
+  // in sync so the SAME suggestions disappear here — apply one in either place and
+  // it's gone from both. Rebuild the summary whenever this set changes.
+  let dismissedIdeaNames = new Set();
+  const _dismissedUnsub = dismissedIdeaNamesStore.subscribe((v) => {
+    dismissedIdeaNames = v || new Set();
+    if (localPlans && localPlans.size) buildSummary();
+  });
+  onDestroy(() => _dismissedUnsub());
+
+  /**
+   * The idea set shown for one plan in Compare Plans — built to MATCH the "Ideas
+   * to try" panel: the plan's suggested changes WITH amounts first (blue, clickable),
+   * then DIRECTIONAL fillers (amber) up to three, with any applied/dismissed feature
+   * removed. Directional fillers (a speculative what-if per feature) are computed
+   * only while the modal is open.
+   */
+  function buildPlanIdeas(plan) {
+    const amounts = planSuggestedIdeas(plan, constraints)
+      .filter((i) => !dismissedIdeaNames.has(i.name))
+      .slice(0, 3);
+    const needed = Math.max(0, 3 - amounts.length);
+    if (needed === 0 || !modalOpen) return amounts;
+    const exclude = new Set([...amounts.map((i) => i.name), ...dismissedIdeaNames]);
+    const directional = computeIdeasForPlan(plan, constraints)
+      .filter((i) => !exclude.has(i.name))
+      .slice(0, needed)
+      .map((i) => ({ ...i, mode: 'direction' }));
+    return [...amounts, ...directional];
+  }
+
+  /** Apply a clickable (amount) idea: same channel as the panel's chips, then
+   *  return to the main view. FeaturePanel enacts it on the active plan and marks
+   *  the feature dismissed, so it drops out of both surfaces. */
+  function applyIdeaFromCompare(idea) {
+    if (!idea || idea.mode !== 'amount' || idea.applyValue === undefined) return;
+    ideaApplyStore.set({ name: idea.name, value: idea.applyValue });
+    compareOpenStore.set(false);
+  }
 
   const APPROVAL_POINTS = 50; // approval threshold in points
 
@@ -240,7 +284,7 @@
           approvalPoints: pts,
           approved,
           isHighest: false,
-          ideas: planSuggestedIdeas(p, constraints)
+          ideas: buildPlanIdeas(p)
         };
       })
       .filter(Boolean);
@@ -254,6 +298,7 @@
 
   // ── Direct store subscription for modal-open trigger ─────────────────────
   const _compareUnsub = compareOpenStore.subscribe(isOpen => {
+    modalOpen = isOpen;
     if (isOpen) {
       viewMode = 'summarized'; // Summarized is the default each time it opens.
       rebuildComparison();
@@ -436,13 +481,31 @@
             </div>
           {/each}
 
-          <!-- IDEAS TO TRY — each plan's own set of suggested changes (with amounts) -->
+          <!-- IDEAS TO TRY — each plan's suggested changes (with amounts) + directional
+               fillers, matching the "Ideas to try" panel: light-blue clickable chips
+               for the exact-amount suggestions (click to apply + return to the main
+               view), amber chips for the directional ideas. -->
           <div class="sg-rowlabel">IDEAS TO TRY</div>
           {#each summaryPlans as p (p.planIndex)}
             <div class="sg-cell sg-ideas-cell">
               <div class="sg-chips">
                 {#each p.ideas as idea (idea.name)}
-                  <span class="sg-chip"
+                  <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
+                  <span
+                    class="sg-chip"
+                    class:sg-chip-apply={idea.mode === 'amount'}
+                    role={idea.mode === 'amount' ? 'button' : undefined}
+                    tabindex={idea.mode === 'amount' ? 0 : undefined}
+                    title={idea.mode === 'amount'
+                      ? `Click to apply: ${idea.verb} ${idea.displayName} to ${idea.targetDisplay}`
+                      : ''}
+                    on:click={() => applyIdeaFromCompare(idea)}
+                    on:keydown={(e) => {
+                      if (idea.mode === 'amount' && (e.key === 'Enter' || e.key === ' ')) {
+                        e.preventDefault();
+                        applyIdeaFromCompare(idea);
+                      }
+                    }}
                     >{idea.verb} {idea.displayName}{idea.mode === 'amount' &&
                     idea.targetDisplay
                       ? ` to ${idea.targetDisplay}`
@@ -970,6 +1033,7 @@
       align-items: flex-start;
       gap: 6px;
     }
+    // Directional ideas — amber lever chips (matches the panel's .it-chip).
     .sg-chip {
       display: inline-flex;
       align-items: center;
@@ -982,6 +1046,24 @@
       font-weight: 600;
       line-height: 1.2;
       overflow-wrap: anywhere;
+    }
+
+    // Exact-amount suggestions — very light blue, clickable to apply (matches the
+    // panel's .it-chip-apply).
+    .sg-chip-apply {
+      background: #eaf4fd;
+      border-color: #bcdcf5;
+      cursor: pointer;
+      transition: background 120ms ease, border-color 120ms ease;
+
+      &:hover {
+        background: #d8ebfb;
+        border-color: #93c6ef;
+      }
+      &:focus-visible {
+        outline: 2px solid #93c6ef;
+        outline-offset: 1px;
+      }
     }
   }
 </style>

@@ -14,7 +14,7 @@
 
   import { onMount, onDestroy, tick } from 'svelte';
   import { fade } from 'svelte/transition';
-  import { tooltipConfigStore, featureValueOverrideStore, cardToggleStore, propagatedFeaturesStore, historySidebarOpenStore, changeEffectsStore, ideasStore, ideaDismissStore, ideaApplyStore, derogFloorHintStore } from '../../store';
+  import { tooltipConfigStore, featureValueOverrideStore, cardToggleStore, propagatedFeaturesStore, historySidebarOpenStore, changeEffectsStore, ideasStore, ideaDismissStore, ideaApplyStore, dismissedIdeaNamesStore, derogFloorHintStore } from '../../store';
   import { sigmoid } from '../../ebm/ebm';
   import {
     STRUCTURAL_EXCLUSIONS,
@@ -2704,6 +2704,8 @@
     const directional = buildDirectionalIdeas(needed, exclude);
     visibleIdeas = [...shownAmount, ...directional].slice(0, TARGET_IDEA_COUNT);
     ideasStore.set(visibleIdeas);
+    // Share the dismissed/applied set so Compare Plans drops the same ideas.
+    dismissedIdeaNamesStore.set(new Set(dismissedNames));
   };
 
   /**
@@ -2716,6 +2718,7 @@
     dismissedNames = new Set();
     visibleIdeas = [...amountIdeas];
     ideasStore.set(visibleIdeas);
+    dismissedIdeaNamesStore.set(new Set()); // reset the shared set on plan (re)init
   };
 
   /** Dismiss an idea (amount or directional); recompute the directional ideas. */

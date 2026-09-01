@@ -294,7 +294,12 @@ export function planSuggestedIdeas(plan, constraints) {
       verb: ideaVerb(feature.isCont, direction),
       direction,
       mode: 'amount',
-      targetDisplay: formatEffectValue(name, suggested[name])
+      targetDisplay: formatEffectValue(name, suggested[name]),
+      // Value to APPLY on click (mirrors FeaturePanel.buildInitialIdeas): internal
+      // for continuous (what the card + model use), the level LABEL for categorical.
+      applyValue: feature.isCont
+        ? displayToInternal(feature, suggested[name])
+        : suggested[name]
     });
   });
   return out;
