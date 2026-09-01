@@ -14,7 +14,9 @@
   // keeps it usable on short windows.
   min-width: 0;
   width: 100%;
-  height: max(300px, calc(100vh - 425px));
+  // Raised (was `- 425px`) in step with the taller `.top` and right panel, so the
+  // two columns stay balanced and more feature cards are visible before scrolling.
+  height: max(300px, calc(100vh - 345px));
 
   border-bottom-left-radius: $border-radius;
   border-bottom-right-radius: $border-radius;

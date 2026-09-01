@@ -808,8 +808,10 @@
     padding-top: 2px;
     // Matches the left column's (viewport-scaled) height and scrolls its own
     // content, so the lower bands (ideas / effects) stay reachable when they grow
-    // instead of being clipped by the wrapper's overflow:hidden.
-    max-height: max(400px, calc(100vh - 325px));
+    // instead of being clipped by the wrapper's overflow:hidden. Raised (was
+    // `- 325px`) so the panel extends into the space it used to leave empty at the
+    // bottom of the screen, in step with the taller `.top` region.
+    max-height: max(400px, calc(100vh - 245px));
     overflow-y: auto;
     overflow-x: hidden;
     padding-right: 6px;

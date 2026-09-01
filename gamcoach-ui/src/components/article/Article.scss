@@ -18,7 +18,11 @@
   grid-template-columns: [start] 1fr [mid-start] auto [mid-end] 1fr [end];
   grid-template-rows: [start] 16px [content-start] auto [content-end] 1fr [end];
 
-  height: calc(100vh - 132px);
+  // The coach panel fills nearly the whole first screen (the panel's own bands
+  // scroll internally); a small bottom sliver keeps the "What is GAM Coach"
+  // section peeking below. Raised from `- 132px` so the right panel uses the
+  // vertical space it previously left empty.
+  height: calc(100vh - 56px);
   max-height: none;
   width: 100vw;
   box-sizing: border-box;

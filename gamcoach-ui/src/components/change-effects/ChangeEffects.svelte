@@ -294,14 +294,15 @@
     align-self: center;
   }
 
-  // Per-row causal-link tooltip — sits BELOW the row so it never covers the source
-  // / effect values it explains. Shown only while the row's info icon is hovered.
-  // Per-row tooltip — same look as the left-panel feature-card info popup
-  // (FeatureCard.scss .link-popup): white card, blue border, dark text. Still sits
-  // BELOW the row so it never covers the source / effect values it explains.
+  // Per-row causal-link tooltip — same look as the left-panel feature-card info
+  // popup (FeatureCard.scss .link-popup): white card, blue border, dark text. Shown
+  // only while the row's info icon is hovered. Opens UPWARD (above the row): this is
+  // the last band in the right panel, whose own overflow:auto would clip a downward
+  // tooltip on the bottom-most row (e.g. Loan Amount) — so it read as cut off and
+  // needed extra scrolling. Opening above keeps it inside the visible scroll area.
   .ce-row-tip {
     position: absolute;
-    top: calc(100% - 6px);
+    bottom: calc(100% - 6px);
     left: 0;
     z-index: 60;
     max-width: 300px;
