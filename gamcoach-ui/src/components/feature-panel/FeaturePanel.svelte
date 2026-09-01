@@ -2319,7 +2319,7 @@
    * moves to the top (newest first). An empty `effects` array records a
    * "no effect" row (the user changed this feature but it propagated to nothing).
    */
-  const recordChangeEffects = (sourceName, sourceValueRaw, effects, tooltipPrefixOverride = null) => {
+  const recordChangeEffects = (sourceName, sourceValueRaw, effects, tooltipPrefixOverride = null, showApprovalChange = true) => {
     const sourceDisplay = DISPLAY_NAMES[sourceName] || sourceName;
 
     // Source-change direction + amounts for the hover sentence.
@@ -2342,8 +2342,9 @@
 
     // One combined sentence: a prefix (the source change + every dependent it
     // moved, inline) — a caller may override just this prefix (e.g. the applied-
-    // loan baseline fold) — then the NET effect on the approval score, WITH the
-    // amount it moved in approval points.
+    // loan baseline fold) — then the approval score BEFORE and AFTER these ripples.
+    // A caller may suppress the approval clause entirely (showApprovalChange=false,
+    // e.g. the load-time Loan Amount → DTI fold).
     let tooltip;
     if (!effects || effects.length === 0) {
       tooltip = `Changing the ${sourceDisplay.toLowerCase()} didn't change any other feature.`;
@@ -2355,18 +2356,21 @@
         )
         .join(', ');
       const prefix = tooltipPrefixOverride || `${sourcePart}, ${depsPart}`;
-      const netDelta = effects.reduce((s, e) => s + (e.contributionDelta || 0), 0);
-      const netVerb = netDelta >= 0 ? 'raised' : 'lowered';
-      // Approval-score change (in points) these ripples caused: the difference in
-      // sigmoid(log-odds) with and without the summed dependent contribution.
-      const afterLogOdds = plan?.ebmLocal?.predScore ?? 0;
-      const beforeLogOdds = afterLogOdds - netDelta;
-      const pts = Math.abs(
-        Math.round((sigmoid(afterLogOdds) - sigmoid(beforeLogOdds)) * 100)
-      );
-      tooltip =
-        `${prefix}, which ${netVerb} your approval score by ` +
-        `${pts} point${pts === 1 ? '' : 's'}.`;
+      if (showApprovalChange) {
+        // Prior and new approval scores (percent), each the sigmoid of the log-odds
+        // with / without the summed dependent contribution — same math the score
+        // readout shows. We display both endpoints, not their difference.
+        const netDelta = effects.reduce((s, e) => s + (e.contributionDelta || 0), 0);
+        const afterLogOdds = plan?.ebmLocal?.predScore ?? 0;
+        const beforeLogOdds = afterLogOdds - netDelta;
+        const priorPct = Math.round(sigmoid(beforeLogOdds) * 100);
+        const newPct = Math.round(sigmoid(afterLogOdds) * 100);
+        tooltip =
+          `${prefix}, which changed your approval score from ` +
+          `${priorPct}% to ${newPct}%.`;
+      } else {
+        tooltip = `${prefix}.`;
+      }
     }
 
     const event = {
@@ -2402,8 +2406,8 @@
     const effect = buildEffectEntry('loan_amnt', 'dti', rawDti, foldedDti);
     // Custom sentence PREFIX for the applied-loan baseline fold: the loan itself
     // didn't change, it ADDED new debt, so phrase it that way rather than
-    // "Changing …". recordChangeEffects appends the ", which … approval score by
-    // N points." clause.
+    // "Changing …". The approval-score clause is suppressed for this fold row
+    // (showApprovalChange = false) — it describes the baseline, not a user edit.
     const foldPrefix =
       `The loan amount added new debt and raised the debt to income ratio ` +
       `from ${effect.beforeDisplay} to ${effect.afterDisplay}`;
@@ -2411,7 +2415,8 @@
       'loan_amnt',
       applicantBaselineState.loan_amnt,
       [effect],
-      foldPrefix
+      foldPrefix,
+      false
     );
   };
 
