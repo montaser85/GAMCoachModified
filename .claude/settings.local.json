@@ -138,7 +138,10 @@
       "Bash(git commit -m '@ *)",
       "Bash(git commit *)",
       "Bash(:)",
-      "Bash(grep -n \"featureGrid = new FeatureGrid\\\\|featureGrid = \\\\|new FeatureGrid\\(\\)\\\\|\\\\$:.*init\\\\|\\\\$:.*featureGrid\\\\|\\\\$:.*constraints\\\\|windowLoaded && planStore\" FeaturePanel.svelte)"
+      "Bash(grep -n \"featureGrid = new FeatureGrid\\\\|featureGrid = \\\\|new FeatureGrid\\(\\)\\\\|\\\\$:.*init\\\\|\\\\$:.*featureGrid\\\\|\\\\$:.*constraints\\\\|windowLoaded && planStore\" FeaturePanel.svelte)",
+      "Bash(awk 'NR>=2625 && NR<=2760 && /await|^  };/' FeaturePanel.svelte)",
+      "Bash(awk 'NR>=2625 && NR<=2780' FeaturePanel.svelte)",
+      "Bash(grep -n 'featureValueOverrideStore\\\\|$featureValueOverrideStore\\\\|overrideVal\\\\|override' FeatureCard.svelte)"
     ]
   }
 }
