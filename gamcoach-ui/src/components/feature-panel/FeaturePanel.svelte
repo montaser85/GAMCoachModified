@@ -2263,33 +2263,17 @@
         ? 'lowered'
         : 'changed'
       : 'changed';
-    const approvalVerb = helps ? 'raised' : 'lowered';
-
-    // Source-change direction (Increasing / Lowering / Changing) from the
-    // applicant's baseline to the current value, for the hover sentence.
-    const srcBefore = applicantBaselineState?.[sourceName];
-    const srcAfter = buildCurrentEngineState()[sourceName];
-    const srcNumeric = typeof srcBefore === 'number' && typeof srcAfter === 'number';
-    const sourceVerb = srcNumeric
-      ? srcAfter > srcBefore
-        ? 'Increasing'
-        : srcAfter < srcBefore
-        ? 'Lowering'
-        : 'Changing'
-      : 'Changing';
-
-    const tooltip =
-      `${sourceVerb} the ${sourceDisplay} ${valueVerb} your ${depDisplay.toLowerCase()} ` +
-      `from ${beforeDisplay} to ${afterDisplay}, which ${approvalVerb} your approval score.`;
 
     return {
       depName,
       depDisplayName: depDisplay,
       beforeDisplay,
       afterDisplay,
+      // How this dependent moved ("raised" / "lowered" / "changed"), for the
+      // combined per-row hover sentence built in recordChangeEffects.
+      depVerb: valueVerb,
       helps,
-      contributionDelta: delta,
-      tooltip
+      contributionDelta: delta
     };
   };
 
@@ -2300,11 +2284,49 @@
    * "no effect" row (the user changed this feature but it propagated to nothing).
    */
   const recordChangeEffects = (sourceName, sourceValueRaw, effects) => {
+    const sourceDisplay = DISPLAY_NAMES[sourceName] || sourceName;
+
+    // Source-change direction + amounts for the hover sentence.
+    const srcBefore = applicantBaselineState?.[sourceName];
+    const srcBeforeDisplay = formatEffectValue(sourceName, srcBefore);
+    const srcAfterDisplay = formatEffectValue(sourceName, sourceValueRaw);
+    const srcNumeric =
+      typeof srcBefore === 'number' && typeof sourceValueRaw === 'number';
+    const sourceVerb = srcNumeric
+      ? sourceValueRaw > srcBefore
+        ? 'Increasing'
+        : sourceValueRaw < srcBefore
+        ? 'Lowering'
+        : 'Changing'
+      : 'Changing';
+    const srcChanged = srcBeforeDisplay !== srcAfterDisplay;
+    const sourcePart = srcChanged
+      ? `${sourceVerb} the ${sourceDisplay.toLowerCase()} from ${srcBeforeDisplay} to ${srcAfterDisplay}`
+      : `${sourceVerb} the ${sourceDisplay.toLowerCase()}`;
+
+    // One combined sentence: the source change, every dependent it moved (inline,
+    // comma-separated), then the NET effect on the approval score.
+    let tooltip;
+    if (!effects || effects.length === 0) {
+      tooltip = `Changing the ${sourceDisplay.toLowerCase()} didn't change any other feature.`;
+    } else {
+      const depsPart = effects
+        .map(
+          (e) =>
+            `${e.depVerb} the ${e.depDisplayName.toLowerCase()} from ${e.beforeDisplay} to ${e.afterDisplay}`
+        )
+        .join(', ');
+      const netDelta = effects.reduce((s, e) => s + (e.contributionDelta || 0), 0);
+      const netVerb = netDelta >= 0 ? 'raised' : 'lowered';
+      tooltip = `${sourcePart}, ${depsPart}, which ${netVerb} your approval score.`;
+    }
+
     const event = {
       sourceName,
-      sourceDisplayName: DISPLAY_NAMES[sourceName] || sourceName,
+      sourceDisplayName: sourceDisplay,
       sourceValueDisplay: formatSourceValue(sourceName, sourceValueRaw),
-      effects
+      effects,
+      tooltip
     };
     changeEffectsStore.update((list) => [
       event,
