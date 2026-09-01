@@ -216,11 +216,12 @@
         color: $gray-700;
       }
 
-      // Below approval (< 50 / not approved): render the whole score gray. At or
+      // Below approval (< 50 / not approved): render the whole score in a dark gray
+      // — darker than a mid gray, a little lighter than the approved black. At or
       // above approval it keeps the default black (.sr-num inherits $gray-900).
       &.sr-below {
-        .sr-num { color: $gray-500; }
-        .sr-unit { color: $gray-500; }
+        .sr-num { color: $gray-700; }
+        .sr-unit { color: $gray-700; }
       }
     }
   }
