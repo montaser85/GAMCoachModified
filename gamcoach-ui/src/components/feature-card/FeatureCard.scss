@@ -459,14 +459,13 @@ $card-h-padding: 16px;
     font-size: 0.94rem;
     padding: 0px 14px 8px 5px;
     margin: -5px 0 0 0;
-    color: $green-600;
+    color: $gray-600;
 
-    // Every delta renders green across all three feature groups (Suggested
-    // Changes / Configured / Other) for both continuous and categorical cards
-    // (FeatureCardCat imports this stylesheet). The `.user` (blue) provenance
-    // tint is intentionally collapsed into green.
+    // The delta always renders GRAY (never a green/blue provenance tint), across
+    // all feature groups and for both continuous and categorical cards
+    // (FeatureCardCat imports this stylesheet).
     &.user {
-      color: $green-600;
+      color: $gray-600;
     }
   }
 }
