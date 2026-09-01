@@ -142,12 +142,6 @@ export const ideaDismissStore = writable(null);
 // clickable amount chips, so applying from either surface takes the identical path.
 export const ideaApplyStore = writable(null);
 
-// Feature names the active plan has DISMISSED or APPLIED in "Ideas to try"
-// (FeaturePanel's dismissedNames). Published so the Compare Plans modal can drop
-// the same ideas and stay in sync with the panel — apply/dismiss an idea in one
-// place and it disappears from both. A Set<string>; empty on plan (re)init.
-export const dismissedIdeaNamesStore = writable(new Set());
-
 // Transient inline hint for the Derogatory-Records floor guard: when the user
 // tries to set Number of Derogatory Records below their current Number of
 // Bankruptcies, the edit is clamped and a brief message is shown on that card.

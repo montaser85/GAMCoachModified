@@ -1,6 +1,6 @@
 <script>
   import { onDestroy } from 'svelte';
-  import { compareOpenStore, constraintsStore, ideaApplyStore, dismissedIdeaNamesStore } from '../../store';
+  import { compareOpenStore, constraintsStore, ideaApplyStore } from '../../store';
   import { planSuggestedIdeas, computeIdeasForPlan } from '../ideas/planIdeas';
   import { appliedLoanDtiContribution } from '../../engine/index.mjs';
 
@@ -41,30 +41,22 @@
   // speculative propagation per plan, so they're only computed while open.
   let modalOpen = false;
 
-  // Ideas the active plan has applied/dismissed in the "Ideas to try" panel. Kept
-  // in sync so the SAME suggestions disappear here — apply one in either place and
-  // it's gone from both. Rebuild the summary whenever this set changes.
-  let dismissedIdeaNames = new Set();
-  const _dismissedUnsub = dismissedIdeaNamesStore.subscribe((v) => {
-    dismissedIdeaNames = v || new Set();
-    if (localPlans && localPlans.size) buildSummary();
-  });
-  onDestroy(() => _dismissedUnsub());
-
   /**
    * The idea set shown for one plan in Compare Plans — built to MATCH the "Ideas
    * to try" panel: the plan's suggested changes WITH amounts first (blue, clickable),
-   * then DIRECTIONAL fillers (amber) up to three, with any applied/dismissed feature
-   * removed. Directional fillers (a speculative what-if per feature) are computed
-   * only while the modal is open.
+   * then DIRECTIONAL fillers (amber) up to three. Each plan is filtered by ITS OWN
+   * applied/dismissed set (persisted on the plan object as `dismissedIdeaNames`), so
+   * acting on one plan never changes another plan's suggestions. Directional fillers
+   * (a speculative what-if per feature) are computed only while the modal is open.
    */
   function buildPlanIdeas(plan) {
+    const dismissed = plan.dismissedIdeaNames instanceof Set ? plan.dismissedIdeaNames : new Set();
     const amounts = planSuggestedIdeas(plan, constraints)
-      .filter((i) => !dismissedIdeaNames.has(i.name))
+      .filter((i) => !dismissed.has(i.name))
       .slice(0, 3);
     const needed = Math.max(0, 3 - amounts.length);
     if (needed === 0 || !modalOpen) return amounts;
-    const exclude = new Set([...amounts.map((i) => i.name), ...dismissedIdeaNames]);
+    const exclude = new Set([...amounts.map((i) => i.name), ...dismissed]);
     const directional = computeIdeasForPlan(plan, constraints)
       .filter((i) => !exclude.has(i.name))
       .slice(0, needed)

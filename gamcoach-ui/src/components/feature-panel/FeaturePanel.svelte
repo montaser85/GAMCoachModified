@@ -14,7 +14,7 @@
 
   import { onMount, onDestroy, tick } from 'svelte';
   import { fade } from 'svelte/transition';
-  import { tooltipConfigStore, featureValueOverrideStore, cardToggleStore, propagatedFeaturesStore, historySidebarOpenStore, changeEffectsStore, ideasStore, ideaDismissStore, ideaApplyStore, dismissedIdeaNamesStore, derogFloorHintStore } from '../../store';
+  import { tooltipConfigStore, featureValueOverrideStore, cardToggleStore, propagatedFeaturesStore, historySidebarOpenStore, changeEffectsStore, ideasStore, ideaDismissStore, ideaApplyStore, derogFloorHintStore } from '../../store';
   import { sigmoid } from '../../ebm/ebm';
   import {
     STRUCTURAL_EXCLUSIONS,
@@ -2704,8 +2704,10 @@
     const directional = buildDirectionalIdeas(needed, exclude);
     visibleIdeas = [...shownAmount, ...directional].slice(0, TARGET_IDEA_COUNT);
     ideasStore.set(visibleIdeas);
-    // Share the dismissed/applied set so Compare Plans drops the same ideas.
-    dismissedIdeaNamesStore.set(new Set(dismissedNames));
+    // Persist THIS plan's dismissed/applied set on the plan object, so switching away
+    // and back restores its Ideas-to-try state (the panel remounts per plan), and so
+    // Compare Plans can filter each column by its OWN plan's set — never another's.
+    if (plan) plan.dismissedIdeaNames = dismissedNames;
   };
 
   /**
@@ -2715,10 +2717,20 @@
    */
   const initIdeas = () => {
     amountIdeas = buildInitialIdeas();
-    dismissedNames = new Set();
-    visibleIdeas = [...amountIdeas];
-    ideasStore.set(visibleIdeas);
-    dismissedIdeaNamesStore.set(new Set()); // reset the shared set on plan (re)init
+    // Restore this plan's own dismissed/applied set (persisted on the plan object) so
+    // switching back to a plan keeps its Ideas-to-try state. A fresh plan — and every
+    // plan after a regenerate, which makes new plan objects — starts empty.
+    dismissedNames = plan?.dismissedIdeaNames instanceof Set ? plan.dismissedIdeaNames : new Set();
+    if (plan) plan.dismissedIdeaNames = dismissedNames;
+    if (dismissedNames.size === 0) {
+      // First time on this plan: show ALL its suggested changes (however many).
+      visibleIdeas = [...amountIdeas];
+      ideasStore.set(visibleIdeas);
+    } else {
+      // Returning to a plan already acted on: steady-state three ideas, dismissed
+      // suggestions dropped and topped up with directional ideas.
+      rebuildIdeas();
+    }
   };
 
   /** Dismiss an idea (amount or directional); recompute the directional ideas. */
@@ -2727,6 +2739,10 @@
     if (!visibleIdeas.some((i) => i.name === name)) return;
     dismissedNames.add(name); // a dismissed feature is not re-suggested
     rebuildIdeas();
+    // Re-emit the plan so Compare Plans (which rebuilds on the plan-store version)
+    // reflects the dismissal immediately if it is open. Apply goes through the edit
+    // handler, which already re-emits; a bare dismiss does not, so nudge it here.
+    if (plan) planStore.set(plan);
   };
 
   /**
