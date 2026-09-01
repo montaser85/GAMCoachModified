@@ -2283,7 +2283,7 @@
    * moves to the top (newest first). An empty `effects` array records a
    * "no effect" row (the user changed this feature but it propagated to nothing).
    */
-  const recordChangeEffects = (sourceName, sourceValueRaw, effects, tooltipOverride = null) => {
+  const recordChangeEffects = (sourceName, sourceValueRaw, effects, tooltipPrefixOverride = null) => {
     const sourceDisplay = DISPLAY_NAMES[sourceName] || sourceName;
 
     // Source-change direction + amounts for the hover sentence.
@@ -2304,13 +2304,12 @@
       ? `${sourceVerb} the ${sourceDisplay.toLowerCase()} from ${srcBeforeDisplay} to ${srcAfterDisplay}`
       : `${sourceVerb} the ${sourceDisplay.toLowerCase()}`;
 
-    // One combined sentence: the source change, every dependent it moved (inline,
-    // comma-separated), then the NET effect on the approval score. A caller may
-    // supply a custom sentence (e.g. the applied-loan baseline fold).
+    // One combined sentence: a prefix (the source change + every dependent it
+    // moved, inline) — a caller may override just this prefix (e.g. the applied-
+    // loan baseline fold) — then the NET effect on the approval score, WITH the
+    // amount it moved in approval points.
     let tooltip;
-    if (tooltipOverride) {
-      tooltip = tooltipOverride;
-    } else if (!effects || effects.length === 0) {
+    if (!effects || effects.length === 0) {
       tooltip = `Changing the ${sourceDisplay.toLowerCase()} didn't change any other feature.`;
     } else {
       const depsPart = effects
@@ -2319,9 +2318,19 @@
             `${e.depVerb} the ${e.depDisplayName.toLowerCase()} from ${e.beforeDisplay} to ${e.afterDisplay}`
         )
         .join(', ');
+      const prefix = tooltipPrefixOverride || `${sourcePart}, ${depsPart}`;
       const netDelta = effects.reduce((s, e) => s + (e.contributionDelta || 0), 0);
       const netVerb = netDelta >= 0 ? 'raised' : 'lowered';
-      tooltip = `${sourcePart}, ${depsPart}, which ${netVerb} your approval score.`;
+      // Approval-score change (in points) these ripples caused: the difference in
+      // sigmoid(log-odds) with and without the summed dependent contribution.
+      const afterLogOdds = plan?.ebmLocal?.predScore ?? 0;
+      const beforeLogOdds = afterLogOdds - netDelta;
+      const pts = Math.abs(
+        Math.round((sigmoid(afterLogOdds) - sigmoid(beforeLogOdds)) * 100)
+      );
+      tooltip =
+        `${prefix}, which ${netVerb} your approval score by ` +
+        `${pts} point${pts === 1 ? '' : 's'}.`;
     }
 
     const event = {
@@ -2355,17 +2364,18 @@
     const foldedDti = applicantBaselineState.dti;
     const rawDti = foldedDti - contribution;
     const effect = buildEffectEntry('loan_amnt', 'dti', rawDti, foldedDti);
-    // Custom sentence for the applied-loan baseline fold: the loan itself didn't
-    // change, it ADDED new debt, so phrase it that way rather than "Changing …".
-    const foldTooltip =
+    // Custom sentence PREFIX for the applied-loan baseline fold: the loan itself
+    // didn't change, it ADDED new debt, so phrase it that way rather than
+    // "Changing …". recordChangeEffects appends the ", which … approval score by
+    // N points." clause.
+    const foldPrefix =
       `The loan amount added new debt and raised the debt to income ratio ` +
-      `from ${effect.beforeDisplay} to ${effect.afterDisplay}, which ` +
-      `${effect.helps ? 'raised' : 'lowered'} your approval score.`;
+      `from ${effect.beforeDisplay} to ${effect.afterDisplay}`;
     recordChangeEffects(
       'loan_amnt',
       applicantBaselineState.loan_amnt,
       [effect],
-      foldTooltip
+      foldPrefix
     );
   };
 
