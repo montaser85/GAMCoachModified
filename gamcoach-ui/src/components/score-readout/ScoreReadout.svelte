@@ -30,9 +30,6 @@
   // points — otherwise a score in [0.495, 0.50) would round to 50 and falsely read
   // "Approved". A plan below 0.5 must read "Not approved."
   $: approved = curProb !== null && curProb >= 0.5;
-  // Points still to reach approval, never 0 when not approved (a 0.4966 score rounds
-  // to 50 points, so THRESHOLD − curPoints would be 0 while still below threshold).
-  $: pointsToApproval = curPoints === null ? null : Math.max(1, THRESHOLD - curPoints);
 </script>
 
 <div class="score-readout">
@@ -62,14 +59,12 @@
       </div>
 
       <div class="sr-readout">
-        <div class="sr-points">
-          {#if approved}
-            <span class="sr-num">{curPoints}</span>
-            <span class="sr-unit">points</span>
-          {:else}
-            <span class="sr-num">{pointsToApproval}</span>
-            <span class="sr-unit">points to approval</span>
-          {/if}
+        <!-- Always the CURRENT score as "# points". Gray while below approval
+             (curProb < 0.5), black once approval is reached — keyed off `approved`
+             so the color matches the ✓/✗ status shown above the bar. -->
+        <div class="sr-points" class:sr-below={!approved}>
+          <span class="sr-num">{curPoints}</span>
+          <span class="sr-unit">points</span>
         </div>
       </div>
     </div>
@@ -219,6 +214,13 @@
         font-size: 1.08rem;
         font-weight: 600;
         color: $gray-700;
+      }
+
+      // Below approval (< 50 / not approved): render the whole score gray. At or
+      // above approval it keeps the default black (.sr-num inherits $gray-900).
+      &.sr-below {
+        .sr-num { color: $gray-500; }
+        .sr-unit { color: $gray-500; }
       }
     }
   }
