@@ -546,6 +546,9 @@
     // running propagation. Edits (no isReset flag) still propagate below.
     if (e.detail.isReset) {
       handleFeatureReset(feature.data.name);
+      // A reset settles synchronously — recompute directional ideas against the
+      // restored state (covers all of handleFeatureReset's internal return paths).
+      try { rebuildIdeas(); } catch (err) { /* ideas must never break the UI */ }
       return;
     }
 
@@ -679,6 +682,11 @@
         } else {
           triggerPropagation(featureName);
         }
+        // Dynamic "Ideas to try": recompute the directional ideas against the now-
+        // SETTLED state. This runs AFTER propagation completes (and is already
+        // debounced with it at 350ms), so ideas evaluate the final values — never a
+        // half-propagated transition — and never trigger the MILP solver.
+        try { rebuildIdeas(); } catch (e) { /* ideas must never break the UI */ }
       }, 350);
     }
   };
@@ -2492,9 +2500,11 @@
   // Ideas are fixed per plan (recomputed only on plan switch / mount), not on
   // every edit — the live status line in IdeasToTry tracks the score instead.
 
-  /** @type {Set<string>} Feature names already shown or dismissed (never re-suggested). */
-  let ideaExcluded = new Set();
-  /** @type {Array} The ideas currently displayed in the panel. */
+  /** @type {Array} The plan's initial amount ideas (fixed per plan). */
+  let amountIdeas = [];
+  /** @type {Set<string>} Feature names the user dismissed (amount or directional). */
+  let dismissedNames = new Set();
+  /** @type {Array} The ideas currently displayed (remaining amount + directional). */
   let visibleIdeas = [];
 
   /**
@@ -2531,55 +2541,72 @@
   };
 
   /**
-   * One directional replacement idea from the existing speculative mechanism
-   * (evaluateIdea → the strongest propagated approval gain), excluding features
-   * already shown or dismissed. Rendered with direction only (no amount).
+   * Up to `count` DIRECTIONAL ideas from the CURRENT state — the existing
+   * speculative "what helps next" mechanism (evaluateIdea → strongest propagated
+   * approval gain), excluding `exclude`. Rendered with direction only (no amount).
+   * Because it is evaluated against the live (settled) state, a feature the user
+   * has already moved in the helpful direction stops surfacing on its own, and a
+   * different helpful feature takes its place.
    */
-  const buildReplacementIdea = () => {
-    if (!plan || !applicantBaselineState) return null;
-    let best = null;
+  const buildDirectionalIdeas = (count, exclude) => {
+    if (!plan || !applicantBaselineState || count <= 0) return [];
+    const candidates = [];
     plan.features.forEach((feature) => {
       const name = feature.data.name;
-      if (ideaExcluded.has(name)) return;
+      if (exclude.has(name)) return;
       if (constraints?.difficulties?.get(name) === IMPOSSIBLE_TO_CHANGE) return;
       if (!isBaselineActionable(name)) return;
       let res = null;
       try { res = evaluateIdea(feature); } catch (e) { res = null; }
       if (!res) return;
-      if (!best || res.gain > best.gain) {
-        best = {
-          name,
-          displayName:
-            DISPLAY_NAMES[name] || feature.data.description?.displayName || name,
-          verb: ideaVerb(feature.isCont, res.direction),
-          direction: res.direction,
-          mode: 'direction'
-        };
-      }
+      candidates.push({
+        name,
+        displayName:
+          DISPLAY_NAMES[name] || feature.data.description?.displayName || name,
+        verb: ideaVerb(feature.isCont, res.direction),
+        direction: res.direction,
+        mode: 'direction',
+        gain: res.gain
+      });
     });
-    return best;
+    candidates.sort((a, b) => b.gain - a.gain);
+    return candidates.slice(0, count);
+  };
+
+  /**
+   * Rebuild the visible ideas: the remaining (non-dismissed) amount ideas stay
+   * fixed; the freed slots are filled with DIRECTIONAL ideas recomputed against
+   * the CURRENT state. Called on init, on dismiss, and after each edit settles —
+   * so the directional ideas stay relevant to where the user is now.
+   */
+  const rebuildIdeas = () => {
+    const remainingAmount = amountIdeas.filter((i) => !dismissedNames.has(i.name));
+    const slots = amountIdeas.length - remainingAmount.length; // # of dismissed amount ideas
+    const exclude = new Set([
+      ...remainingAmount.map((i) => i.name),
+      ...dismissedNames
+    ]);
+    // The directional recompute is cheap (~2–4 ms for a handful of candidates) and
+    // is already debounced with propagation (fires post-settle), so it never lags
+    // editing and never triggers the MILP solver.
+    const directional = buildDirectionalIdeas(slots, exclude);
+    visibleIdeas = [...remainingAmount, ...directional];
+    ideasStore.set(visibleIdeas);
   };
 
   /** Initialize the idea list for the current plan (mount / plan switch). */
   const initIdeas = () => {
-    visibleIdeas = buildInitialIdeas();
-    ideaExcluded = new Set(visibleIdeas.map((i) => i.name));
-    ideasStore.set(visibleIdeas);
+    amountIdeas = buildInitialIdeas();
+    dismissedNames = new Set();
+    rebuildIdeas();
   };
 
-  /** Remove a dismissed idea; replace it with a directional "what helps next" idea. */
+  /** Dismiss an idea (amount or directional); recompute the directional ideas. */
   const handleIdeaDismiss = (name) => {
     if (!name) return;
     if (!visibleIdeas.some((i) => i.name === name)) return;
-    visibleIdeas = visibleIdeas.filter((i) => i.name !== name);
-    ideaExcluded.add(name); // a dismissed feature is never re-suggested
-    let replacement = null;
-    try { replacement = buildReplacementIdea(); } catch (e) { replacement = null; }
-    if (replacement) {
-      ideaExcluded.add(replacement.name);
-      visibleIdeas = [...visibleIdeas, replacement];
-    }
-    ideasStore.set(visibleIdeas);
+    dismissedNames.add(name); // a dismissed feature is not re-suggested
+    rebuildIdeas();
   };
 
   /**
