@@ -131,9 +131,9 @@
 
     <!-- Summed total — the bars above add up to this (same figure as the title). -->
     <div class="sd-total">
-      <span class="sd-total-label">Total</span>
+      <span class="sd-total-label">Total:</span>
       <span class="sd-total-value" class:pos={panelTotal >= 0} class:neg={panelTotal < 0}
-        >{signed(panelTotal)} points</span>
+        >{signed(panelTotal)}</span>
     </div>
   {:else}
     <div class="sd-empty">No differences from the original application yet.</div>
@@ -198,7 +198,8 @@
   .sd-total {
     display: flex;
     align-items: baseline;
-    justify-content: space-between;
+    justify-content: flex-start; // label sits right next to its sum, not pushed apart
+    gap: 6px;
     margin-top: 6px;
     padding-top: 8px;
     border-top: 2px solid $gray-300;
