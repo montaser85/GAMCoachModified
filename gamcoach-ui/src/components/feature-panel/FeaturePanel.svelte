@@ -2655,6 +2655,11 @@
       ? value
       : codeFromLabel(value, feature.labelEncoder);
     curValueUpdatedHandler({ detail: { newValue: handlerValue } }, feature);
+    // The suggestion has been enacted — remove it from the panel (and top up the
+    // three ideas with a directional one). The edit's own debounced recompute
+    // then refreshes the directional set against the settled state.
+    dismissedNames.add(name);
+    rebuildIdeas();
   };
 
   /**
