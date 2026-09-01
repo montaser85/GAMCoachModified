@@ -141,7 +141,14 @@
       "Bash(grep -n \"featureGrid = new FeatureGrid\\\\|featureGrid = \\\\|new FeatureGrid\\(\\)\\\\|\\\\$:.*init\\\\|\\\\$:.*featureGrid\\\\|\\\\$:.*constraints\\\\|windowLoaded && planStore\" FeaturePanel.svelte)",
       "Bash(awk 'NR>=2625 && NR<=2760 && /await|^  };/' FeaturePanel.svelte)",
       "Bash(awk 'NR>=2625 && NR<=2780' FeaturePanel.svelte)",
-      "Bash(grep -n 'featureValueOverrideStore\\\\|$featureValueOverrideStore\\\\|overrideVal\\\\|override' FeatureCard.svelte)"
+      "Bash(grep -n 'featureValueOverrideStore\\\\|$featureValueOverrideStore\\\\|overrideVal\\\\|override' FeatureCard.svelte)",
+      "Bash(cd \"D:/OSU/Dr B research group/GAM_Coach/gam-coach_modified/gamcoach-ui/src/components/feature-panel\" && grep -rn \"import\" FeaturePanel.svelte | grep -i \"propagat\\\\|ideasConfig\" | head; echo \"---files---\"; ls ../feature-panel/ | grep -i \"\\\\.js\\\\|\\\\.ts\"; echo \"---propagate module---\"; grep -rln \"export.*propagate\\\\|export.*computeParams\" ../feature-panel/ ../../utils/ 2>/dev/null)",
+      "Bash(cp \"C:/Users/monta/AppData/Local/Temp/claude/D--OSU-Dr-B-research-group-GAM-Coach-gam-coach-modified/8c4c60b6-96b7-43c4-ae72-14fbe576e739/scratchpad/revolTest.mjs\" ./_revolTest.mjs)",
+      "Bash(sed -i \"s#'../../../../../../../../D:/OSU/Dr B research group/GAM_Coach/gam-coach_modified/gamcoach-ui/src/engine/params.mjs'#'./src/engine/params.mjs'#\" ./_revolTest.mjs)",
+      "Bash(node ./_revolTest.mjs)",
+      "Bash(rm -f ./_revolTest.mjs)",
+      "Bash(grep -oiE \"localhost:[0-9]+|:[0-9]{4,5}\" \"C:/Users/monta/AppData/Local/Temp/claude/D--OSU-Dr-B-research-group-GAM-Coach-gam-coach-modified/8c4c60b6-96b7-43c4-ae72-14fbe576e739/scratchpad/build33.log\")",
+      "Bash(grep -v \"^\\\\s*//\")"
     ]
   }
 }

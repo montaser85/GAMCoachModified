@@ -276,6 +276,19 @@
   let coachRevolDelta = 0;
   let revolAnchorBal = 0;
   let revolAnchorUtil = 0;
+  // SINGLE SOURCE OF TRUTH for the revolving pair. The two independent inputs the
+  // user controls are (revolInputUtil, userRevolDelta), and BOTH the engine and the
+  // Revolving-Balance breakdown derive the balance from the ONE invariant:
+  //     revol_bal = (revolInputUtil / 100) · L  +  userRevolDelta
+  // `revolInputUtil` is the utilization the user has committed as an INPUT (the
+  // "util-driven" free variable) — it is updated ONLY on a Credit Utilization edit,
+  // and it is NOT the same as the live `revol_util` the card shows after a direct
+  // balance edit (which the engine recomputes to the balance's full implied util).
+  // `userRevolDelta` is the direct balance offset on top, captured against
+  // revolInputUtil. Keeping the util-driven part and the direct edit as these two
+  // persistent, independently-anchored quantities is what stops one from clobbering
+  // the other when both are present (util-then-balance / balance-then-util).
+  let revolInputUtil = 0;
   // Provenance for Number of Derogatory Records: the "independent part" — the
   // user's OWN (non-bankruptcy) derogatory marks, tracked as a bin label
   // ('0'..'2+'). Number of Derogatory Records = min(2+, independentPart +
@@ -421,11 +434,11 @@
     const cur = buildCurrentEngineState();
     const L = creditLimitFromBaseline(applicantBaselineState);
     // userRevolDelta is the balance's offset from the balance its CURRENT utilization
-    // implies — the invariant the engine adds to (newUtil/100·L). Measuring against
-    // the current util (not the profile) keeps it correct even when utilization was
-    // folded at load (flag on). It already includes the coach's offset baked into the
-    // current balance; the hover derives the user's own part as
-    // userRevolDelta − coachRevolDelta.
+    // implies — the invariant the ENGINE adds to (newUtil/100·L) in revolBalFromUtil.
+    // Left EXACTLY as-is: this drives the scored balance, and the bug is purely in the
+    // breakdown DISPLAY, not the scored value. The breakdown no longer reads this
+    // delta — it derives the direct-edit contribution as a residual from the card's
+    // own value (see buildRevolBalBreakdown), so the two paths can no longer diverge.
     const utilImplied =
       L !== null ? ((Number(cur.revol_util) || 0) / 100) * L : (applicantBaselineState.revol_bal || 0);
     userRevolDelta = (cur.revol_bal || 0) - utilImplied;
@@ -457,6 +470,9 @@
     revolAnchorBal = profileBal;
     revolAnchorUtil = Number(baseline.revol_util) || 0;
     userRevolDelta = 0;
+    // Committed utilization input starts at the anchor (profile) utilization — no
+    // util edit has happened yet, so the whole balance is the anchor's util-implied.
+    revolInputUtil = revolAnchorUtil;
   };
 
   // Set up the GAM Coach feature cards
@@ -638,8 +654,14 @@
       // Track which side of the two-way pair is the input (last edited), so the
       // Revolving Balance hover knows whether its value was derived from a
       // Credit Utilization edit.
-      if (featureName === 'revol_util') revolUtilIsInput = true;
-      else if (featureName === 'revol_bal') revolUtilIsInput = false;
+      if (featureName === 'revol_util') {
+        revolUtilIsInput = true;
+        // Commit this utilization as the util-driven free variable. The model has
+        // already been updated (line above), so the live sample carries the new
+        // value; userRevolDelta (the direct offset) is left untouched, so the two
+        // contributors compose via the invariant instead of overwriting each other.
+        revolInputUtil = Number(buildCurrentEngineState().revol_util) || 0;
+      } else if (featureName === 'revol_bal') revolUtilIsInput = false;
 
       // Number of Derogatory Records is a propagation SINK (no outgoing edge) —
       // recompute its provenance split from the just-applied (clamped) value so a
@@ -812,6 +834,11 @@
     // suggested input side is re-established from loadSnapshot below.)
     if (unmodify.has('revol_util') || unmodify.has('revol_bal')) {
       revolUtilIsInput = false;
+      // Restore the committed utilization input to the anchor — the pair is back at
+      // its load-time (profile) values, so no util edit contributes any more. Keeps
+      // the invariant revol_bal = (revolInputUtil/100·L) + userRevolDelta honest as
+      // userRevolDelta is simultaneously restored to the coach offset below.
+      revolInputUtil = revolAnchorUtil;
     }
     // Reset each counter's manual delta when that counter is restored.
     if (unmodify.has('open_acc')) userOpenDelta = 0;
@@ -1767,27 +1794,36 @@
     // chains from the plan the user is viewing, not the profile.
     const suggestedBal = revolAnchorBal;
     const hasSuggestedBase = Math.abs(revolAnchorBal - profileBal) > 0.5;
-    // The user's OWN direct balance edit, kept SEPARATE from the coach suggestion so
-    // the two compose (base + user edit + util change) without double-counting.
-    const manualDelta = userRevolDelta - coachRevolDelta;
-    // Utilization-driven part: only when Credit Utilization is the input (balance is
-    // derived from it) and the limit is recoverable. Measured from the DISPLAYED
-    // load utilization (revolAnchorUtil), so base + manual + util reconciles exactly
-    // to the engine's (newUtil/100·L + userRevolDelta) in both flag states.
+    // SINGLE SOURCE OF TRUTH for the breakdown. The three lines are derived so they
+    // ALWAYS sum to the card's scored balance (`state.revol_bal`), in every edit
+    // order and even when the engine clamps the balance:
+    //   • base        = revolAnchorBal (the load/profile balance)
+    //   • utilDriven  = the balance moved by the COMMITTED utilization input
+    //                   (revolInputUtil), NOT the live `state.revol_util` (which the
+    //                   engine recomputes to the balance's full implied util after a
+    //                   direct balance edit) and NOT gated on `revolUtilIsInput`.
+    //   • direct      = the RESIDUAL, card − base − utilDriven — whatever the user's
+    //                   direct balance edits account for beyond the util-driven part.
+    // Deriving `direct` from the card's own value (instead of the separately-captured
+    // userRevolDelta) is the durable fix: the util-driven contribution can never be
+    // dropped, and the two contributions can never clobber each other or disagree with
+    // the card — they are two views of the same ground-truth balance. This is the same
+    // single-anchor derivation that fixed the plan-switch idempotency bug.
     const utilDriven =
-      revolUtilIsInput && creditLimit !== null
-        ? (((Number(state.revol_util) || 0) - revolAnchorUtil) / 100) * creditLimit
+      creditLimit !== null
+        ? ((revolInputUtil - revolAnchorUtil) / 100) * creditLimit
         : 0;
-    const newBalance = suggestedBal + manualDelta + utilDriven;
+    const newBalance = state.revol_bal || 0;              // card / ground truth
+    const manualDelta = newBalance - suggestedBal - utilDriven; // direct edit (residual)
     const showManualRow = Math.abs(manualDelta) > 0.5;
     const showUtilRow = Math.abs(utilDriven) > 0.5;
 
-    // Assemble the total as an addition of the shown contributions, e.g.
-    // "$10,781 + $591" (or "$10,781 − $781 + $591" when the user also paid down),
-    // summing to newBalance.
+    // Assemble the total as an addition of the shown contributions, in causal order
+    // base → utilization-driven → your direct edit, e.g. "$11,001 − $5,281 − $3,720",
+    // summing to newBalance (the card's scored balance).
     const pieces = [money(suggestedBal)];
-    if (showManualRow) pieces.push((manualDelta < 0 ? '− ' : '+ ') + money(Math.abs(manualDelta)));
     if (showUtilRow) pieces.push((utilDriven < 0 ? '− ' : '+ ') + money(Math.abs(utilDriven)));
+    if (showManualRow) pieces.push((manualDelta < 0 ? '− ' : '+ ') + money(Math.abs(manualDelta)));
 
     return {
       type: 'revol_bal',

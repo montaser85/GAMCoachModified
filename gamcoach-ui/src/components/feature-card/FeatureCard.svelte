@@ -774,11 +774,12 @@
                     <details class="dti-details">
                     <summary class="dti-subhead">Your revolving balance breakdown</summary>
                     <div class="dti-row">{linkCalculation.baseIsSuggested ? 'Suggested balance' : 'Your profile balance'}: <b>{linkCalculation.baseBalance}</b></div>
-                    {#if linkCalculation.showManualRow}
-                      <div class="dti-row">Adjusted by you: <b>{linkCalculation.manualDelta}</b></div>
-                    {/if}
+                    <!-- Causal order matches the Total sum line: base -> utilization-driven -> your direct edit. -->
                     {#if linkCalculation.showUtilRow}
                       <div class="dti-row">From your credit utilization change: <b>{linkCalculation.utilDrivenDelta}</b></div>
+                    {/if}
+                    {#if linkCalculation.showManualRow}
+                      <div class="dti-row">Adjusted by you: <b>{linkCalculation.manualDelta}</b></div>
                     {/if}
                     <div class="dti-line final">Total: {#if linkCalculation.hasContributors}{linkCalculation.balanceSumExpr} = {/if}<b>{linkCalculation.newBalance}</b></div>
                     </details>
