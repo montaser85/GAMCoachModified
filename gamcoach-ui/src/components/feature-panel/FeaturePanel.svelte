@@ -2264,8 +2264,22 @@
         : 'changed'
       : 'changed';
     const approvalVerb = helps ? 'raised' : 'lowered';
+
+    // Source-change direction (Increasing / Lowering / Changing) from the
+    // applicant's baseline to the current value, for the hover sentence.
+    const srcBefore = applicantBaselineState?.[sourceName];
+    const srcAfter = buildCurrentEngineState()[sourceName];
+    const srcNumeric = typeof srcBefore === 'number' && typeof srcAfter === 'number';
+    const sourceVerb = srcNumeric
+      ? srcAfter > srcBefore
+        ? 'Increasing'
+        : srcAfter < srcBefore
+        ? 'Lowering'
+        : 'Changing'
+      : 'Changing';
+
     const tooltip =
-      `${sourceDisplay} ${valueVerb} your ${depDisplay.toLowerCase()} ` +
+      `${sourceVerb} the ${sourceDisplay} ${valueVerb} your ${depDisplay.toLowerCase()} ` +
       `from ${beforeDisplay} to ${afterDisplay}, which ${approvalVerb} your approval score.`;
 
     return {

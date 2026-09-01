@@ -79,16 +79,14 @@
     <!-- Rows -->
     <div class="ce-rows">
       {#each events as ev (ev.sourceName)}
+        <!-- Names + thumbs only; the numbers live in the hover tooltip below the
+             row (shown on row hover) so they never crowd the compact display. -->
         <div class="ce-row">
-          <!-- Per-row causal-link info (left). Custom tooltip below the row so it
-               never overlaps the values it describes. -->
-          <span class="ce-info ce-row-info">i</span>
           <div class="ce-row-tip">{rowTooltip(ev)}</div>
 
-          <!-- Source: full feature name + its before → after value -->
+          <!-- Source: full feature name -->
           <div class="ce-source">
             <div class="ce-src-name">{ev.sourceDisplayName}</div>
-            <div class="ce-src-val">{ev.sourceValueDisplay}</div>
           </div>
 
           <!-- Connector -->
@@ -105,7 +103,6 @@
                     {@html ef.helps ? ICONS.thumbUp : ICONS.thumbDown}
                   </span>
                   <div class="ce-eff-name">{ef.depDisplayName}</div>
-                  <div class="ce-eff-val">{ef.beforeDisplay} &rarr; {ef.afterDisplay}</div>
                 </div>
               {/each}
             {/if}
@@ -178,34 +175,6 @@
     }
   }
 
-  // Per-row info badge — same look as the left-panel feature-card info icons
-  // (FeatureCard.scss .link-badge): a blue-outlined italic "i" that deepens on hover.
-  .ce-info {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 18px;
-    height: 18px;
-    border-radius: 50%;
-    background: transparent;
-    border: 2.5px solid $blue-500;
-    color: $blue-500;
-    font-size: 12px;
-    font-weight: 700;
-    font-style: italic;
-    font-family: Georgia, serif;
-    -webkit-text-stroke: 0.4px currentColor;
-    line-height: 1;
-    cursor: pointer;
-    flex: 0 0 auto;
-    transition: border-color 0.15s, color 0.15s;
-
-    &:hover {
-      border-color: $blue-700;
-      color: $blue-700;
-    }
-  }
-
   .ce-legend {
     display: flex;
     flex-wrap: wrap;
@@ -248,7 +217,8 @@
     gap: 12px;
     padding: 16px 2px;
     border-top: 1px solid $gray-200;
-    position: relative; // anchor for the per-row info tooltip
+    position: relative; // anchor for the per-row hover tooltip
+    cursor: help; // hover the row to reveal the detailed sentence (with numbers)
 
     &:first-child {
       border-top: none;
@@ -282,13 +252,9 @@
     transition: opacity 120ms ease;
   }
 
-  .ce-row-info:hover ~ .ce-row-tip {
+  .ce-row:hover .ce-row-tip {
     opacity: 1;
     visibility: visible;
-  }
-
-  .ce-row-info {
-    align-self: center;
   }
 
   .ce-source {
@@ -306,21 +272,6 @@
       color: $gray-800;
       line-height: 1.2;
       overflow-wrap: anywhere;
-    }
-
-    // before → after: stays on ONE horizontal line when it fits (short numeric
-    // sources), and for a long value wraps at the spaces around the arrow WITHIN the
-    // column instead of overflowing into the arrow/effects. min-width:0 lets the
-    // fixed-width column actually contain the text.
-    .ce-src-val {
-      min-width: 0;
-      max-width: 100%;
-      font-size: 1.0rem;
-      font-weight: 700;
-      color: $gray-900;
-      line-height: 1.2;
-      font-variant-numeric: tabular-nums;
-      overflow-wrap: break-word;
     }
   }
 
@@ -379,15 +330,6 @@
       -webkit-line-clamp: 2;
       -webkit-box-orient: vertical;
       overflow: hidden;
-    }
-
-    .ce-eff-val {
-      font-size: 1.0rem;
-      font-weight: 700;
-      color: $gray-900;
-      line-height: 1.2;
-      font-variant-numeric: tabular-nums;
-      white-space: nowrap;
     }
   }
 </style>
