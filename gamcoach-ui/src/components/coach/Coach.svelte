@@ -107,6 +107,9 @@
   let setupPlanCur = null;
   /** Baseline (internal-value array) the user entered in setup; null before Done. */
   let enteredBaseline = null;
+  /** The loan-folded baseline the plans were generated from (set in initModel).
+   *  Reused by Regenerate so new plans start from the user's own profile. */
+  let generationBaseline = null;
 
   /**
    * Workaround to trigger an update to the plans variable.
@@ -154,6 +157,11 @@
       base,
       curModelData.features.map((f) => f.name)
     );
+    // Remember this loan-folded baseline so REGENERATE reuses the exact same starting
+    // point (the user's entered / loaded profile) instead of the raw #XYZ prop — the
+    // curExample prop still holds the placeholder profile, which is not what the plans
+    // should be generated from.
+    generationBaseline = baselineExample;
 
     // Initialize the Constraints based on the info provided by model developers
     // Creating the constraints object can change the modelData (setting
@@ -528,7 +536,10 @@
           await regeneratePlans(
             constraints,
             curModelData,
-            curExample,
+            // Regenerate from the SAME loan-folded baseline the plans were first
+            // generated from (the user's entered/loaded profile) — not the raw
+            // curExample prop, which still holds the #XYZ placeholder.
+            generationBaseline || curExample,
             plans,
             plansUpdated,
             logger
