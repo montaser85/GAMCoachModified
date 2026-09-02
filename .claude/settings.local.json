@@ -153,7 +153,8 @@
       "Bash(echo \"exit: $?  \\(1 = no matches, good\\)\")",
       "Bash(git restore *)",
       "Bash(grep -iE \"\\\\.top\\\\s*[\\\\{,]|#top|\\\\.top\\\\s+\\\\{\")",
-      "Bash(echo \"exit $? \\(1=clean except plan.dismissedIdeaNames uses\\)\")"
+      "Bash(echo \"exit $? \\(1=clean except plan.dismissedIdeaNames uses\\)\")",
+      "Bash(echo \"grep-exit: $? \\(1=clean\\)\")"
     ]
   }
 }
