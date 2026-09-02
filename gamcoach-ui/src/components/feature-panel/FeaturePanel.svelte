@@ -3048,7 +3048,25 @@
       ? (() => {
           const names = [];
           plan.features.forEach((f) => { names[f.featureID] = f.data.name; });
-          return loanCostFromExample(plan.ebmLocal.sample, names);
+          const cost = loanCostFromExample(plan.ebmLocal.sample, names);
+          if (!cost) return null;
+          // The Payment Period is a categorical: its raw sample value can be a label
+          // ("36 months"), and in some states a form that parseInt reads as 0 —
+          // yielding "$0 total, −interest, $0/month". Re-derive the term the SAME way
+          // the Payment Period card does (buildCurrentEngineState → parseTermMonths),
+          // so the box always matches the displayed term instead of breaking.
+          const cur = buildCurrentEngineState();
+          const termMonths = Math.round(Number(cur.term) || 0);
+          const loanAmount = cost.loanAmount;
+          const apr = cost.apr;
+          // Guard: only surface a well-defined amortization.
+          if (!(termMonths > 0) || !(loanAmount > 0) || !Number.isFinite(apr)) {
+            return null;
+          }
+          const monthly = loanMonthlyPayment(loanAmount, apr / 12, termMonths);
+          if (!Number.isFinite(monthly) || !(monthly > 0)) return null;
+          const total = monthly * termMonths;
+          return { loanAmount, termMonths, apr, monthly, total, interest: total - loanAmount };
         })()
       : null;
 
