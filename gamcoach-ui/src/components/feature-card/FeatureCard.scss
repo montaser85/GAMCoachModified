@@ -34,6 +34,65 @@ $card-h-padding: 16px;
     border: 2px solid $blue-500;
     box-shadow: 0 0 0 3px hsla(206, 89.74%, 54.12%, 0.15);
   }
+
+  // ── Card-level expand affordance ────────────────────────────────────────────
+  // A persistent chevron pinned to the card's BOTTOM-RIGHT corner: the single
+  // always-visible cue that the whole card expands. Distinct from the breakdown
+  // chevrons inside the expanded content (those are inline, in the info popup /
+  // value breakdowns) — this one sits in the card corner, is the expand toggle, and
+  // reveals a "Click to edit" tooltip only while collapsed.
+  .card-expand {
+    position: absolute;
+    bottom: 4px;
+    right: 6px;
+    z-index: 6;
+    padding: 2px;              // a slightly larger click target than the icon
+    cursor: pointer;
+
+    .card-expand-chevron {
+      display: inline-flex;
+      align-items: center;
+      color: $gray-400;        // dim, unobtrusive persistent cue
+      // rotate reflects state; color transition drives the hover light-up.
+      transition: color 120ms ease, transform 200ms ease;
+    }
+    // Right-facing ▸ (collapsed) rotates to down-facing ▾ (expanded).
+    &.expanded .card-expand-chevron {
+      transform: rotate(90deg);
+    }
+
+    // "Click to edit" tooltip. Absolutely positioned (out of flow) so it never
+    // enlarges the click target or shifts layout while hidden. Floats just LEFT of
+    // the chevron, shown only on collapsed-card hover (rule below).
+    .card-expand-tip {
+      position: absolute;
+      right: calc(100% + 4px);
+      top: 50%;
+      transform: translateY(-50%);
+      opacity: 0;
+      pointer-events: none;
+      background: $gray-900;
+      color: white;
+      font-size: 0.72rem;
+      font-weight: 600;
+      line-height: 1;
+      padding: 4px 7px;
+      border-radius: 5px;
+      white-space: nowrap;
+      box-shadow: 0 2px 8px hsla(0, 0%, 0%, 0.22);
+      transition: opacity 120ms ease;
+    }
+  }
+
+  // Chevron lights up (brightens to blue) when hovering anywhere on the card.
+  &:hover .card-expand .card-expand-chevron {
+    color: $blue-500;
+  }
+  // The "Click to edit" tooltip appears ONLY while the card is collapsed + hovered;
+  // an already-expanded card suppresses it (nothing to advertise).
+  &.collapsed:hover .card-expand .card-expand-tip {
+    opacity: 1;
+  }
 }
 
 .link-icon {
@@ -305,7 +364,6 @@ $card-h-padding: 16px;
 
   // The whole header is clickable to expand/collapse the card.
   cursor: pointer;
-  transition: background-color 120ms ease;
 
   // overflow must be visible so the link-popup can escape this container
   overflow: visible;
@@ -316,34 +374,6 @@ $card-h-padding: 16px;
     align-items: center;
     width: 100%;
     gap: 4px;
-  }
-
-  // Card-level expand affordance (chevron + "Click to edit"). Deliberately UNLIKE
-  // the breakdown chevrons inside the info "i" popup: it lives in the card header,
-  // pairs the chevron with a text label, and brightens to blue on hover — so a
-  // user is never unsure whether a chevron expands the card or a breakdown.
-  .expand-hint {
-    display: flex;
-    align-items: center;
-    gap: 3px;
-    flex-shrink: 0;
-    margin-left: 2px;
-    color: $gray-500;
-    font-size: 0.72rem;
-    font-weight: 600;
-    line-height: 1;
-    user-select: none;
-    white-space: nowrap;
-
-    .expand-hint-chevron {
-      display: inline-flex;
-      align-items: center;
-      transition: transform 200ms ease;
-    }
-    // Right-facing ▸ rotates to a down-facing ▾ when the card is expanded.
-    &.expanded .expand-hint-chevron {
-      transform: rotate(90deg);
-    }
   }
 
   .feature-info {
@@ -366,16 +396,6 @@ $card-h-padding: 16px;
 
   &.collapsed {
     border-bottom: none;
-
-    // Subtle highlight while collapsed — the state where we advertise that the
-    // card expands. Reinforces (with the pointer cursor) that it's clickable.
-    &:hover {
-      background: $gray-200;
-
-      .expand-hint {
-        color: $blue-600;
-      }
-    }
   }
 
   .card-icons {

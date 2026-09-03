@@ -875,18 +875,6 @@
           </div>
         {/if}
       </div>
-
-      <!-- Card-level expand affordance: a chevron + "Click to edit" text that
-           advertises the WHOLE card expands to reveal the value slider. Kept
-           visually distinct from the inner breakdown chevrons (those live inside the
-           info "i" popup and carry no text). Display-only — the header's on:click
-           already toggles expand/collapse; this is just the discoverability cue. -->
-      <div class="expand-hint" class:expanded={!isCollapsed} aria-hidden="true">
-        {#if isCollapsed}<span class="expand-hint-text">Click to edit</span>{/if}
-        <span class="expand-hint-chevron">
-          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6l-6 6"/></svg>
-        </span>
-      </div>
     </div>
 
     <div class="values">
@@ -1101,6 +1089,19 @@
           change</span
         >
       </div>
+    </span>
+  </div>
+
+  <!-- Card-level expand affordance: a persistent chevron pinned to the card's
+       BOTTOM-RIGHT corner, signalling the whole card expands. It lights up on hover;
+       only while the card is COLLAPSED does it reveal a "Click to edit" tooltip.
+       Deliberately distinct from the breakdown chevrons that live INSIDE the
+       expanded content (info popup / value breakdowns). Display-only — clicking it
+       toggles via the same headerClicked path as the header. -->
+  <div class="card-expand" class:expanded={!isCollapsed} on:click={headerClicked}>
+    <span class="card-expand-tip">Click to edit</span>
+    <span class="card-expand-chevron" aria-hidden="true">
+      <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6l-6 6"/></svg>
     </span>
   </div>
 </div>
