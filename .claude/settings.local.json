@@ -154,7 +154,11 @@
       "Bash(git restore *)",
       "Bash(grep -iE \"\\\\.top\\\\s*[\\\\{,]|#top|\\\\.top\\\\s+\\\\{\")",
       "Bash(echo \"exit $? \\(1=clean except plan.dismissedIdeaNames uses\\)\")",
-      "Bash(echo \"grep-exit: $? \\(1=clean\\)\")"
+      "Bash(echo \"grep-exit: $? \\(1=clean\\)\")",
+      "Bash(cd \"D:/OSU/Dr B research group/GAM_Coach/gam-coach_modified/gamcoach-ui\" && sleep 5 && grep -c \"rawCategoricalLabel\" public/build/bundle.js; echo \"---log tail---\"; tail -8 /tmp/rollup-watch.log)",
+      "Bash(cd \"D:/OSU/Dr B research group/GAM_Coach/gam-coach_modified/gamcoach-ui\" && echo \"=== full log ===\"; cat /tmp/rollup-watch.log | tail -30; echo \"=== bundle greps ===\"; grep -c \"rawCategoricalLabel\\\\|__applyDbg\" public/build/bundle.js)",
+      "Bash(rm -f /tmp/rollup-watch.log)",
+      "Bash(echo \"started pid $!\")"
     ]
   }
 }
