@@ -161,7 +161,9 @@
       "Bash(echo \"started pid $!\")",
       "Bash(git --no-pager log --oneline -20)",
       "Bash(git --no-pager diff -- gamcoach-ui/src/components/compare-modal/CompareModal.svelte gamcoach-ui/src/utils/historyManager.js)",
-      "Bash(git --no-pager diff -- gamcoach-ui/src/components/score-readout/ScoreReadout.svelte gamcoach-ui/src/components/ideas/IdeasToTry.svelte gamcoach-ui/src/components/change-effects/ChangeEffects.svelte gamcoach-ui/src/components/feature-panel/FeaturePanel.svelte)"
+      "Bash(git --no-pager diff -- gamcoach-ui/src/components/score-readout/ScoreReadout.svelte gamcoach-ui/src/components/ideas/IdeasToTry.svelte gamcoach-ui/src/components/change-effects/ChangeEffects.svelte gamcoach-ui/src/components/feature-panel/FeaturePanel.svelte)",
+      "Bash(cd \"D:/OSU/Dr B research group/GAM_Coach/gam-coach_modified/gamcoach-ui\" && echo \"expand-hint in bundle: $\\(grep -c expand-hint public/build/bundle.js 2>/dev/null\\)\"; echo \"--- last build log ---\"; tail -12 /tmp/rollup-watch.log 2>/dev/null)",
+      "Bash(taskkill //F //IM node.exe)"
     ]
   }
 }
