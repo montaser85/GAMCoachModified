@@ -2615,6 +2615,21 @@
   let visibleIdeas = [];
 
   /**
+   * The raw counterfactual value for a CATEGORICAL feature, decoded to the level
+   * LABEL that `feature.labelEncoder` uses (the same string the card and the EBM
+   * sample store). cfDataRaw normally holds the label string already, but if a
+   * source ever stores the numeric code we decode it here. This is the value the
+   * "apply" path needs: FeatureCardCat's override and curValueUpdatedHandler both
+   * run it through `codeFromLabel`, which only resolves a real level label.
+   */
+  const rawCategoricalLabel = (feature) => {
+    const raw = plan.cfDataRaw[feature.featureID];
+    return typeof raw === 'number' && feature.labelEncoder
+      ? feature.labelEncoder[raw]
+      : raw;
+  };
+
+  /**
    * The plan's suggested changes as initial ideas WITH amounts: diff the coach's
    * raw counterfactual (cfDataRaw) against the applicant baseline; each changed,
    * actionable feature becomes "Raise/Lower/Change X to <amount>".
@@ -2643,10 +2658,15 @@
         mode: 'amount',
         targetDisplay: formatEffectValue(name, suggested[name]),
         // Value to APPLY on click: internal for continuous (what the card + model
-        // use), the level LABEL for categorical.
+        // use), the raw level LABEL for categorical. NOTE: we must NOT use
+        // `suggested[name]` for categoricals — buildEngineState rewrites some
+        // categorical features to a NUMBER (e.g. `term` → parseTermMonths → 36/60,
+        // `mort_acc`/`inq_last_6mths` → counts), which `codeFromLabel` can't map
+        // back to a level. Decode the raw counterfactual to the labelEncoder label
+        // directly so the card override + model update both resolve correctly.
         applyValue: feature.isCont
           ? displayToInternal(name, suggested[name])
-          : suggested[name]
+          : rawCategoricalLabel(feature)
       });
     });
     return out;

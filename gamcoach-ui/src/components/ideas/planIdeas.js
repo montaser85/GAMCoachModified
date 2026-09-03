@@ -296,10 +296,15 @@ export function planSuggestedIdeas(plan, constraints) {
       mode: 'amount',
       targetDisplay: formatEffectValue(name, suggested[name]),
       // Value to APPLY on click (mirrors FeaturePanel.buildInitialIdeas): internal
-      // for continuous (what the card + model use), the level LABEL for categorical.
+      // for continuous (what the card + model use), the raw level LABEL for
+      // categorical. We decode cfDataRaw directly rather than reusing
+      // `suggested[name]`, because buildEngineState rewrites some categoricals to a
+      // NUMBER (e.g. `term` → 36/60) that codeFromLabel can't map back to a level.
       applyValue: feature.isCont
         ? displayToInternal(feature, suggested[name])
-        : suggested[name]
+        : (typeof plan.cfDataRaw[feature.featureID] === 'number' && feature.labelEncoder
+            ? feature.labelEncoder[plan.cfDataRaw[feature.featureID]]
+            : plan.cfDataRaw[feature.featureID])
     });
   });
   return out;
