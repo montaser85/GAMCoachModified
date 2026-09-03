@@ -9,17 +9,10 @@
  */
 
 import { appliedLoanDtiContribution } from '../engine/index.mjs';
-
-/**
- * Displayed approval percentage that never CONTRADICTS the approval status. Approval
- * keys off the TRUE probability (≥ 0.5), so a score like 0.4966 is "not approved" —
- * but a plain round() would show it as "50%" (looks approved). Floor a not-approved
- * score to 49 and lift an approved score to 50, so "50%" always means approved.
- */
-function approvalPct(prob) {
-  const raw = Math.round((prob || 0) * 100);
-  return prob >= 0.5 ? Math.max(50, raw) : Math.min(49, raw);
-}
+// Displayed approval percentage that never CONTRADICTS the approval status (a score
+// like 0.4966 is "not approved" but a plain round() shows "50%"). Shared with the
+// score-readout / ideas / compare components so every surface agrees.
+import { approvalPoints as approvalPct } from './score';
 
 /**
  * The applicant's RAW profile DTI (model units), i.e. the load-time baseline DTI

@@ -3,6 +3,7 @@
   import { compareOpenStore, constraintsStore, ideaApplyStore } from '../../store';
   import { planSuggestedIdeas, computeIdeasForPlan } from '../ideas/planIdeas';
   import { appliedLoanDtiContribution } from '../../engine/index.mjs';
+  import { approvalPoints, isApproved } from '../../utils/score';
 
   /** @type {import('../coach/Coach').Plans} */
   export let plans = null;
@@ -72,8 +73,6 @@
     ideaApplyStore.set({ name: idea.name, value: idea.applyValue });
     compareOpenStore.set(false);
   }
-
-  const APPROVAL_POINTS = 50; // approval threshold in points
 
   // A change whose per-feature score contribution is within ±this (log-odds) is
   // treated as neutral — the value moved but the score didn't.
@@ -181,7 +180,8 @@
         return {
           planIndex: idx,
           name: label?.name ?? `Plan ${idx}`,
-          approvalPct: Math.round(probPct),
+          // Clamp so a not-approved plan never displays a rounded-up 50%.
+          approvalPct: approvalPoints(probPct / 100),
           deltaPP: parseFloat((probPct - origProb).toFixed(1)),
           isBest: false,
           features: plan.features.map(f => {
@@ -256,15 +256,18 @@
    * score, and (only when below approval) its own Ideas-to-try chips.
    */
   function buildSummary() {
-    const points = (p) => Math.round(sigmoid(p.ebmLocal.predScore) * 100);
     const list = Array.from(localPlans.keys())
       .sort((a, b) => a - b)
       .map((idx) => {
         const p = localPlans.get(idx);
         if (!p) return null;
         const label = planLabels.find((l) => l.planIndex === idx);
-        const pts = points(p);
-        const approved = pts >= APPROVAL_POINTS;
+        // Approval keys off the TRUE probability, and the displayed points are
+        // clamped to agree with it — so "50 / approved" can never appear for a plan
+        // whose probability is actually below 0.5.
+        const prob = sigmoid(p.ebmLocal.predScore);
+        const pts = approvalPoints(prob);
+        const approved = isApproved(prob);
 
         // RE-BASELINE: every plan's live state is the same user baseline now, so
         // the old applied-value comparison is degenerate. Compare Plans instead

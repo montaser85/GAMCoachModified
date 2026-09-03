@@ -2,6 +2,7 @@
   // @ts-check
   import { onDestroy } from 'svelte';
   import { sigmoid } from '../../ebm/ebm';
+  import { approvalPoints, isApproved } from '../../utils/score';
 
   /** Active plan store (writable<Plan>) or null while loading. */
   export let planStore = null;
@@ -22,14 +23,17 @@
   // Scores as "points" (probability × 100), matching ScorePanel's math.
   $: curProb = plan ? sigmoid(plan.ebmLocal.predScore) : null;
   $: origProb = plan ? sigmoid(plan.originalScore) : null;
-  $: curPoints = curProb === null ? null : Math.round(curProb * 100);
-  $: origPoints = origProb === null ? null : Math.round(origProb * 100);
-  // Bar position (0–100), clamped.
+  // Displayed points MUST agree with the approval status: a plain Math.round lets a
+  // probability in [0.495, 0.50) show "50 points" while the status reads "Not
+  // approved". `approvalPoints` clamps so a not-approved score never renders ≥ 50
+  // and an approved score never renders < 50.
+  $: curPoints = approvalPoints(curProb);
+  $: origPoints = approvalPoints(origProb);
+  // Bar position (0–100), clamped. Uses the display points, so the dot sits left of
+  // the threshold tick whenever the plan is not approved.
   $: curPct = curPoints === null ? 0 : Math.max(0, Math.min(100, curPoints));
-  // Approval keys off the TRUE probability (0.5 threshold), never the rounded
-  // points — otherwise a score in [0.495, 0.50) would round to 50 and falsely read
-  // "Approved". A plan below 0.5 must read "Not approved."
-  $: approved = curProb !== null && curProb >= 0.5;
+  // Approval keys off the TRUE probability (0.5 threshold), never the rounded points.
+  $: approved = isApproved(curProb);
 </script>
 
 <div class="score-readout">

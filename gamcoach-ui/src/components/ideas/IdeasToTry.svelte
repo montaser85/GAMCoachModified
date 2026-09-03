@@ -11,13 +11,14 @@
   import { onDestroy } from 'svelte';
   import { sigmoid } from '../../ebm/ebm';
   import { ideasStore, ideaApplyStore } from '../../store';
+  import { approvalPoints, APPROVAL_POINTS } from '../../utils/score';
   import HeaderInfo from '../header-info/HeaderInfo.svelte';
 
   /** Active plan store (writable<Plan>) or null while loading — used for the
    * points-based status line. */
   export let planStore = null;
 
-  const THRESHOLD = 50; // approval threshold, in points (matches ScoreReadout)
+  const THRESHOLD = APPROVAL_POINTS; // approval threshold, in points (matches ScoreReadout)
 
   /** @type {Array<{name:string, displayName:string, verb:string, direction:string, mode:string, targetDisplay?:string}>} */
   let ideas = [];
@@ -37,7 +38,9 @@
 
   let collapsed = false; // section hide/unhide (name stays visible)
 
-  $: curPoints = plan ? Math.round(sigmoid(plan.ebmLocal.predScore) * 100) : null;
+  // Clamp so the status line agrees with the readout/approval status: a probability
+  // in [0.495, 0.50) must NOT read "You've reached approval" (it renders as 49, not 50).
+  $: curPoints = plan ? approvalPoints(sigmoid(plan.ebmLocal.predScore)) : null;
   $: statusLine =
     curPoints === null
       ? ''

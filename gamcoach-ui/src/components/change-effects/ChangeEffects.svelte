@@ -7,6 +7,7 @@
   import { onDestroy } from 'svelte';
   import { sigmoid } from '../../ebm/ebm';
   import { changeEffectsStore } from '../../store';
+  import { approvalPoints } from '../../utils/score';
   import HeaderInfo from '../header-info/HeaderInfo.svelte';
 
   const BLUE = '#185FA5'; // helps approval
@@ -33,8 +34,10 @@
   }
   onDestroy(() => { if (unsubPlan) unsubPlan(); });
 
-  $: curPct = plan ? Math.round(sigmoid(plan.ebmLocal.predScore) * 100) : null;
-  $: origPct = plan ? Math.round(sigmoid(plan.originalScore) * 100) : null;
+  // Threshold-consistent points so the hover's "from X% to Y%" matches the readout
+  // (a not-approved score reads 49, not a rounded-up 50).
+  $: curPct = plan ? approvalPoints(sigmoid(plan.ebmLocal.predScore)) : null;
+  $: origPct = plan ? approvalPoints(sigmoid(plan.originalScore)) : null;
 
   let collapsed = false; // section hide/unhide (name stays visible)
 

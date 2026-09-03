@@ -16,6 +16,7 @@
   import { fade } from 'svelte/transition';
   import { tooltipConfigStore, featureValueOverrideStore, cardToggleStore, propagatedFeaturesStore, historySidebarOpenStore, changeEffectsStore, ideasStore, ideaDismissStore, ideaApplyStore, derogFloorHintStore } from '../../store';
   import { sigmoid } from '../../ebm/ebm';
+  import { isApproved } from '../../utils/score';
   import {
     STRUCTURAL_EXCLUSIONS,
     POLICY_OVERRIDES,
@@ -3058,13 +3059,15 @@
   // ── Loan-cost summary (repayment breakdown) ─────────────────────────────────
   // The same "Total you'll repay" box the bookmarks panel shows for SAVED plans,
   // but rendered live at the top of the panel for the CURRENT plan whenever it has
-  // reached approval (displayed score ≥ 50) — no need to save first. Computed from
-  // the live sample via the engine's amortization helper; display-only.
+  // reached approval — no need to save first. Keys off the TRUE probability (≥ 0.5),
+  // not rounded points, so a plan at e.g. 0.497 (which reads "Not approved" / 49
+  // points) does NOT show the box. Computed from the live sample via the engine's
+  // amortization helper; display-only.
   const money = (x) => Math.round(x).toLocaleString('en-US');
   const moneyApprox = (x) => (Math.round(x / 100) * 100).toLocaleString('en-US');
   $: loanCost =
     !setupMode && plan && plan.ebmLocal &&
-    Math.round(sigmoid(plan.ebmLocal.predScore) * 100) >= 50
+    isApproved(sigmoid(plan.ebmLocal.predScore))
       ? (() => {
           const names = [];
           plan.features.forEach((f) => { names[f.featureID] = f.data.name; });
