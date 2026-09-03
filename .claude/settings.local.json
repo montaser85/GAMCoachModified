@@ -158,7 +158,10 @@
       "Bash(cd \"D:/OSU/Dr B research group/GAM_Coach/gam-coach_modified/gamcoach-ui\" && sleep 5 && grep -c \"rawCategoricalLabel\" public/build/bundle.js; echo \"---log tail---\"; tail -8 /tmp/rollup-watch.log)",
       "Bash(cd \"D:/OSU/Dr B research group/GAM_Coach/gam-coach_modified/gamcoach-ui\" && echo \"=== full log ===\"; cat /tmp/rollup-watch.log | tail -30; echo \"=== bundle greps ===\"; grep -c \"rawCategoricalLabel\\\\|__applyDbg\" public/build/bundle.js)",
       "Bash(rm -f /tmp/rollup-watch.log)",
-      "Bash(echo \"started pid $!\")"
+      "Bash(echo \"started pid $!\")",
+      "Bash(git --no-pager log --oneline -20)",
+      "Bash(git --no-pager diff -- gamcoach-ui/src/components/compare-modal/CompareModal.svelte gamcoach-ui/src/utils/historyManager.js)",
+      "Bash(git --no-pager diff -- gamcoach-ui/src/components/score-readout/ScoreReadout.svelte gamcoach-ui/src/components/ideas/IdeasToTry.svelte gamcoach-ui/src/components/change-effects/ChangeEffects.svelte gamcoach-ui/src/components/feature-panel/FeaturePanel.svelte)"
     ]
   }
 }
