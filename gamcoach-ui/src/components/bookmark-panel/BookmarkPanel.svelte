@@ -193,7 +193,7 @@
   <div class="plan-list">
     {#if bookmarkConfig.plans.size === 0}
       <div class="description">
-        To save a plan you like, click the star next to the plan name
+        To save a plan you like, click the save button next to the plan name
       </div>
     {:else}
       {#each [...bookmarkConfig.plans] as [planIndex, savedPlan]}
