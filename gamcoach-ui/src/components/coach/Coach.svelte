@@ -1036,61 +1036,78 @@
       }
     }
 
-    // Save / Saved button (replaces the old star). Neutral pill when unsaved; a
-    // filled green pill with a checkmark once the plan is saved.
+    // Save / Saved button (replaces the old star). Designed to be clearly VISIBLE
+    // in EVERY state — especially the disabled (< 50% approval) state, which is the
+    // default when plans first load — so users notice the button exists. It is
+    // never faded out; instead each state has its own solid color.
     .save-plan-btn {
       display: inline-flex;
       align-items: center;
-      gap: 4px;
+      gap: 5px;
       flex: 0 0 auto;
       font-family: inherit;
       font-size: 0.95rem;
-      font-weight: 600;
+      font-weight: 700;
       line-height: 1;
       white-space: nowrap;
-      padding: 5px 12px;
+      padding: 6px 14px;
       border-radius: 6px;
-      border: 1px solid $gray-300;
-      background: $gray-50;
-      color: $gray-700;
       cursor: pointer;
       transition: background-color 120ms ease, border-color 120ms ease,
         color 120ms ease;
+
+      // Enabled + not saved — a solid blue call-to-action.
+      background: hsl(206, 82%, 52%);
+      border: 1px solid hsl(206, 82%, 44%);
+      color: white;
 
       .save-check {
         flex: 0 0 auto;
       }
 
       &:hover {
-        background-color: adjust-color($color: $gray-200, $lightness: -4%);
-        border-color: $gray-400;
+        background: hsl(206, 82%, 46%);
+        border-color: hsl(206, 82%, 38%);
       }
 
-      // Saved state — filled green pill, clearly indicating the plan is saved.
+      // Saved — a solid green pill with the checkmark.
       &.saved {
-        background: hsl(140, 55%, 94%);
-        border-color: hsl(140, 45%, 60%);
-        color: hsl(140, 60%, 26%);
+        background: hsl(142, 52%, 40%);
+        border-color: hsl(142, 52%, 32%);
+        color: white;
 
         &:hover {
-          background: hsl(140, 55%, 89%);
-          border-color: hsl(140, 45%, 50%);
+          background: hsl(142, 52%, 34%);
+          border-color: hsl(142, 52%, 27%);
         }
       }
 
-      // Sub-50% and not yet saved: cannot bookmark. Dim it and block the pointer so
-      // it reads as unavailable (matches the old star's disabled behavior).
+      // Below 50% and not yet saved: cannot save. Still FULLY VISIBLE (no opacity
+      // fade) so users notice the button — a soft, readable blue with a not-allowed
+      // cursor. The tooltip explains that 50% approval is needed first.
       &.disabled {
         cursor: not-allowed;
-        opacity: 0.4;
 
-        &:hover {
-          background: $gray-50;
-          border-color: $gray-300;
+        &:not(.saved) {
+          background: hsl(206, 58%, 91%);
+          border-color: hsl(206, 42%, 74%);
+          color: hsl(206, 40%, 42%);
+
+          &:hover {
+            background: hsl(206, 58%, 91%);
+            border-color: hsl(206, 42%, 74%);
+          }
         }
-        &.saved:hover {
-          background: hsl(140, 55%, 94%);
-          border-color: hsl(140, 45%, 60%);
+
+        // A saved plan that later drops below approval stays green, just muted.
+        &.saved {
+          background: hsl(142, 36%, 56%);
+          border-color: hsl(142, 32%, 45%);
+
+          &:hover {
+            background: hsl(142, 36%, 56%);
+            border-color: hsl(142, 32%, 45%);
+          }
         }
       }
     }
