@@ -167,7 +167,8 @@
       "Bash(cd \"D:/OSU/Dr B research group/GAM_Coach/gam-coach_modified/gamcoach-ui\" && echo \"=== circular deps mentioning Coach/planIdeas ===\"; grep -A3 \"Circular\" /tmp/rollup-watch.log | grep -iE \"Coach|planIdeas|ideas\" | head; echo \"=== build result ===\"; grep -iE \"created public/build|waiting for changes|\\\\] Error\" /tmp/rollup-watch.log | tail -5; echo \"=== bundle has reorder ===\"; grep -c reorderPlansByAmountIdeas public/build/bundle.js 2>/dev/null || echo \"no bundle yet\")",
       "Bash(cd \"D:/OSU/Dr B research group/GAM_Coach/gam-coach_modified/gamcoach-ui\" && tail -20 /tmp/rollup-watch.log | grep -iE \"created|error|bundle\" | tail -5; echo \"bundle exists: $\\([ -f public/build/bundle.js ] && echo yes\\)\")",
       "Bash(node -e ' *)",
-      "Bash(grep -o '.\\\\{0\\\\}The unpaid balance amount, if the balance on revolving credit account is not paid in full.\\\\{0\\\\}' public/data/lc-classifier.json)"
+      "Bash(grep -o '.\\\\{0\\\\}The unpaid balance amount, if the balance on revolving credit account is not paid in full.\\\\{0\\\\}' public/data/lc-classifier.json)",
+      "Bash(cd \"D:/OSU/Dr B research group/GAM_Coach/gam-coach_modified/gamcoach-ui\" && echo \"kept sentence present: $\\(grep -c 'only save these new changes' public/build/bundle.js\\)\"; grep -iE \"\\\\] Error|SyntaxError\" /tmp/rollup-watch.log | grep -v Circular | head -2 || echo \"no errors\")"
     ]
   }
 }
