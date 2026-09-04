@@ -666,7 +666,7 @@
           </div>
         {/if}
       {:else}
-        {#key `${plans.activePlanIndex}-${restorationCounter}`}
+        {#key `${plans.activePlanIndex}-${restorationCounter}-${plans.planOrderVersion || 0}`}
           <div class="feature-panel-wrapper">
             <FeaturePanel
               {windowLoaded}

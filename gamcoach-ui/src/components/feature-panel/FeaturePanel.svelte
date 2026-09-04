@@ -2744,13 +2744,18 @@
     // plan after a regenerate, which makes new plan objects — starts empty.
     dismissedNames = plan?.dismissedIdeaNames instanceof Set ? plan.dismissedIdeaNames : new Set();
     if (plan) plan.dismissedIdeaNames = dismissedNames;
-    if (dismissedNames.size === 0) {
-      // First time on this plan: show ALL its suggested changes (however many).
+    if (dismissedNames.size === 0 && amountIdeas.length > 0) {
+      // First time on this plan AND it has exact-amount suggested changes: show ALL
+      // of them (however many).
       visibleIdeas = [...amountIdeas];
       ideasStore.set(visibleIdeas);
     } else {
-      // Returning to a plan already acted on: steady-state three ideas, dismissed
-      // suggestions dropped and topped up with directional ideas.
+      // Either (a) first time on a plan with NO exact-amount suggestions — the
+      // coach reached this plan by changing only non-suggestable features — or
+      // (b) returning to a plan already acted on. In both cases fall back to the
+      // steady-state view: any remaining amount ideas topped up with DIRECTIONAL
+      // ideas, so a plan without exact amounts still shows ideas to try from the
+      // start instead of a blank panel.
       rebuildIdeas();
     }
   };

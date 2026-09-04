@@ -8,9 +8,55 @@ import {
   APPROVAL_PROB,
   MAX_FILTER_ATTEMPTS
 } from '../../ebm/gamcoach';
-import { writable } from 'svelte/store';
+import { writable, get } from 'svelte/store';
 import { Logger } from '../../utils/logger';
 import { appliedLoanDtiContribution } from '../../engine/index.mjs';
+import { planSuggestedIdeas } from '../ideas/planIdeas';
+
+/**
+ * Reorder freshly generated plans so the FIRST shown plan (the lowest index —
+ * labeled "Plan 1" and active by default) has at least one EXACT-AMOUNT suggested
+ * change, when any plan does. The first plan (in index order) that has amount ideas
+ * is moved to the lowest index; the other plans keep their relative order. If none
+ * have amount ideas, nothing changes.
+ *
+ * Plan OBJECTS are permuted across the SAME, stable indices (the store at each key
+ * keeps its key; only its value changes), so plan labels, Map keys, bookmarks, and
+ * history — all index-based — are unaffected. Safe to run right after generation,
+ * before any per-plan user state (notes, bookmarks, history) exists.
+ *
+ * @param {Plans} plans
+ * @param {Constraints} constraints
+ * @returns {boolean} true if the order changed (caller should bump the remount key)
+ */
+const reorderPlansByAmountIdeas = (plans, constraints) => {
+  const indices = [...plans.planStores.keys()].sort((a, b) => a - b);
+  if (indices.length < 2) return false;
+  const stores = indices.map((i) => plans.planStores.get(i));
+  const objs = stores.map((s) => get(s));
+  const hasAmountIdeas = objs.map((p) => {
+    try {
+      return planSuggestedIdeas(p, constraints).length > 0;
+    } catch (e) {
+      return false;
+    }
+  });
+  const firstWithIdeas = hasAmountIdeas.findIndex(Boolean);
+  // No plan has amount ideas, or the first plan already does → nothing to do.
+  if (firstWithIdeas <= 0) return false;
+  // Move the first plan that HAS amount ideas to the front; keep the rest in order.
+  const reordered = objs.slice();
+  const [moved] = reordered.splice(firstWithIdeas, 1);
+  reordered.unshift(moved);
+  // Re-seat the reordered plan objects on the SAME indices (value swap only).
+  indices.forEach((idx, pos) => {
+    const p = reordered[pos];
+    p.planIndex = idx;
+    stores[pos].set(p);
+  });
+  plans.activePlanIndex = indices[0];
+  return true;
+};
 
 /**
  * How many recourse plans to generate per batch (tabs/dropdown slots reserved).
@@ -786,6 +832,13 @@ export const initPlans = async (
 
   // Update the next plan index
   plans.nextPlanIndex += TOTAL_PLAN_NUM;
+
+  // Prefer showing a plan WITH exact-amount suggested changes as Plan 1. Bump the
+  // panel remount key so the active plan re-inits its "Ideas to try" for the (now
+  // reordered) Plan 1.
+  if (reorderPlansByAmountIdeas(plans, constraints)) {
+    plans.planOrderVersion = (plans.planOrderVersion || 0) + 1;
+  }
   plansUpdated(plans);
 
   // Total time to generate the whole batch (in seconds).
@@ -994,5 +1047,11 @@ export const regeneratePlans = async (
 
   // Update the next plan index
   plans.nextPlanIndex += TOTAL_PLAN_NUM;
+
+  // Prefer showing a plan WITH exact-amount suggested changes as Plan 1 (mirrors
+  // initPlans). Bump the panel remount key so the active plan re-inits its ideas.
+  if (reorderPlansByAmountIdeas(plans, constraints)) {
+    plans.planOrderVersion = (plans.planOrderVersion || 0) + 1;
+  }
   plansUpdated(plans);
 };
