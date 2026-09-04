@@ -315,6 +315,11 @@
    * label). Indexed parallel to modelData.features, exactly as Plan/initFeatures
    * expects; interaction slots are left as-is (the cards never read them).
    */
+  // Per-feature default label for the blank form, overriding the "first level"
+  // default for specific categoricals. Value must be one of the feature's encoder
+  // labels; ignored otherwise.
+  const BLANK_CATEGORICAL_DEFAULTS = { home_ownership: 'RENT' };
+
   const buildBlankExample = (modelData) => {
     // Start from a real example so the array's length / index layout matches exactly
     // what the EBM + Plan expect (interaction slots included), then only overwrite the
@@ -324,11 +329,16 @@
       if (i >= ex.length) return;
       if (f.type === 'categorical') {
         const enc = modelData.labelEncoder[f.name] || {};
-        const levels = Object.keys(enc)
-          .map(Number)
-          .filter((n) => !Number.isNaN(n))
-          .sort((a, b) => a - b);
-        if (levels.length) ex[i] = enc[String(levels[0])]; // first value's label
+        const override = BLANK_CATEGORICAL_DEFAULTS[f.name];
+        if (override && Object.values(enc).includes(override)) {
+          ex[i] = override; // e.g. Home Ownership defaults to "Rent"
+        } else {
+          const levels = Object.keys(enc)
+            .map(Number)
+            .filter((n) => !Number.isNaN(n))
+            .sort((a, b) => a - b);
+          if (levels.length) ex[i] = enc[String(levels[0])]; // first value's label
+        }
       } else if (f.type === 'continuous') {
         ex[i] = '';
       }
