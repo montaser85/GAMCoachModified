@@ -540,12 +540,12 @@
       animation: cmp-spin 0.9s linear infinite;
     }
     .sum-loading-text {
-      font-size: 1.725rem;
+      font-size: 1.38rem;
       font-weight: 600;
       color: $gray-800;
     }
     .sum-loading-sub {
-      font-size: 1.425rem;
+      font-size: 1.14rem;
       color: $gray-500;
     }
   }
@@ -574,7 +574,7 @@
     background: white;
     border-radius: 10px;
     box-shadow: 0 8px 48px hsla(0, 0%, 0%, 0.24);
-    max-width: 1040px;
+    max-width: 1196px;   // +15% panel size (was 1040px)
     width: 100%;
     max-height: 88vh;
     display: flex;
@@ -591,11 +591,11 @@
     border-bottom: 1px solid $gray-200;
     flex-shrink: 0;
 
-    .cmp-title { font-size: 1.725rem; font-weight: 700; color: $gray-900; margin-bottom: 3px; }
-    .cmp-subtitle { font-size: 1.35rem; color: gray; }
+    .cmp-title { font-size: 1.38rem; font-weight: 700; color: $gray-900; margin-bottom: 3px; }
+    .cmp-subtitle { font-size: 1.08rem; color: gray; }
 
     .cmp-x {
-      background: none; border: none; cursor: pointer; font-size: 1.5rem;
+      background: none; border: none; cursor: pointer; font-size: 1.2rem;
       color: $gray-400; padding: 2px 6px; border-radius: 4px; line-height: 1; flex-shrink: 0;
       &:hover { background: $gray-100; color: $gray-700; }
     }
@@ -615,7 +615,7 @@
       display: flex;
       align-items: center;
       gap: 6px;
-      font-size: 18px;
+      font-size: 14.4px;
       color: $gray-600;
     }
     .leg-tag {
@@ -657,7 +657,7 @@
     width: 220px;
     min-width: 180px;
     padding: 10px 12px 8px 20px;
-    font-size: 1.275rem;
+    font-size: 1.02rem;
     font-weight: 700;
     letter-spacing: 0.06em;
     color: gray;
@@ -676,18 +676,18 @@
     &.th-best { background: hsl(152, 55%, 95%); border-bottom-color: hsl(152, 50%, 50%); }
 
     .plan-name {
-      font-size: 1.38rem; font-weight: 700; color: $gray-600; margin-bottom: 5px;
+      font-size: 1.104rem; font-weight: 700; color: $gray-600; margin-bottom: 5px;
       .star { color: hsl(45, 88%, 42%); margin-right: 2px; }
     }
     .plan-pct {
-      font-size: 2.175rem; font-weight: 800; color: $gray-800; line-height: 1;
+      font-size: 1.74rem; font-weight: 800; color: $gray-800; line-height: 1;
       &.plan-pct-best { color: hsl(152, 48%, 32%); }
     }
     .plan-pct-label {
-      font-size: 1.125rem; font-weight: 600; letter-spacing: 0.05em; color: gray; margin: 3px 0 2px;
+      font-size: 0.9rem; font-weight: 600; letter-spacing: 0.05em; color: gray; margin: 3px 0 2px;
     }
     .plan-delta {
-      font-size: 1.275rem; font-weight: 600;
+      font-size: 1.02rem; font-weight: 600;
       &.delta-pos { color: $c-up-text; }   /* increase → blue, matching the cells */
       &.delta-neg { color: $c-down-text; } /* decrease → red */
     }
@@ -703,16 +703,16 @@
     padding: 8px 12px 8px 20px;
     white-space: nowrap;
 
-    .td-name-main { font-size: 1.38rem; font-weight: 600; color: $gray-800; }
-    .td-name-orig { font-size: 1.2rem; color: $gray-500; margin-top: 1px;
+    .td-name-main { font-size: 1.104rem; font-weight: 600; color: $gray-800; }
+    .td-name-orig { font-size: 0.96rem; color: $gray-500; margin-top: 1px;
       .orig-tag {
-        font-size: 1.02rem; font-weight: 700; letter-spacing: 0.03em;
+        font-size: 0.816rem; font-weight: 700; letter-spacing: 0.03em;
         text-transform: uppercase; color: $gray-400; margin-right: 3px;
       }
     }
   }
 
-  .td-none { padding: 16px 20px; color: $gray-500; font-size: 1.35rem; }
+  .td-none { padding: 16px 20px; color: $gray-500; font-size: 1.08rem; }
 
   /* Value cells — text colored strictly by the model's per-feature contribution
      (no left bar). Neutral = value in default color; empty = muted em-dash. */
@@ -723,7 +723,7 @@
     border-left: 1px solid $gray-100;
     background: white;
 
-    .cell-val { font-size: 1.5rem; font-weight: 700; color: $gray-800; }
+    .cell-val { font-size: 1.2rem; font-weight: 700; color: $gray-800; }
     .cell-empty { color: $gray-400; font-weight: 600; }
   }
 
@@ -744,7 +744,7 @@
     border: none;
     border-top: 1px solid $gray-200;
     cursor: pointer;
-    font-size: 1.35rem;
+    font-size: 1.08rem;
     font-weight: 600;
     color: $gray-700;
     text-align: left;
@@ -758,8 +758,8 @@
     gap: 4px 24px;
     padding: 10px 20px 14px 34px;
 
-    .uc-name { font-size: 1.32rem; color: $gray-700; }
-    .uc-val  { font-size: 1.32rem; font-weight: 600; color: $gray-800; text-align: right; }
+    .uc-name { font-size: 1.056rem; color: $gray-700; }
+    .uc-val  { font-size: 1.056rem; font-weight: 600; color: $gray-800; text-align: right; }
   }
 
   /* ── Footer ────────────────────────────────────────────────────── */
@@ -772,11 +772,11 @@
     flex-shrink: 0;
     background: $gray-50;
 
-    .footer-note { font-size: 1.275rem; color: black; }
+    .footer-note { font-size: 1.02rem; color: black; }
 
     .cmp-close-btn {
       background: white; border: 1px solid $gray-300; color: $gray-700;
-      cursor: pointer; font-size: 1.35rem; font-weight: 600; padding: 6px 20px; border-radius: 6px;
+      cursor: pointer; font-size: 1.08rem; font-weight: 600; padding: 6px 20px; border-radius: 6px;
       &:hover { background: $gray-100; }
     }
   }
@@ -800,7 +800,7 @@
       border: none;
       background: transparent;
       cursor: pointer;
-      font-size: 1.35rem;
+      font-size: 1.08rem;
       font-weight: 600;
       color: $gray-600;
       padding: 6px 20px;
@@ -827,8 +827,8 @@
       align-items: flex-start;
       justify-content: space-between;
     }
-    .sum-title { font-size: 1.725rem; font-weight: 700; color: $gray-900; }
-    .sum-subtitle { font-size: 1.35rem; color: gray; margin-top: 3px; max-width: 640px; }
+    .sum-title { font-size: 1.38rem; font-weight: 700; color: $gray-900; }
+    .sum-subtitle { font-size: 1.08rem; color: gray; margin-top: 3px; max-width: 640px; }
   }
 
   .sum-legend {
@@ -846,7 +846,7 @@
 
     // Explanation shown inline to the right of each pill (no hover needed here).
     .sum-legend-desc {
-      font-size: 1.08rem;
+      font-size: 0.864rem;
       font-weight: 500;
       color: $gray-600;
       line-height: 1.3;
@@ -857,7 +857,7 @@
   .sum-prov {
     display: inline-flex;
     align-items: center;
-    font-size: 1.02rem;
+    font-size: 0.816rem;
     font-weight: 700;
     padding: 1px 7px;
     border-radius: 10px;
@@ -904,7 +904,7 @@
   }
 
   .sg-planhead {
-    font-size: 1.275rem;
+    font-size: 1.02rem;
     font-weight: 700;
     color: $gray-800;
     padding: 8px 10px 6px;
@@ -924,7 +924,7 @@
   }
 
   .sg-rowlabel {
-    font-size: 0.99rem;
+    font-size: 0.792rem;
     font-weight: 700;
     letter-spacing: 0.04em;
     color: gray;
@@ -950,21 +950,21 @@
   /* APPROVAL SCORE */
   .sg-approval-cell {
     .sg-score {
-      font-size: 2.325rem;
+      font-size: 1.86rem;
       font-weight: 800;
       line-height: 1;
       color: var(--text-primary, #000); // at/above approval → black
       &.below { color: #888780; }        // below approval → gray
     }
     .sg-approve-label {
-      font-size: 1.11rem;
+      font-size: 0.888rem;
       color: $gray-600;
       margin-top: 4px;
     }
     .sg-highest {
       display: inline-block;
       margin-top: 7px;
-      font-size: 0.96rem;
+      font-size: 0.768rem;
       font-weight: 700;
       letter-spacing: 0.02em;
       color: hsl(45, 90%, 30%);
@@ -997,7 +997,7 @@
     .sg-feat-name {
       flex: 1 1 auto;
       min-width: 0;
-      font-size: 1.17rem;
+      font-size: 0.936rem;
       font-weight: 600;
       color: $gray-800;
       line-height: 1.2;
@@ -1010,7 +1010,7 @@
     }
     .sum-prov { flex: 0 0 auto; }
     .sg-vals {
-      font-size: 1.14rem;
+      font-size: 0.912rem;
       font-weight: 600;
       color: $gray-700;
       font-variant-numeric: tabular-nums;
@@ -1037,7 +1037,7 @@
       border: 1px solid #e8d3a0;
       border-radius: 14px;
       color: #000;
-      font-size: 1.14rem;
+      font-size: 0.912rem;
       font-weight: 600;
       line-height: 1.2;
       overflow-wrap: anywhere;
