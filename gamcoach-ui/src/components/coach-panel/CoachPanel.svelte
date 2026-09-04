@@ -704,7 +704,7 @@
         <svg viewBox="0 0 20 20" width="13" height="13" aria-hidden="true">
           <polygon points="5,3 17,10 5,17" fill="currentColor"/>
         </svg>
-        Watch example
+        Watch Example
       </button>
       <div class="icon-wrapper" on:click={() => historySidebarOpenStore.update(v => !v)} title="Your explorations">
         <svg class="history-svg" viewBox="0 0 24 24" width="18" height="18" style="fill: none;" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
