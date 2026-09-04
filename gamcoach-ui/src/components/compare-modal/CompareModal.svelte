@@ -501,10 +501,7 @@
                         applyIdeaFromCompare(idea);
                       }
                     }}
-                    >{idea.verb} {idea.displayName}{idea.mode === 'amount' &&
-                    idea.targetDisplay
-                      ? ` to ${idea.targetDisplay}`
-                      : ''}</span
+                    ><span class="sg-chip-text"><span class="sg-chip-verb">{idea.verb}</span> {idea.displayName}{#if idea.mode === 'amount' && idea.targetDisplay}{' to '}{idea.targetDisplay}{/if}</span></span
                   >
                 {/each}
               </div>
@@ -1041,6 +1038,11 @@
       font-weight: 600;
       line-height: 1.2;
       overflow-wrap: anywhere;
+
+      // Bold the verb (Raise / Lower / Change), matching the "Ideas to try" panel.
+      .sg-chip-verb {
+        font-weight: 800;
+      }
     }
 
     // Exact-amount suggestions — very light blue, clickable to apply (matches the
