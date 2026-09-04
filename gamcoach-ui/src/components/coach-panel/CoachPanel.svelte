@@ -214,8 +214,7 @@
             confirmed: true,
             contextLines: [
               `Plan ${plan.planIndex} has been modified by you. Saving this
-               plan will <b> only save these new changes </b> instead of GAM
-               Coach's initial suggested changes.`
+               plan will <b>only save these new changes</b>.`
             ],
             confirmText: 'Save',
             cancelText: 'Cancel',
