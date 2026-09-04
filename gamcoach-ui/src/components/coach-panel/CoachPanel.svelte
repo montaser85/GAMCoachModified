@@ -215,9 +215,7 @@
             contextLines: [
               `Plan ${plan.planIndex} has been modified by you. Saving this
                plan will <b> only save these new changes </b> instead of GAM
-               Coach's initial suggested changes.`,
-              `If you want to restore the initial changes, you can click the
-               reset buttons in the extended feature cards.`
+               Coach's initial suggested changes.`
             ],
             confirmText: 'Save',
             cancelText: 'Cancel',
