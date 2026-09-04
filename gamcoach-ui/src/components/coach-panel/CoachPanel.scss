@@ -486,41 +486,48 @@
   gap: 5px;
   flex: 0 0 auto; // the buttons never shrink; the subtitle yields instead
 
+  // Toolbar action buttons (Compare Plans, Your Explorations, Saved Plans, New
+  // Plans) share the SAME accent-pill style as the "Watch example" button so the
+  // whole toolbar reads as one consistent set.
   .icon-wrapper {
-    background-color: $gray-50;
-    border-radius: 6px;
-    padding: 6px 11px;
-    color: $gray-700;
-    border: 1px solid $gray-300;
-    font-size: 1.06rem;
-    line-height: 1;
-    gap: 5px;
-    cursor: default;
-
+    align-self: center;
     display: flex;
     flex-direction: row;
     justify-content: flex-start;
     align-items: center;
+    gap: 6px;
 
-    transition: background-color 100ms ease-in-out;
+    padding: 5px 13px;
+    font-size: 0.97rem;
+    font-weight: 600;
+    line-height: 1.4;
+    color: $blue-700;                      // accent text
+    background: hsl(206, 100%, 96%);       // light accent tint
+    border: 1px solid hsl(206, 70%, 82%);  // thin accent border
+    border-radius: 6px;
+    cursor: pointer;
+
+    transition: background 150ms, border-color 150ms;
 
     .svg-icon {
-      cursor: default;
+      cursor: pointer;
     }
 
     :global(svg) {
       color: currentColor;
       fill: currentColor;
-      width: 1.06rem;
-      height: 1.06rem;
+      flex: 0 0 auto;
+      width: 15px;
+      height: 15px;
     }
 
     &:hover {
-      background-color: adjust-color($color: white, $lightness: -7%);
+      background: hsl(206, 100%, 93%);
+      border-color: hsl(206, 70%, 70%);
     }
 
     &:active {
-      background-color: adjust-color($color: white, $lightness: -11%);
+      background: hsl(206, 100%, 90%);
     }
   }
 }
