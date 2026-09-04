@@ -222,7 +222,7 @@
       alert(
         ''.concat(
           'You have set a new preference, but you have not ',
-          'generate new plans with this new preference yet. Click "Regenerate"',
+          'generate new plans with this new preference yet. Click "New Plans"',
           'button ',
           'to generate new plans that meet your new preference.'
         )

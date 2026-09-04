@@ -122,13 +122,13 @@
     'home_ownership': { canChange: 'Number of Mortgages, Number of Open Accounts, Number of Accounts, FICO Score' },
     'revol_bal':      { changedBy: 'Credit Utilization',
                         canChange: 'Credit Utilization, Debt to Income Ratio' },
-    'revol_util':     { changedBy: 'Revolving Balance',
-                        canChange: 'Revolving Balance, Debt to Income Ratio' },
+    'revol_util':     { changedBy: 'Unpaid Credit Card Balance',
+                        canChange: 'Unpaid Credit Card Balance, Debt to Income Ratio' },
     'open_acc':       { changedBy: 'Number of Mortgages, Home Ownership',
                         canChange: 'Number of Accounts, FICO Score' },
     'mort_acc':       { changedBy: 'Home Ownership',
                         canChange: 'Number of Open Accounts, Number of Accounts, FICO Score' },
-    'dti':            { changedBy: 'Loan Amount, Payment Period, Loan Purpose, Annual Income, Revolving Balance, Credit Utilization' },
+    'dti':            { changedBy: 'Loan Amount, Payment Period, Loan Purpose, Annual Income, Unpaid Credit Card Balance, Credit Utilization' },
     'fico_score':     { changedBy: 'Number of Open Accounts, Number of Mortgages, Home Ownership, Number of Credit Inquiries' },
     'total_acc':      { changedBy: 'Number of Open Accounts, Number of Mortgages, Home Ownership' },
     // One-way edge: Number of Bankruptcies -> Number of Derogatory Records
@@ -190,14 +190,14 @@
   // Display names for all features — used in arrow labels
   const DISPLAY_NAMES = {
     'loan_amnt': 'Loan Amount', 'dti': 'Debt to Income Ratio',
-    'annual_inc': 'Annual Income', 'revol_bal': 'Revolving Balance',
+    'annual_inc': 'Annual Income', 'revol_bal': 'Unpaid Credit Card Balance',
     'open_acc': 'Number of Open Accounts', 'fico_score': 'FICO Score',
     'term': 'Payment Period', 'home_ownership': 'Home Ownership',
     'purpose': 'Loan Purpose', 'inq_last_6mths': 'Number of Credit Inquiries',
     'pub_rec_bankruptcies': 'Number of Bankruptcies', 'revol_util': 'Credit Utilization',
     'total_acc': 'Number of Accounts', 'mort_acc': 'Number of Mortgages',
     'earliest_cr_line': 'Credit History Length', 'emp_length': 'Employment Length',
-    'verification_status': 'Verification Status', 'delinq_2yrs': 'Number of Past Due',
+    'verification_status': 'Income Verification Status', 'delinq_2yrs': 'Number of Past Due',
     'pub_rec': 'Number of Derogatory Records', 'application_type': 'Application Type'
   };
 

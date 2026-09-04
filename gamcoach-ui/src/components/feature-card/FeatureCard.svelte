@@ -741,7 +741,7 @@
                       <div class="dti-row">New loan of {linkCalculation.p2LoanAmount} {linkCalculation.loanIncreased ? 'raises' : 'drops'} the monthly payment from <b>{linkCalculation.p2OldLoanPayment}</b> to <b>{linkCalculation.p2NewLoanPayment}</b>.</div>
                     {/if}
                     {#if linkCalculation.revolChanged}
-                      <div class="dti-row">New revolving balance adds: <b>{linkCalculation.p2RevolToDebt}</b> to debt.</div>
+                      <div class="dti-row">New credit card balance adds: <b>{linkCalculation.p2RevolToDebt}</b> to debt.</div>
                     {/if}
                     <div class="dti-row">New total monthly debt payment: {linkCalculation.foldDebtExpr} = <b>{linkCalculation.foldNewTotalDebt}</b></div>
                     <div class="dti-row">{linkCalculation.hasManualDti ? 'DTI from your inputs' : 'New DTI'}: {linkCalculation.foldNewTotalDebt} &divide; {linkCalculation.finalIncome} = <b>{linkCalculation.propagatedDtiPct}%</b></div>
@@ -775,9 +775,9 @@
               {:else if linkCalculation?.type === 'revol_bal'}
                 {#if linkCalculation.engaged}
                   <div class="link-calculation dti-calc">
-                    <div class="dti-line intro">You have <b>{linkCalculation.newBalance}</b> in unpaid revolving balance.</div>
+                    <div class="dti-line intro">You have <b>{linkCalculation.newBalance}</b> in unpaid credit card balance.</div>
                     <details class="dti-details">
-                    <summary class="dti-subhead">Your revolving balance breakdown</summary>
+                    <summary class="dti-subhead">Your credit card balance breakdown</summary>
                     <div class="dti-row">{linkCalculation.baseIsSuggested ? 'Suggested balance' : 'Your profile balance'}: <b>{linkCalculation.baseBalance}</b></div>
                     <!-- Causal order matches the Total sum line: base -> utilization-driven -> your direct edit. -->
                     {#if linkCalculation.showUtilRow}
@@ -797,8 +797,8 @@
                     {#if linkCalculation.hasLimit}
                       <details class="dti-details">
                       <summary class="dti-subhead">Your utilization breakdown</summary>
-                      <div class="dti-row">Your credit limit: <b>{linkCalculation.creditLimit}</b> (estimated from your profile revolving balance {linkCalculation.currentBalance} &divide; credit utilization {linkCalculation.currentUtilization}%)</div>
-                      <div class="dti-row">New revolving balance: <b>{linkCalculation.newBalance}</b></div>
+                      <div class="dti-row">Your credit limit: <b>{linkCalculation.creditLimit}</b> (estimated from your profile credit card balance {linkCalculation.currentBalance} &divide; credit utilization {linkCalculation.currentUtilization}%)</div>
+                      <div class="dti-row">New credit card balance: <b>{linkCalculation.newBalance}</b></div>
                       <div class="dti-row">New utilization: {linkCalculation.newBalance} &divide; {linkCalculation.creditLimit} &times; 100 = <b>{linkCalculation.newUtilizationRaw}%</b>{#if linkCalculation.utilCapped}&nbsp;&mdash; this is above the maximum limit of 100%, so it&rsquo;s capped at <b>100%</b>.{/if}</div>
                       {#if linkCalculation.changeVerb === 'stayed at'}
                         <div class="dti-line final">Your credit utilization stayed at <b>{linkCalculation.newUtilization}%</b></div>

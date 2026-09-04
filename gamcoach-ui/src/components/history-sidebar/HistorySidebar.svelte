@@ -65,13 +65,13 @@
 {#if $historySidebarOpenStore}
   <div class="sidebar-panel">
     <div class="sidebar-header">
-      <h2>Exploration History</h2>
+      <h2>Your Explorations</h2>
       <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
       <button
         class="sidebar-close"
         on:click={() => historySidebarOpenStore.set(false)}
         title="Close"
-        aria-label="Close exploration history"
+        aria-label="Close your explorations"
       >&times;</button>
     </div>
 
@@ -83,7 +83,7 @@
 
     <div class="entries-list">
       {#if planEntries.length === 0}
-        <div class="no-entries">No entries yet. Start modifying features to build your history.</div>
+        <div class="no-entries">No entries yet. Start modifying features to build your explorations.</div>
       {:else}
         {#each [...planEntries].reverse() as entry (entry.timestamp)}
           <div class="entry-card" class:saved={entry.saved}>

@@ -213,7 +213,7 @@
             show: true,
             confirmed: true,
             contextLines: [
-              `Plan ${plan.planIndex} has been modified by you. Bookmarking this
+              `Plan ${plan.planIndex} has been modified by you. Saving this
                plan will <b> only save these new changes </b> instead of GAM
                Coach's initial suggested changes.`,
               `If you want to restore the initial changes, you can click the
@@ -480,15 +480,15 @@
     const needRegenerateConfirm = localStorage.getItem('needRegenerateConfirmV2');
     if (needRegenerateConfirm === 'true') {
       confirmModalConfig = {
-        title: 'Regenerate Plans',
+        title: 'New Plans',
         show: true,
         confirmed: true,
         contextLines: [
-          `After regenerating plans, you will <b>lose access</b> to all current
+          `After generating new plans, you will <b>lose access</b> to all current
           unsaved plans.`,
           'Make sure to click the star icons to save plans you like.'
         ],
-        confirmText: 'Regenerate',
+        confirmText: 'New Plans',
         cancelText: 'Cancel',
         doNotShowAgain: false,
         confirmCallback: (doNotShowAgain, confirmed) => {
@@ -706,16 +706,16 @@
         </svg>
         Watch example
       </button>
-      <div class="icon-wrapper" on:click={() => historySidebarOpenStore.update(v => !v)} title="Exploration history">
+      <div class="icon-wrapper" on:click={() => historySidebarOpenStore.update(v => !v)} title="Your explorations">
         <svg class="history-svg" viewBox="0 0 24 24" width="18" height="18" style="fill: none;" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
           <path d="M12 8l0 4l2 2"/>
           <path d="M3.05 11a9 9 0 1 1 .5 4m-.5 5v-5h5"/>
         </svg>
-        <span class="icon-label">History</span>
+        <span class="icon-label">Your Explorations</span>
       </div>
       <div class="icon-wrapper" on:click={bookmarkClicked} title="Saved plans">
         <div class="svg-icon icon-star-outline" />
-        <span class="icon-label">Bookmarks</span>
+        <span class="icon-label">Saved Plans</span>
       </div>
 <!-- To bring the Check Button back, just remove the style="display: none;" attribute -->
       <div class="icon-wrapper" on:click={checkClicked} title="Manual Prediction Check" style="display: none;">
@@ -729,7 +729,7 @@
         title="Generate new plans based on my configurations"
       >
         <div class="svg-icon icon-refresh" />
-        <span class="icon-label">Regenerate</span>
+        <span class="icon-label">New Plans</span>
       </div>
     </div>
 

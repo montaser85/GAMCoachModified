@@ -33,14 +33,14 @@ import {
 // Display names (mirrors FeaturePanel.DISPLAY_NAMES).
 const DISPLAY_NAMES = {
   loan_amnt: 'Loan Amount', dti: 'Debt to Income Ratio',
-  annual_inc: 'Annual Income', revol_bal: 'Revolving Balance',
+  annual_inc: 'Annual Income', revol_bal: 'Unpaid Credit Card Balance',
   open_acc: 'Number of Open Accounts', fico_score: 'FICO Score',
   term: 'Payment Period', home_ownership: 'Home Ownership',
   purpose: 'Loan Purpose', inq_last_6mths: 'Number of Credit Inquiries',
   pub_rec_bankruptcies: 'Number of Bankruptcies', revol_util: 'Credit Utilization',
   total_acc: 'Number of Accounts', mort_acc: 'Number of Mortgages',
   earliest_cr_line: 'Credit History Length', emp_length: 'Employment Length',
-  verification_status: 'Verification Status', delinq_2yrs: 'Number of Past Due',
+  verification_status: 'Income Verification Status', delinq_2yrs: 'Number of Past Due',
   pub_rec: 'Number of Derogatory Records', application_type: 'Application Type'
 };
 

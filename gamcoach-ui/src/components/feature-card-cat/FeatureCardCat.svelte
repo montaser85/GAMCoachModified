@@ -696,7 +696,7 @@
                       <div class="dti-row">New loan of {linkCalculation.p2LoanAmount} {linkCalculation.loanIncreased ? 'raises' : 'drops'} the monthly payment from <b>{linkCalculation.p2OldLoanPayment}</b> to <b>{linkCalculation.p2NewLoanPayment}</b>.</div>
                     {/if}
                     {#if linkCalculation.revolChanged}
-                      <div class="dti-row">New revolving balance adds: <b>{linkCalculation.p2RevolToDebt}</b> to debt.</div>
+                      <div class="dti-row">New credit card balance adds: <b>{linkCalculation.p2RevolToDebt}</b> to debt.</div>
                     {/if}
                     <div class="dti-row">New total monthly debt payment: {linkCalculation.foldDebtExpr} = <b>{linkCalculation.foldNewTotalDebt}</b></div>
                     <div class="dti-row">{linkCalculation.hasManualDti ? 'DTI from your inputs' : 'New DTI'}: {linkCalculation.foldNewTotalDebt} &divide; {linkCalculation.finalIncome} = <b>{linkCalculation.propagatedDtiPct}%</b></div>
@@ -728,15 +728,15 @@
                 </div>
               {:else if linkCalculation?.type === 'revol_bal'}
                 <div class="link-calculation dti-calc">
-                  <div class="dti-line">Current revolving balance: {linkCalculation.currentBalance}</div>
+                  <div class="dti-line">Current credit card balance: {linkCalculation.currentBalance}</div>
                   <div class="dti-line">Loan amount applied: {linkCalculation.loanApplied}</div>
-                  <div class="dti-line">New revolving balance: {linkCalculation.currentBalance} &minus; {linkCalculation.loanApplied} = {linkCalculation.newBalance}</div>
-                  <div class="dti-line final">Revolving balance decreases from {linkCalculation.currentBalance} to {linkCalculation.newBalance}</div>
+                  <div class="dti-line">New credit card balance: {linkCalculation.currentBalance} &minus; {linkCalculation.loanApplied} = {linkCalculation.newBalance}</div>
+                  <div class="dti-line final">Credit card balance decreases from {linkCalculation.currentBalance} to {linkCalculation.newBalance}</div>
                 </div>
               {:else if linkCalculation?.type === 'revol_util'}
                 <div class="link-calculation dti-calc">
-                  <div class="dti-line">Credit limit: {linkCalculation.creditLimit} (= current revolving balance {linkCalculation.currentBalance} ÷ current credit utilization {linkCalculation.currentUtil})</div>
-                  <div class="dti-line">New revolving balance: {linkCalculation.newBalance}</div>
+                  <div class="dti-line">Credit limit: {linkCalculation.creditLimit} (= current credit card balance {linkCalculation.currentBalance} ÷ current credit utilization {linkCalculation.currentUtil})</div>
+                  <div class="dti-line">New credit card balance: {linkCalculation.newBalance}</div>
                   <div class="dti-line">New credit utilization: {linkCalculation.newBalance} ÷ {linkCalculation.creditLimit} × 100 = {linkCalculation.newUtil}</div>
                   <div class="dti-line final">Credit utilization decreases from {linkCalculation.originalUtil} to {linkCalculation.newUtil}</div>
                 </div>
