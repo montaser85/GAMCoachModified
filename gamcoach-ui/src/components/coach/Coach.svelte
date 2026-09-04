@@ -8,9 +8,6 @@
   import IdeasToTry from '../ideas/IdeasToTry.svelte';
   import ChangeEffects from '../change-effects/ChangeEffects.svelte';
 
-  import starIconSolid from '../../img/icon-star-solid.svg';
-  import starIconOutline from '../../img/icon-star-outline.svg';
-
   import { EBM } from '../../ebm/ebm';
   import { foldAppliedLoanIntoDti } from '../../engine/params.mjs';
   import {
@@ -581,19 +578,29 @@
             </select>
           </div>
 
-          <div
-            class="star-wrapper"
+          <!-- Save / Saved button (replaces the old star icon). Keeps the SAME
+               title (hover message) and click handler; `class:disabled` is what
+               starClicked() checks to block saving a below-approval plan, so it must
+               stay on the clicked element (and we avoid the native `disabled`
+               attribute, which would suppress the tooltip). -->
+          <button
+            class="save-plan-btn"
+            class:saved={activePlanSaved}
             class:disabled={starDisabled}
             on:click={(e) => coachPanel && coachPanel.starActivePlan(e)}
             title={starTitle}
           >
-            <div class="svg-icon tab-icon" class:no-display={!activePlanSaved}>
-              {@html starIconSolid}
-            </div>
-            <div class="svg-icon tab-icon" class:no-display={activePlanSaved}>
-              {@html starIconOutline}
-            </div>
-          </div>
+            {#if activePlanSaved}
+              <svg class="save-check" viewBox="0 0 24 24" width="14" height="14"
+                   fill="none" stroke="currentColor" stroke-width="3.2"
+                   stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M5 12l5 5l9 -11" />
+              </svg>
+              Saved
+            {:else}
+              Save
+            {/if}
+          </button>
 
           <!-- Per-plan rationale header — sits in the plan row, right beside the plan
                name / star. The multi-question editor (the same tap-to-open reflection
@@ -1029,47 +1036,62 @@
       }
     }
 
-    .star-wrapper {
-      display: flex;
+    // Save / Saved button (replaces the old star). Neutral pill when unsaved; a
+    // filled green pill with a checkmark once the plan is saved.
+    .save-plan-btn {
+      display: inline-flex;
       align-items: center;
-      border-radius: 5px;
-      padding: 4px;
+      gap: 4px;
+      flex: 0 0 auto;
+      font-family: inherit;
+      font-size: 0.95rem;
+      font-weight: 600;
+      line-height: 1;
+      white-space: nowrap;
+      padding: 5px 12px;
+      border-radius: 6px;
+      border: 1px solid $gray-300;
+      background: $gray-50;
+      color: $gray-700;
       cursor: pointer;
-      transition: background-color 100ms ease-in-out;
+      transition: background-color 120ms ease, border-color 120ms ease,
+        color 120ms ease;
+
+      .save-check {
+        flex: 0 0 auto;
+      }
 
       &:hover {
         background-color: adjust-color($color: $gray-200, $lightness: -4%);
+        border-color: $gray-400;
       }
 
-      // Sub-50% and not yet saved: cannot bookmark. Dim it, block the pointer, and
-      // suppress the hover affordance so it reads as unavailable.
+      // Saved state — filled green pill, clearly indicating the plan is saved.
+      &.saved {
+        background: hsl(140, 55%, 94%);
+        border-color: hsl(140, 45%, 60%);
+        color: hsl(140, 60%, 26%);
+
+        &:hover {
+          background: hsl(140, 55%, 89%);
+          border-color: hsl(140, 45%, 50%);
+        }
+      }
+
+      // Sub-50% and not yet saved: cannot bookmark. Dim it and block the pointer so
+      // it reads as unavailable (matches the old star's disabled behavior).
       &.disabled {
         cursor: not-allowed;
         opacity: 0.4;
 
         &:hover {
-          background-color: transparent;
+          background: $gray-50;
+          border-color: $gray-300;
         }
-        .tab-icon {
-          cursor: not-allowed;
+        &.saved:hover {
+          background: hsl(140, 55%, 94%);
+          border-color: hsl(140, 45%, 60%);
         }
-      }
-
-      .tab-icon {
-        color: $gray-700;
-        fill: $gray-700;
-        display: flex;
-        align-items: center;
-        cursor: pointer;
-
-        :global(svg) {
-          width: 1rem;
-          height: 1rem;
-        }
-      }
-
-      .no-display {
-        display: none;
       }
     }
   }
