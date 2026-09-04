@@ -240,7 +240,7 @@
     text-align: right;
     font-size: 0.92rem;
     font-style: italic;
-    color: $gray-500;
+    color: $gray-900;
   }
 
   .nudge {
