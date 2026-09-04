@@ -8,7 +8,7 @@ export const LINK_POPUP_TEXT = {
   'emp_length': "How long you've been at your current job.",
   'home_ownership': "Your housing situation — whether you rent, own the place, or have a mortgage.",
   'annual_inc': "How much you earn in a year before taxes.",
-  'verification_status': "Whether the lender has confirmed your income — either the amount ('Verified') or just its source ('Source Verified'). The lender sets this, but you can change it to see how it affects your approval.",
+  'verification_status': "Whether the lender verified your income. Three options: 'Verified' (they verified the amount), 'Source Verified' (they verified the income source and not the amount), and 'Not Verified'. The lender sets this; try changing it to see how it affects your approval.",
   'purpose': "What you're borrowing the money for. It can affect the interest rate of the loan.",
   'dti': "Your Debt-to-Income ratio (DTI) is how much of your monthly income goes toward paying debts.",
   'delinq_2yrs': "How many times you were more than 30 days late on a payment in the last 2 years.",
