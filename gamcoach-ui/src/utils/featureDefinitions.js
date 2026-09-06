@@ -10,7 +10,7 @@ export const LINK_POPUP_TEXT = {
   'annual_inc': "How much you earn in a year before taxes.",
   'verification_status': "Whether the lender verified your income. Three options: 'Verified' (they verified the amount), 'Source Verified' (they verified the income source and not the amount), and 'Not Verified'. The lender sets this; try changing it to see how it affects your approval.",
   'purpose': "What you're borrowing the money for. It can affect the interest rate of the loan.",
-  'dti': "Your Debt-to-Income ratio (DTI) is how much of your monthly income goes toward paying debts.",
+  'dti': "Your Debt-to-Income ratio (DTI) is the % of your monthly income that goes toward paying debts.",
   'delinq_2yrs': "How many times you were more than 30 days late on a payment in the last 2 years.",
   'earliest_cr_line': "How many years since you opened your first credit account.",
   'inq_last_6mths': "How many times a lender checked your credit in the last 6 months.",
