@@ -3302,7 +3302,13 @@
       <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
       <span class='header-info' on:click|stopPropagation>
         <span class='hi-badge'>i</span>
-        <span class='hi-popup'>Values calculated from your other inputs — these update automatically.</span>
+        <!-- Phase-aware: during first-time setup no propagation runs yet (the user
+             is entering values), so the copy tells them to enter these now; once
+             setup is done and editing/propagation is live, it describes the
+             automatic updates. Keys off the existing `setupMode` prop. -->
+        <span class='hi-popup'>{setupMode
+          ? "These values depend on your other features. Enter them now; after setup, they'll update automatically when you change the features they depend on."
+          : "These values depend on your other features. They update automatically when you change the features they depend on."}</span>
       </span>
       <svg class='group-chev' class:collapsed={collapsedGroups.configured} viewBox='0 0 24 24' width='16' height='16'
            fill='none' stroke='currentColor' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'>
