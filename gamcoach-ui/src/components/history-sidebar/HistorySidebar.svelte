@@ -3,8 +3,10 @@
   import { historySidebarOpenStore, historyEntriesStore } from '../../store';
   import { toggleSaveEntry, MAX_SAVED_ENTRIES } from '../../utils/historyManager';
 
-  /** The currently active plan index */
-  export let activePlanIndex = 0;
+  /** The currently active plan index. NOTE: this is 1-based (it holds the plan's
+   * `planIndex`, matching the "Plan N" labels in the plan selector), so it is shown
+   * verbatim and used directly as the historyEntriesStore key. */
+  export let activePlanIndex = 1;
 
   /** Callback to restore a history entry state: (entry) => void */
   export let onRestoreEntry = null;
@@ -76,7 +78,7 @@
     </div>
 
     <div class="list-caption">
-      <span class="plan-label">Plan {activePlanIndex + 1}</span>
+      <span class="plan-label">Plan {activePlanIndex}</span>
       <span class="newest-first">Newest first</span>
     </div>
 
@@ -414,11 +416,18 @@
 
   .feat-row {
     display: flex;
+    // Let a long value drop to its OWN line instead of squeezing the name down to a
+    // single-letter-per-line vertical strip (e.g. a categorical change like
+    // "Debt consolidation → Home improvement" next to "Loan Purpose").
+    flex-wrap: wrap;
+    align-items: baseline;
     justify-content: space-between;
-    gap: 10px;
+    gap: 1px 10px;
     padding: 2px 0;
 
     .feat-name {
+      // Grow to fill the row; when the value wraps below, the name owns the whole line.
+      flex: 1 1 auto;
       min-width: 0;
       // Show the FULL feature name — wrap instead of truncating with an ellipsis.
       white-space: normal;
@@ -429,8 +438,11 @@
     }
 
     .feat-val {
-      flex: 0 0 auto;
+      // May shrink and wrap its own text (rather than overflow / crush the name).
+      flex: 0 1 auto;
+      min-width: 0;
       text-align: right;
+      overflow-wrap: break-word;
       font-variant-numeric: tabular-nums;
       font-size: 17px;
 

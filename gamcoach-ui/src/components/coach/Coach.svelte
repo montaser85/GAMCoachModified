@@ -768,7 +768,7 @@
 
 <!-- History Sidebar -->
 <HistorySidebar
-  activePlanIndex={plans?.activePlanIndex || 0}
+  activePlanIndex={plans?.activePlanIndex || 1}
   onRestoreEntry={handleRestoreEntry}
 />
 
