@@ -45,6 +45,15 @@ const APPROVAL_PROB = 0.5;
 // Bound on filter regeneration so a hard applicant can't loop forever.
 const MAX_FILTER_ATTEMPTS = 30;
 
+// Per-solve time limit (seconds) handed to GLPK as `tmlim`. Without it GLPK's
+// branch-and-bound can run essentially forever on a near-infeasible profile (loan >
+// income, stacked negatives), freezing generation for 20+ minutes. Normal profiles
+// solve in well under a second, so this ceiling never touches them — it only aborts a
+// monster solve, returning the best integer solution found so far (status GLP_FEAS).
+// Paired with the total generation budget in Coach.js: worst case ≈ budget + one
+// tmlim solve. Keep it small enough that (budget + tmlim + render) stays under 5 min.
+const PER_SOLVE_TMLIM_SEC = 20;
+
 /**
  * TRUE post-fold approval probability of a candidate plan — computed by the SAME
  * arithmetic and SAME propagation engine as the load-time fold that produces the
@@ -2224,9 +2233,13 @@ class MILP {
   async initGLPK() {
     this.glpk = await He();
 
-    // Arguments for the GLPK solver
+    // Arguments for the GLPK solver. `tmlim` (seconds) caps each individual MILP
+    // solve so a near-infeasible profile can't spin forever — the solver aborts at
+    // the limit and returns its best integer solution found so far (see solveMILP,
+    // which now also accepts GLP_FEAS, not only GLP_OPT).
     this.modelOptions = {
-      msglev: this.glpk.GLP_MSG_ERR
+      msglev: this.glpk.GLP_MSG_ERR,
+      tmlim: PER_SOLVE_TMLIM_SEC
     };
 
     if (this.verbose === 2) {
@@ -2495,9 +2508,18 @@ class MILP {
       // Identify active variable
       let activeVariables = [];
 
-      if (result.result.status === this.glpk.GLP_OPT) {
+      // Accept a proven-optimal solution (GLP_OPT) OR the best integer solution found
+      // when a solve hits the tmlim ceiling (GLP_FEAS) — a valid, decision-flipping
+      // plan that just isn't proven minimal-cost. This is what lets a hard profile
+      // still yield plans instead of failing outright when the per-solve limit fires.
+      if (
+        result.result.status === this.glpk.GLP_OPT ||
+        result.result.status === this.glpk.GLP_FEAS
+      ) {
         if (this.verbose > 0) {
-          console.log(`Found optimal solution in ${result.time}s.`);
+          const kind = result.result.status === this.glpk.GLP_OPT
+            ? 'optimal' : 'best-found (time-limited)';
+          console.log(`Found ${kind} solution in ${result.time}s.`);
         }
 
         Object.keys(result.result.vars).forEach((varName) => {

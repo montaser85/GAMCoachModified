@@ -69,6 +69,15 @@ const reorderPlansByAmountIdeas = (plans, constraints) => {
  */
 export const TOTAL_PLAN_NUM = 3;
 
+// Hard ceiling on total plan-generation wall-clock time. A near-infeasible profile
+// can make each MILP solve slow and the fold-approval filter retry many times
+// (MAX_FILTER_ATTEMPTS across TOTAL_PLAN_NUM plans); the per-solve GLPK `tmlim`
+// bounds each attempt, and THIS bounds the whole process. Once the budget is spent we
+// stop launching further solves/retries and keep the best plans found so far. Because
+// the check happens between solves, the true worst case is this budget PLUS one final
+// tmlim-bounded solve (≈ 4:30 + 20s = 4:50) plus render — kept under the ~5 min aim.
+const TOTAL_GEN_BUDGET_MS = 4.5 * 60 * 1000; // 4:30
+
 const difficultyTextMap = {
   1: 'very-easy',
   2: 'easy',
@@ -554,7 +563,7 @@ export class Constraints {
  * @param {object} cfsIn  the initial cfs result to filter
  * @returns {Promise<object>} a passing cfs, or the best-below-approval cfs
  */
-const filterToPassing = async (coach, modelData, curExample, cfsIn, stats) => {
+const filterToPassing = async (coach, modelData, curExample, cfsIn, stats, deadline = Infinity) => {
   const t0 = performance.now();
   let cfs = cfsIn;
   let best = null;
@@ -567,7 +576,13 @@ const filterToPassing = async (coach, modelData, curExample, cfsIn, stats) => {
       stats.prob = prob;
     }
   };
-  while (cfs.isSuccessful && attempts < MAX_FILTER_ATTEMPTS) {
+  // Stop retrying once the attempt bound OR the total-generation time budget is hit;
+  // in either case we fall through to returning the best-below-approval plan found.
+  while (
+    cfs.isSuccessful &&
+    attempts < MAX_FILTER_ATTEMPTS &&
+    performance.now() < deadline
+  ) {
     let prob;
     try {
       prob = foldedApprovalProb(modelData, curExample, cfs.data[0]);
@@ -630,6 +645,9 @@ export const initPlans = async (
 ) => {
   // Total wall-clock time to generate the whole batch of plans (logged at the end).
   const genStartT = performance.now();
+  // Hard deadline for the whole batch — past this we stop launching solves/retries and
+  // keep whatever plans we already have (graceful degradation, no infinite freeze).
+  const genDeadline = genStartT + TOTAL_GEN_BUDGET_MS;
 
   /**@type {Plans}*/
   const tempPlans = {
@@ -715,7 +733,7 @@ export const initPlans = async (
   // Post-fold approval filter: replace a below-approval plan with a passing one
   // (or the best-achievable if none pass).
   const planFilterStats = {};
-  cfs = await filterToPassing(coach, modelData, curExample, cfs, planFilterStats);
+  cfs = await filterToPassing(coach, modelData, curExample, cfs, planFilterStats, genDeadline);
   logPlanTiming(
     tempPlans.nextPlanIndex,
     planSolveMs,
@@ -793,6 +811,12 @@ export const initPlans = async (
       break;
     }
 
+    // Total time budget spent — stop here and keep the plans generated so far
+    // (better a partial set of good plans than a multi-minute freeze).
+    if (performance.now() >= genDeadline) {
+      break;
+    }
+
     // Run gam coach
     const subStartT = performance.now();
     cfs = await coach.generateSubCfs(cfs.nextCfConfig);
@@ -800,7 +824,7 @@ export const initPlans = async (
 
     // Post-fold approval filter for this candidate.
     const subFilterStats = {};
-    cfs = await filterToPassing(coach, modelData, curExample, cfs, subFilterStats);
+    cfs = await filterToPassing(coach, modelData, curExample, cfs, subFilterStats, genDeadline);
     logPlanTiming(
       tempPlans.nextPlanIndex + i,
       subSolveMs,
@@ -921,6 +945,9 @@ export const regeneratePlans = async (
   );
 
   const regenStartT = performance.now();
+  // Same hard time budget as first-time generation — regenerate runs the identical
+  // solver path and must not freeze on a near-infeasible configuration either.
+  const regenDeadline = regenStartT + TOTAL_GEN_BUDGET_MS;
   let cfs = await coach.generateCfs({
     curExample: exampleBatch,
     totalCfs: 1,
@@ -1005,6 +1032,11 @@ export const regeneratePlans = async (
       break;
     }
 
+    // Total time budget spent — keep the plans generated so far.
+    if (performance.now() >= regenDeadline) {
+      break;
+    }
+
     // Run gam coach
     const regenSubStartT = performance.now();
     cfs = await coach.generateSubCfs(cfs.nextCfConfig);
@@ -1017,7 +1049,8 @@ export const regeneratePlans = async (
       modelData,
       curExample,
       cfs,
-      regenSubFilterStats
+      regenSubFilterStats,
+      regenDeadline
     );
     logPlanTiming(
       plans.nextPlanIndex + i,
