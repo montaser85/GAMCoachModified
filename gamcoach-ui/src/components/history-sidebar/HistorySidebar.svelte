@@ -183,7 +183,13 @@
   .sidebar-panel {
     position: fixed;
     right: 0; top: 0; bottom: 0;
-    width: 352px;
+    // Widen into the right margin the main panel leaves free, WITHOUT moving or
+    // resizing that panel. The coach panel is `width: calc(100vw - 744px)` capped at
+    // `max-width: 1350px` and centered, so the free right margin is
+    // `max(372px, (100vw - 1350px)/2)`. We fill that margin minus a 24px gap, but
+    // never go below the original 352px (narrow screens) or above 520px (ultra-wide).
+    // This provably keeps the sidebar clear of the panel at every viewport width.
+    width: clamp(352px, calc((100vw - 1350px) / 2 - 24px), 520px);
     background: white;
     border-left: 1px solid $gray-300;
     box-shadow: -2px 0 8px hsla(0, 0%, 0%, 0.06);
@@ -416,20 +422,19 @@
 
   .feat-row {
     display: flex;
-    // Let a long value drop to its OWN line instead of squeezing the name down to a
-    // single-letter-per-line vertical strip (e.g. a categorical change like
-    // "Debt consolidation → Home improvement" next to "Loan Purpose").
-    flex-wrap: wrap;
+    // Name and value stay on the SAME line (name left, value right). The wider panel
+    // gives the value room to sit beside the name; if a value is still too long it
+    // wraps WITHIN its own right-aligned column rather than crushing the name into a
+    // single-letter-per-line strip.
     align-items: baseline;
     justify-content: space-between;
-    gap: 1px 10px;
+    gap: 10px;
     padding: 2px 0;
 
     .feat-name {
-      // Grow to fill the row; when the value wraps below, the name owns the whole line.
+      // Show the FULL feature name — wrap instead of truncating with an ellipsis.
       flex: 1 1 auto;
       min-width: 0;
-      // Show the FULL feature name — wrap instead of truncating with an ellipsis.
       white-space: normal;
       overflow-wrap: break-word;
       font-size: 17px;
@@ -438,7 +443,8 @@
     }
 
     .feat-val {
-      // May shrink and wrap its own text (rather than overflow / crush the name).
+      // Shares the row and may shrink + wrap its own text (so it never forces the
+      // name down to zero width the way `flex: 0 0 auto` did).
       flex: 0 1 auto;
       min-width: 0;
       text-align: right;
