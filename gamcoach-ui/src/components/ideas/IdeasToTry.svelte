@@ -47,6 +47,18 @@
       : curPoints >= THRESHOLD
       ? "You've reached approval. A few things you could still try:"
       : `${THRESHOLD - curPoints} points to go. A few things that could help:`;
+
+  // Position the custom hover tooltip (a position:fixed child) just above the chip
+  // that was hovered, centered on it. Fixed coords are used so the tooltip escapes
+  // the right column's overflow clipping. Recomputed on each hover.
+  function positionIdeaTip(e) {
+    const chip = e.currentTarget;
+    const tip = chip.querySelector('.it-tip');
+    if (!tip) return;
+    const r = chip.getBoundingClientRect();
+    tip.style.left = `${r.left + r.width / 2}px`;
+    tip.style.top = `${r.top - 9}px`;
+  }
 </script>
 
 {#if ideas.length > 0}
@@ -72,9 +84,10 @@
           <span
             class="it-chip"
             class:it-chip-apply={idea.mode === 'amount'}
-            title={idea.mode === 'amount'
+            aria-label={idea.mode === 'amount'
               ? `Click to apply: ${idea.verb} ${idea.displayName} to ${idea.targetDisplay}`
-              : ''}
+              : undefined}
+            on:mouseenter={positionIdeaTip}
             on:click={() => {
               if (idea.mode === 'amount')
                 ideaApplyStore.set({ name: idea.name, value: idea.applyValue });
@@ -84,6 +97,11 @@
             <span class="it-feat">{idea.displayName}</span>
             {#if idea.mode === 'amount' && idea.targetDisplay}
               <span class="it-target">to {idea.targetDisplay}</span>
+            {/if}
+            {#if idea.mode === 'amount'}
+              <!-- Custom hover tooltip (replaces the slow, unstyleable native
+                   `title`): appears instantly, larger font, thicker border. -->
+              <span class="it-tip">Click to apply: {idea.verb} {idea.displayName} to {idea.targetDisplay}</span>
             {/if}
           </span>
         {/each}
@@ -136,6 +154,7 @@
 
   /* Amber lever chips (directional ideas). */
   .it-chip {
+    position: relative; // anchor for the custom hover tooltip
     display: inline-flex;
     align-items: center;
     gap: 6px;
@@ -159,6 +178,39 @@
         background: #d8ebfb;
         border-color: #93c6ef;
       }
+
+      // Show the custom tooltip instantly on hover (no native-title delay).
+      &:hover .it-tip {
+        opacity: 1;
+      }
+    }
+
+    // Custom hover tooltip for the clickable (amount) chips: bigger font and a
+    // thicker border than the native tooltip, and it appears immediately.
+    // position:fixed (coordinates set by positionIdeaTip on mouseenter) so it is
+    // never clipped by the right column's overflow.
+    .it-tip {
+      position: fixed;
+      left: 0;
+      top: 0;
+      transform: translate(-50%, -100%); // anchor bottom-center over the chip
+      z-index: 9999;
+      width: max-content;
+      max-width: 280px;
+      padding: 9px 12px;
+      background: white;
+      color: $gray-900;
+      font-size: 1rem;          // bigger than the tiny native tooltip
+      font-weight: 600;
+      line-height: 1.4;
+      text-align: center;
+      white-space: normal;
+      border: 3px solid #7fb8ea;  // thicker, clearly-visible border
+      border-radius: 8px;
+      box-shadow: 0 6px 18px hsla(0, 0%, 0%, 0.22);
+      pointer-events: none;
+      opacity: 0;                 // hidden until hover
+      transition: opacity 60ms ease;  // rapid fade-in, no delay
     }
 
     .it-verb {
