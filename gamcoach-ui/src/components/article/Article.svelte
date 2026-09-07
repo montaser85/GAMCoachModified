@@ -18,7 +18,9 @@
     tooltipConfigStore,
     constraintsStore,
     bookmarkConfigStore,
-    ebmStore
+    ebmStore,
+    historyEntriesStore,
+    isRestoringEntryStore
   } from '../../store';
   import { Constraints } from '../coach/Coach';
   import { random } from '../../utils/utils';
@@ -206,6 +208,14 @@
     // input-form state and shows the real applicant number).
     curIndex = random(0, curSamples.length - 1);
     const newExample = curSamples[curIndex];
+
+    // A new applicant means a fresh person: the old exploration history no longer
+    // applies, so empty it before the remount. This also clears the entry cards out
+    // of the (possibly-open) sidebar BEFORE the {#key} Coach teardown, so the sidebar
+    // has nothing left to tear down (the earlier freeze came from tearing down the
+    // Coach — and its open sidebar full of entry cards — at the same time).
+    historyEntriesStore.set(new Map());
+    isRestoringEntryStore.set(false);
 
     updated = false;
     blankStart = false;

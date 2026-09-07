@@ -75,7 +75,10 @@
       >&times;</button>
     </div>
 
-    <div class="list-caption">Newest first</div>
+    <div class="list-caption">
+      <span class="plan-label">Plan {activePlanIndex + 1}</span>
+      <span class="newest-first">Newest first</span>
+    </div>
 
     {#if nudge}
       <div class="nudge">{nudge}</div>
@@ -124,7 +127,11 @@
                 <span class="gt-label"><b class="feat-count">{entry.features.length}</b> feature{entry.features.length !== 1 ? 's' : ''} now different from your profile values</span>
               </button>
               {#if !collapsedChanged.has(entry.timestamp)}
-                <div class="group-list" transition:slide={{ duration: 150 }}>
+                <!-- `|local`: this expand/collapse animation should only play when
+                     THIS group toggles — never when an ancestor block is torn down
+                     (e.g. the {#key} Coach remount on "Try a random input sample").
+                     A non-local outro mid-teardown jams the remount and freezes the app. -->
+                <div class="group-list" transition:slide|local={{ duration: 150 }}>
                   {#each entry.features as feat (feat.featureID)}
                     <div class="feat-row">
                       <span class="feat-name">{feat.name}</span>
@@ -146,7 +153,7 @@
                 {entry.unchangedFeatures.length} unchanged
               </button>
               {#if expandedUnchanged.has(entry.timestamp)}
-                <div class="group-list" transition:slide={{ duration: 150 }}>
+                <div class="group-list" transition:slide|local={{ duration: 150 }}>
                   {#each entry.unchangedFeatures as feat (feat.featureID)}
                     <div class="feat-row uc">
                       <span class="feat-name">{feat.name}</span>
@@ -233,14 +240,28 @@
     }
   }
 
-  // "Newest first" caption above the entries, right-aligned.
+  // Caption row above the entries: the active plan number on the left,
+  // the "Newest first" ordering hint on the right.
   .list-caption {
     flex: 0 0 auto;
     padding: 8px 12px 0;
-    text-align: right;
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 8px;
     font-size: 0.92rem;
-    font-style: italic;
     color: $gray-900;
+
+    // Left: which plan's explorations these are (e.g. "Plan 1").
+    .plan-label {
+      font-style: normal;
+      font-weight: 700;
+    }
+
+    // Right: ordering hint (unchanged styling — italic).
+    .newest-first {
+      font-style: italic;
+    }
   }
 
   .nudge {
