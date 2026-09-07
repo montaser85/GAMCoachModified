@@ -301,6 +301,50 @@
     });
   };
 
+  /**
+   * Restore the ACTIVE plan to its POST-SETUP initial state — the baseline the app
+   * locked in at "Done with Setup" and keeps per-plan as `plan.curExample` (already
+   * loan-folded; no snapshot needed to add). Resets the live sample to that baseline,
+   * clears the plan's applied/dismissed ideas, and remounts the FeaturePanel so the
+   * score, feature values, ideas, breakdowns, and the affected-features panel all
+   * rebuild to the initial state. Reuses the existing baseline — it does not touch
+   * setup or idea-generation logic. Mirrors handleRestoreEntry's reset+remount path.
+   */
+  const handleRestoreInitial = async () => {
+    if (!plans) return;
+    const planIndex = plans.activePlanIndex;
+    const planStore = plans.planStores.get(planIndex);
+    if (!planStore) return;
+
+    const plan = get(planStore);
+    if (!plan || !plan.curExample) return;
+
+    // Reset every feature's live value to its post-setup baseline value.
+    for (const feature of plan.features) {
+      const baselineValue = plan.curExample[feature.featureID];
+      if (baselineValue === undefined) continue;
+      const featureName = feature.data?.name;
+      if (featureName) plan.ebmLocal.updateFeature(featureName, baselineValue);
+      feature.hypotheticalValue = baselineValue;
+    }
+
+    // Bring the ideas list back to the original suggested set.
+    plan.dismissedIdeaNames = new Set();
+
+    // Clear transient UI state so the cards/effects rebuild from the baseline.
+    propagatedFeaturesStore.set(new Set());
+    featureValueOverrideStore.set({});
+
+    // Don't log this programmatic reset as a history entry.
+    isRestoringEntryStore.set(true);
+    planStore.update(() => plan);
+    setTimeout(() => isRestoringEntryStore.set(false), 50);
+
+    // Force the FeaturePanel to remount so it re-inits everything from the baseline.
+    await tick();
+    restorationCounter++;
+  };
+
 
   // First-time flow: enter in-card setup instead of generating immediately.
   // Generation runs only when the user clicks "Done with Setup" (finishSetup).
@@ -713,7 +757,7 @@
         <div class="rc-drivers">
           <ScoreDrivers planStore={activePlanStore} />
         </div>
-        <IdeasToTry planStore={activePlanStore} />
+        <IdeasToTry planStore={activePlanStore} onRestoreInitial={handleRestoreInitial} />
         <div class="rc-effects">
           <ChangeEffects planStore={activePlanStore} />
         </div>

@@ -17,6 +17,8 @@
   /** Active plan store (writable<Plan>) or null while loading — used for the
    * points-based status line. */
   export let planStore = null;
+  /** Called to restore the whole panel to its post-setup initial state. */
+  export let onRestoreInitial = null;
 
   const THRESHOLD = APPROVAL_POINTS; // approval threshold, in points (matches ScoreReadout)
 
@@ -47,6 +49,15 @@
       : curPoints >= THRESHOLD
       ? "You've reached approval. A few things you could still try:"
       : `${THRESHOLD - curPoints} points to go. A few things that could help:`;
+
+  // Show "Restore initial ideas" only once the user has diverged from the post-setup
+  // state — i.e. edited any feature (isChangedByUser) or applied/dismissed any idea
+  // (dismissedIdeaNames). Hidden when already at the initial state (nothing to undo).
+  $: showRestore =
+    !!onRestoreInitial &&
+    !!plan &&
+    (plan.isChangedByUser ||
+      (plan.dismissedIdeaNames instanceof Set && plan.dismissedIdeaNames.size > 0));
 
   // Position the custom hover tooltip (a position:fixed child) just above the chip
   // that was hovered, centered on it. Fixed coords are used so the tooltip escapes
@@ -106,6 +117,24 @@
           </span>
         {/each}
       </div>
+
+      {#if showRestore}
+        <!-- Full-state restore to the post-setup baseline. The hover warning makes
+             clear it undoes ALL the user's changes, not just the ideas. -->
+        <button
+          class="it-restore"
+          on:mouseenter={positionIdeaTip}
+          on:click={() => onRestoreInitial && onRestoreInitial()}
+        >
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor"
+               stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <path d="M3 12a9 9 0 1 0 3 -6.7L3 8" />
+            <path d="M3 3v5h5" />
+          </svg>
+          Restore initial ideas
+          <span class="it-tip it-tip-warn">This will restore everything to the original ideas, undoing all your changes.</span>
+        </button>
+      {/if}
     {/if}
   </div>
 {/if}
@@ -185,34 +214,6 @@
       }
     }
 
-    // Custom hover tooltip for the clickable (amount) chips: bigger font and a
-    // thicker border than the native tooltip, and it appears immediately.
-    // position:fixed (coordinates set by positionIdeaTip on mouseenter) so it is
-    // never clipped by the right column's overflow.
-    .it-tip {
-      position: fixed;
-      left: 0;
-      top: 0;
-      transform: translate(-50%, -100%); // anchor bottom-center over the chip
-      z-index: 9999;
-      width: max-content;
-      max-width: 280px;
-      padding: 9px 12px;
-      background: white;
-      color: $gray-900;
-      font-size: 1rem;          // bigger than the tiny native tooltip
-      font-weight: 600;
-      line-height: 1.4;
-      text-align: center;
-      white-space: normal;
-      border: 3px solid #7fb8ea;  // thicker, clearly-visible border
-      border-radius: 8px;
-      box-shadow: 0 6px 18px hsla(0, 0%, 0%, 0.22);
-      pointer-events: none;
-      opacity: 0;                 // hidden until hover
-      transition: opacity 60ms ease;  // rapid fade-in, no delay
-    }
-
     .it-verb {
       font-weight: 700;
     }
@@ -224,6 +225,73 @@
     // Target amount shown only for original (mode 'amount') ideas.
     .it-target {
       font-weight: 600;
+    }
+  }
+
+  // Custom hover tooltip (shared by the amount chips and the restore button): bigger
+  // font and a thicker border than the native tooltip, appearing immediately.
+  // position:fixed (coordinates set by positionIdeaTip on mouseenter) so it is never
+  // clipped by the right column's overflow.
+  .it-tip {
+    position: fixed;
+    left: 0;
+    top: 0;
+    transform: translate(-50%, -100%); // anchor bottom-center over the target
+    z-index: 9999;
+    width: max-content;
+    max-width: 280px;
+    padding: 9px 12px;
+    background: white;
+    color: $gray-900;
+    font-size: 1rem;          // bigger than the tiny native tooltip
+    font-weight: 600;
+    line-height: 1.4;
+    text-align: center;
+    white-space: normal;
+    border: 3px solid #7fb8ea;  // thicker, clearly-visible border
+    border-radius: 8px;
+    box-shadow: 0 6px 18px hsla(0, 0%, 0%, 0.22);
+    pointer-events: none;
+    opacity: 0;                 // hidden until hover
+    transition: opacity 60ms ease;  // rapid fade-in, no delay
+
+    // Warning variant (restore button): amber border to signal it undoes changes.
+    &.it-tip-warn {
+      border-color: #e0a020;
+      max-width: 300px;
+    }
+  }
+
+  // "Restore initial ideas" — full-state reset to the post-setup baseline.
+  .it-restore {
+    position: relative; // anchor for its hover tooltip
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 14px;
+    font-family: inherit;
+    font-size: 0.95rem;
+    font-weight: 600;
+    line-height: 1;
+    padding: 7px 13px;
+    border-radius: 8px;
+    border: 1px solid $gray-400;
+    background: white;
+    color: $gray-700;
+    cursor: pointer;
+    transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+
+    svg { flex: 0 0 auto; }
+
+    &:hover {
+      background: $gray-100;
+      border-color: $gray-500;
+      color: $gray-900;
+    }
+
+    // Show its warning tooltip instantly on hover.
+    &:hover .it-tip {
+      opacity: 1;
     }
   }
 </style>
