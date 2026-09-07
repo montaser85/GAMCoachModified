@@ -633,17 +633,17 @@
             </select>
           </div>
 
-          <!-- Save / Saved button (replaces the old star icon). Keeps the SAME
-               title (hover message) and click handler; `class:disabled` is what
+          <!-- Save / Saved button (replaces the old star icon). The hover message is
+               now a CUSTOM styled tooltip (matching the panel-wide tip look) instead
+               of the native `title`, which can't be resized; `class:disabled` is what
                starClicked() checks to block saving a below-approval plan, so it must
                stay on the clicked element (and we avoid the native `disabled`
-               attribute, which would suppress the tooltip). -->
+               attribute, which would suppress the hover). -->
           <button
             class="save-plan-btn"
             class:saved={activePlanSaved}
             class:disabled={starDisabled}
             on:click={(e) => coachPanel && coachPanel.starActivePlan(e)}
-            title={starTitle}
           >
             {#if activePlanSaved}
               <svg class="save-check" viewBox="0 0 24 24" width="14" height="14"
@@ -655,6 +655,7 @@
             {:else}
               Save
             {/if}
+            <span class="save-tip">{starTitle}</span>
           </button>
 
           <!-- Per-plan rationale header — sits in the plan row, right beside the plan
@@ -1096,6 +1097,7 @@
     // default when plans first load — so users notice the button exists. It is
     // never faded out; instead each state has its own solid color.
     .save-plan-btn {
+      position: relative; // anchor for the custom hover tooltip
       display: inline-flex;
       align-items: center;
       gap: 5px;
@@ -1108,6 +1110,24 @@
       padding: 6px 14px;
       border-radius: 6px;
       cursor: pointer;
+
+      // Custom hover tooltip — the same panel-wide tip look (size + frame) as every
+      // other hover text, replacing the un-resizable native `title`.
+      .save-tip {
+        @include hover-tip;
+        display: none;
+        position: absolute;
+        top: calc(100% + 6px);
+        left: 0;
+        z-index: 500;
+        width: max-content;
+        max-width: 240px;
+        white-space: normal;
+        text-align: left;
+        cursor: default;
+        pointer-events: none;
+      }
+      &:hover .save-tip { display: block; }
       transition: background-color 120ms ease, border-color 120ms ease,
         color 120ms ease;
 
