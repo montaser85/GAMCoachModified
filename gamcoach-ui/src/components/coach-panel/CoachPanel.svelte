@@ -120,6 +120,14 @@
   unsubscribes.push(
     isRestoringEntryStore.subscribe((value) => {
       isRestoringEntry = value;
+      // A restore (restore-entry or restore-initial) discards any change the user
+      // hadn't yet settled on, so drop its still-pending 800ms entry timeout —
+      // otherwise it would fire later and resurrect an entry into a panel the
+      // restore just emptied.
+      if (value) {
+        pendingHistoryTimeouts.forEach((timeout) => clearTimeout(timeout));
+        pendingHistoryTimeouts.clear();
+      }
     })
   );
 

@@ -331,6 +331,14 @@
     // Bring the ideas list back to the original suggested set.
     plan.dismissedIdeaNames = new Set();
 
+    // Restoring the initial ideas means this plan is back at its post-setup baseline,
+    // so its exploration history no longer applies — empty it so the panel refreshes
+    // to "no entries yet". Only this plan's entries are cleared; other plans keep theirs.
+    historyEntriesStore.update((historyMap) => {
+      historyMap.delete(planIndex);
+      return historyMap;
+    });
+
     // Clear transient UI state so the cards/effects rebuild from the baseline.
     propagatedFeaturesStore.set(new Set());
     featureValueOverrideStore.set({});
