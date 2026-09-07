@@ -43,8 +43,12 @@ const defaultDisplayName = (name) =>
 export function computeScoreDrivers(plan) {
   if (!plan) return { features: [], totalPPChange: 0 };
 
-  // Per-feature EBM scores: original applicant (frozen baseline) vs the live plan.
-  const originalCountedScores = plan.ebmLocal.countScore(plan.curExample);
+  // Per-feature EBM scores: the ORIGINAL applicant profile vs the live plan. The
+  // reference is the pre-fold original profile (the applicant's own DTI), so the
+  // decomposition matches `originalScore` and, on load, surfaces the applied-loan DTI
+  // fold as a driver "from the original". Falls back to curExample for older plans.
+  const reference = plan.originalExample || plan.curExample;
+  const originalCountedScores = plan.ebmLocal.countScore(reference);
   const currentScores = plan.ebmLocal.countedScores;
 
   const curValue = sigmoid(plan.ebmLocal.predScore);
@@ -60,7 +64,7 @@ export function computeScoreDrivers(plan) {
     const name = f.data.name;
     const fid = f.featureID;
     const mainDelta = (currentScores[name] ?? 0) - (originalCountedScores[name] ?? 0);
-    const valueChanged = !valuesEqual(plan.ebmLocal.sample[fid], plan.curExample[fid]);
+    const valueChanged = !valuesEqual(plan.ebmLocal.sample[fid], reference[fid]);
     byName.set(name, {
       name,
       displayName: f.data.description?.displayName || defaultDisplayName(name),

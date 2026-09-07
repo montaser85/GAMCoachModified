@@ -181,7 +181,10 @@
         baselineExample,
         constraints,
         plansUpdated,
-        logger
+        logger,
+        // The ORIGINAL (pre-fold) profile — its own DTI, before the applied loan is
+        // folded in — so the original score reflects the user's actual profile.
+        base
       );
     } finally {
       generating = false;
