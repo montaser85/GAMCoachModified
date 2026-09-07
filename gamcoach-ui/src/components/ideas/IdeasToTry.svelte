@@ -40,6 +40,14 @@
 
   let collapsed = false; // section hide/unhide (name stays visible)
 
+  // The warning shown for "Restore initial ideas" — reused by both the button's
+  // hover tooltip and the inline confirmation panel so they never drift apart.
+  const RESTORE_WARNING =
+    'This will restore everything to the original ideas, undoing all your changes.';
+  // When true, the button is replaced by a small confirm/cancel panel (clicking
+  // "Restore initial ideas" now asks for confirmation instead of acting immediately).
+  let confirmingRestore = false;
+
   // Clamp so the status line agrees with the readout/approval status: a probability
   // in [0.495, 0.50) must NOT read "You've reached approval" (it renders as 49, not 50).
   $: curPoints = plan ? approvalPoints(sigmoid(plan.ebmLocal.predScore)) : null;
@@ -58,6 +66,10 @@
     !!plan &&
     (plan.isChangedByUser ||
       (plan.dismissedIdeaNames instanceof Set && plan.dismissedIdeaNames.size > 0));
+
+  // If the restore control goes away (e.g. after restoring, or a plan switch), make
+  // sure a lingering confirmation panel is dismissed too.
+  $: if (!showRestore) confirmingRestore = false;
 
   // Position the custom hover tooltip (a position:fixed child) just above the chip
   // that was hovered, centered on it. Fixed coords are used so the tooltip escapes
@@ -119,21 +131,41 @@
       </div>
 
       {#if showRestore}
-        <!-- Full-state restore to the post-setup baseline. The hover warning makes
-             clear it undoes ALL the user's changes, not just the ideas. -->
-        <button
-          class="it-restore"
-          on:mouseenter={positionIdeaTip}
-          on:click={() => onRestoreInitial && onRestoreInitial()}
-        >
-          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor"
-               stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-            <path d="M3 12a9 9 0 1 0 3 -6.7L3 8" />
-            <path d="M3 3v5h5" />
-          </svg>
-          Restore initial ideas
-          <span class="it-tip it-tip-warn">This will restore everything to the original ideas, undoing all your changes.</span>
-        </button>
+        {#if !confirmingRestore}
+          <!-- Full-state restore to the post-setup baseline. Clicking opens the small
+               confirmation panel below (it undoes ALL the user's changes, not just the
+               ideas), so the reset is never a one-click accident. -->
+          <button
+            class="it-restore"
+            on:mouseenter={positionIdeaTip}
+            on:click={() => (confirmingRestore = true)}
+          >
+            <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor"
+                 stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M3 12a9 9 0 1 0 3 -6.7L3 8" />
+              <path d="M3 3v5h5" />
+            </svg>
+            Restore initial ideas
+            <span class="it-tip it-tip-warn">{RESTORE_WARNING}</span>
+          </button>
+        {:else}
+          <!-- Small inline confirm/cancel panel: shows the same warning text and
+               requires an explicit choice before the whole panel is reset. -->
+          <div class="it-confirm" role="alertdialog" aria-label="Confirm restore initial ideas">
+            <div class="it-confirm-msg">{RESTORE_WARNING}</div>
+            <div class="it-confirm-actions">
+              <button class="it-confirm-btn cancel" on:click={() => (confirmingRestore = false)}>
+                Cancel
+              </button>
+              <button
+                class="it-confirm-btn confirm"
+                on:click={() => { confirmingRestore = false; onRestoreInitial && onRestoreInitial(); }}
+              >
+                Restore
+              </button>
+            </div>
+          </div>
+        {/if}
       {/if}
     {/if}
   </div>
@@ -292,6 +324,58 @@
     // Show its warning tooltip instantly on hover.
     &:hover .it-tip {
       opacity: 1;
+    }
+  }
+
+  // Small inline confirmation panel shown after clicking "Restore initial ideas".
+  // Amber-bordered (matches the warning tooltip) so it reads as a caution step.
+  .it-confirm {
+    margin-top: 14px;
+    padding: 11px 13px;
+    border: 1px solid #e0a020;
+    border-radius: 8px;
+    background: hsl(38, 100%, 97%);
+    max-width: 320px;
+
+    .it-confirm-msg {
+      font-size: 0.95rem;
+      font-weight: 500;
+      line-height: 1.4;
+      color: $gray-900;
+      margin-bottom: 10px;
+    }
+
+    .it-confirm-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+    }
+
+    .it-confirm-btn {
+      font-family: inherit;
+      font-size: 0.92rem;
+      font-weight: 600;
+      line-height: 1;
+      padding: 7px 14px;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+
+      // Cancel — quiet, keeps the current state.
+      &.cancel {
+        border: 1px solid $gray-400;
+        background: white;
+        color: $gray-700;
+        &:hover { background: $gray-100; border-color: $gray-500; color: $gray-900; }
+      }
+
+      // Restore — the committing action, amber to echo the warning.
+      &.confirm {
+        border: 1px solid #cf8f16;
+        background: #e0a020;
+        color: white;
+        &:hover { background: #cf8f16; border-color: #b57e12; }
+      }
     }
   }
 </style>
