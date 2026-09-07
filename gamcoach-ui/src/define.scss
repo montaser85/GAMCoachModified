@@ -314,3 +314,21 @@ $blue-gray-700: hsl(199, 18.34%, 33.14%);
 $blue-gray-800: hsl(199, 17.91%, 26.27%);
 $blue-gray-900: hsl(199, 19.15%, 18.43%);
 $blue-gray-1000: hsl(199, 20.93%, 8.43%);
+
+// ── Shared hover-tooltip look ────────────────────────────────────────────────
+// The readable text size + frame of the "Ideas to try" / "Restore initial ideas"
+// tips (.it-tip). Included by EVERY hover popup across the panel — the section-
+// header "i" popups, the feature-card info popups, the score-driver name tips and
+// the change-effect row tips — so they all share one size and style. Only the text
+// + frame are set here; each tooltip keeps its own positioning, width and show/hide.
+@mixin hover-tip {
+  font-size: 1rem;
+  font-weight: 600;
+  line-height: 1.4;
+  padding: 9px 12px;
+  background: white;
+  color: $gray-900;
+  border: 3px solid #7fb8ea;
+  border-radius: 8px;
+  box-shadow: 0 6px 18px hsla(0, 0%, 0%, 0.22);
+}

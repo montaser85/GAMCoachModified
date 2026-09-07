@@ -253,6 +253,7 @@
     // Hover definition — same text as the left-panel feature-card info popup,
     // styled to match it (white card, blue border).
     .sd-name-tip {
+      @include hover-tip;  // shared panel-wide tooltip look (size + frame)
       display: none;
       position: absolute;
       left: 0;
@@ -261,15 +262,6 @@
       z-index: 600;
       width: 230px;
       max-width: 260px;
-      background: white;
-      border: 1px solid $blue-200;
-      border-radius: 6px;
-      padding: 9px 11px;
-      font-size: 0.9rem;
-      font-weight: 400;
-      color: $gray-700;
-      line-height: 1.5;
-      box-shadow: 0 4px 16px hsla(0, 0%, 0%, 0.14);
       white-space: normal;
       text-align: left;
       cursor: default;

@@ -265,6 +265,7 @@
   // position:fixed (coordinates set by positionIdeaTip on mouseenter) so it is never
   // clipped by the right column's overflow.
   .it-tip {
+    @include hover-tip;  // the shared panel-wide tooltip look (size + frame)
     position: fixed;
     left: 0;
     top: 0;
@@ -272,17 +273,8 @@
     z-index: 9999;
     width: max-content;
     max-width: 280px;
-    padding: 9px 12px;
-    background: white;
-    color: $gray-900;
-    font-size: 1rem;          // bigger than the tiny native tooltip
-    font-weight: 600;
-    line-height: 1.4;
     text-align: center;
     white-space: normal;
-    border: 3px solid #7fb8ea;  // thicker, clearly-visible border
-    border-radius: 8px;
-    box-shadow: 0 6px 18px hsla(0, 0%, 0%, 0.22);
     pointer-events: none;
     opacity: 0;                 // hidden until hover
     transition: opacity 60ms ease;  // rapid fade-in, no delay

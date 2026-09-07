@@ -156,22 +156,14 @@ $card-h-padding: 16px;
   }
 
   .link-popup {
+    @include hover-tip;  // shared panel-wide tooltip look (size + frame)
     display: none;
     // Positioned relative to .feature-card (position:relative, no overflow:hidden)
     // so it sits just below the header and is never clipped
     position: absolute;
     right: 0;
     top: 32px;   // clears the feature-header height
-    width: 220px;
-    background: white;
-    border: 1px solid $blue-200;
-    border-radius: 6px;
-    padding: 9px 11px;
-    font-size: 0.82rem;
-    font-weight: 400;
-    color: $gray-700;
-    line-height: 1.5;
-    box-shadow: 0 4px 16px hsla(0, 0%, 0%, 0.14);
+    width: 240px;
     z-index: 500;
     white-space: normal;
     pointer-events: auto;
@@ -203,6 +195,7 @@ $card-h-padding: 16px;
 
       .dep-list {
         font-size: 0.8rem;
+        font-weight: 400; // keep the dependency list quiet (don't inherit the tip's 600)
         color: $gray-600;
         line-height: 1.4;
       }

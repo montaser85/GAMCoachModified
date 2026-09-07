@@ -304,21 +304,14 @@
   // tooltip on the bottom-most row (e.g. Loan Amount) — so it read as cut off and
   // needed extra scrolling. Opening above keeps it inside the visible scroll area.
   .ce-row-tip {
+    @include hover-tip;  // shared panel-wide tooltip look (size + frame)
     position: absolute;
     bottom: calc(100% - 6px);
     left: 0;
     z-index: 60;
     max-width: 300px;
     width: max-content;
-    background: white;
-    border: 1px solid $blue-200;
-    color: $gray-700;
-    padding: 9px 11px;
-    border-radius: 6px;
-    font-size: 0.82rem;
-    line-height: 1.5;
     white-space: pre-line; // render the \n\n between multiple effects as blank lines
-    box-shadow: 0 4px 16px hsla(0, 0%, 0%, 0.14);
     opacity: 0;
     visibility: hidden;
     pointer-events: none;

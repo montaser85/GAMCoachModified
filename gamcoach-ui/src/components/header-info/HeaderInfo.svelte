@@ -50,6 +50,7 @@
     // Anchored to the icon itself (.header-info is position:relative) so the popup
     // drops immediately below the "i", close to it — not way out at the header edge.
     .hi-popup {
+      @include hover-tip;  // shared panel-wide tooltip look (size + frame)
       display: none;
       position: absolute;
       left: 0;
@@ -57,16 +58,7 @@
       margin-top: 4px;
       width: 240px;
       max-width: 90vw;
-      background: white;
-      border: 1px solid $blue-200;
-      border-radius: 6px;
-      padding: 9px 11px;
-      font-size: 0.82rem;
-      font-weight: 400;
       font-style: normal;
-      color: $gray-700;
-      line-height: 1.5;
-      box-shadow: 0 4px 16px hsla(0, 0%, 0%, 0.14);
       z-index: 500;
       white-space: normal;
       text-align: left;

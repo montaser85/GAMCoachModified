@@ -204,21 +204,13 @@
     }
 
     .hi-popup {
+      @include hover-tip;  // shared panel-wide tooltip look (size + frame)
       display: none;
       position: absolute;
       right: 6px;
       top: 100%;
-      width: 220px;
-      background: white;
-      border: 1px solid $blue-200;
-      border-radius: 6px;
-      padding: 9px 11px;
-      font-size: 0.82rem;
-      font-weight: 400;
+      width: 240px;
       font-style: normal;
-      color: $gray-700;
-      line-height: 1.5;
-      box-shadow: 0 4px 16px hsla(0, 0%, 0%, 0.14);
       z-index: 500;
       white-space: normal;
       text-align: left;
