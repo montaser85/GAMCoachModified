@@ -168,7 +168,12 @@
       "Bash(cd \"D:/OSU/Dr B research group/GAM_Coach/gam-coach_modified/gamcoach-ui\" && tail -20 /tmp/rollup-watch.log | grep -iE \"created|error|bundle\" | tail -5; echo \"bundle exists: $\\([ -f public/build/bundle.js ] && echo yes\\)\")",
       "Bash(node -e ' *)",
       "Bash(grep -o '.\\\\{0\\\\}The unpaid balance amount, if the balance on revolving credit account is not paid in full.\\\\{0\\\\}' public/data/lc-classifier.json)",
-      "Bash(cd \"D:/OSU/Dr B research group/GAM_Coach/gam-coach_modified/gamcoach-ui\" && echo \"kept sentence present: $\\(grep -c 'only save these new changes' public/build/bundle.js\\)\"; grep -iE \"\\\\] Error|SyntaxError\" /tmp/rollup-watch.log | grep -v Circular | head -2 || echo \"no errors\")"
+      "Bash(cd \"D:/OSU/Dr B research group/GAM_Coach/gam-coach_modified/gamcoach-ui\" && echo \"kept sentence present: $\\(grep -c 'only save these new changes' public/build/bundle.js\\)\"; grep -iE \"\\\\] Error|SyntaxError\" /tmp/rollup-watch.log | grep -v Circular | head -2 || echo \"no errors\")",
+      "Bash(grep -nE '^\\\\s*\\\\$:' src/components/coach/Coach.svelte)",
+      "Bash(npx rollup *)",
+      "Bash(echo \"started dev, pid $!\")",
+      "Bash(git --no-pager diff -- .claude/settings.local.json)",
+      "Bash(git commit -m ' *)"
     ]
   }
 }
