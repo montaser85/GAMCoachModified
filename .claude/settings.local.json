@@ -173,7 +173,10 @@
       "Bash(npx rollup *)",
       "Bash(echo \"started dev, pid $!\")",
       "Bash(git --no-pager diff -- .claude/settings.local.json)",
-      "Bash(git commit -m ' *)"
+      "Bash(git commit -m ' *)",
+      "Bash(tasklist //FI \"IMAGENAME eq node.exe\")",
+      "Bash(echo \"restarted dev pid $!\")",
+      "Bash(echo \"restarted pid $!\")"
     ]
   }
 }
