@@ -181,7 +181,9 @@
       "Bash(grep -noE \"Ee ?=[^,;]{0,80}\" gamcoach.js)",
       "Bash(rm -f public/build/bundle.js)",
       "Bash(grep -oE \"TOTAL_GEN_BUDGET_MS[^;]{0,30}|4\\\\.5 ?\\\\* ?60 ?\\\\* ?1000|4\\\\.5\\\\*60\\\\*1e3\" public/build/bundle.js)",
-      "Bash(git --no-pager diff -- gamcoach-ui/src/components/coach/Coach.js)"
+      "Bash(git --no-pager diff -- gamcoach-ui/src/components/coach/Coach.js)",
+      "Bash(echo \"restarted $!\")",
+      "Bash(git --no-pager log -1 --oneline)"
     ]
   }
 }
