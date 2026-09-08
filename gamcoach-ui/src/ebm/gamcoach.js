@@ -50,9 +50,13 @@ const MAX_FILTER_ATTEMPTS = 30;
 // income, stacked negatives), freezing generation for 20+ minutes. Normal profiles
 // solve in well under a second, so this ceiling never touches them — it only aborts a
 // monster solve, returning the best integer solution found so far (status GLP_FEAS).
-// Paired with the total generation budget in Coach.js: worst case ≈ budget + one
-// tmlim solve. Keep it small enough that (budget + tmlim + render) stays under 5 min.
-const PER_SOLVE_TMLIM_SEC = 20;
+// Set to 40s (up from an initial 20s): measured medium-hard profiles need ~40s per
+// solve to reach a plan that clears approval AFTER the DTI fold — at 20s (and 30s)
+// the same profile's best plan stalled at 46.5% (below approval), while 40s crossed it
+// to an approved plan. 20s/30s were too tight for that band; near-infeasible profiles
+// don't benefit at any limit (still below approval, just slower). Paired with the total
+// generation budget in Coach.js: worst case ≈ budget + one tmlim solve, kept < 5 min.
+const PER_SOLVE_TMLIM_SEC = 40;
 
 /**
  * TRUE post-fold approval probability of a candidate plan — computed by the SAME

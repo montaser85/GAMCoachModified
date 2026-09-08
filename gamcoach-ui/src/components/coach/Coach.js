@@ -75,8 +75,9 @@ export const TOTAL_PLAN_NUM = 3;
 // bounds each attempt, and THIS bounds the whole process. Once the budget is spent we
 // stop launching further solves/retries and keep the best plans found so far. Because
 // the check happens between solves, the true worst case is this budget PLUS one final
-// tmlim-bounded solve (≈ 4:30 + 20s = 4:50) plus render — kept under the ~5 min aim.
-const TOTAL_GEN_BUDGET_MS = 4.5 * 60 * 1000; // 4:30
+// tmlim-bounded solve. Lowered to 4:00 (from 4:30) to offset the 40s tmlim (up from
+// 20s): worst case = 4:00 + 40s = 4:40 plus render, still under the ~5 min aim.
+const TOTAL_GEN_BUDGET_MS = 4 * 60 * 1000; // 4:00
 
 const difficultyTextMap = {
   1: 'very-easy',
