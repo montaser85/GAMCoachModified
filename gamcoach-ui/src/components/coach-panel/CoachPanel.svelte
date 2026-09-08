@@ -15,7 +15,8 @@
     historySidebarOpenStore,
     isRestoringEntryStore,
     constraintsStore,
-    planRationaleStore
+    planRationaleStore,
+    planIdeasStore
   } from '../../store';
   import { get } from 'svelte/store';
   import { createHistoryEntry, addHistoryEntry } from '../../utils/historyManager';
@@ -413,6 +414,18 @@
         );
 
         entry.planIndex = planIndex; // Store plan index for restoration
+
+        // Snapshot the ideas as they were at this interaction (single source of truth:
+        // the same array the main panel + Compare Plans show for this plan), plus the
+        // dismissed set they derive from — so restoring this entry brings back exactly
+        // these ideas. Deep-copied so later idea changes never mutate the snapshot.
+        const ideasNow = get(planIdeasStore).get(planIndex) || [];
+        entry.ideas = ideasNow.map((i) => ({ ...i }));
+        entry.dismissedIdeaNames = [
+          ...(capturedPlanValue.dismissedIdeaNames instanceof Set
+            ? capturedPlanValue.dismissedIdeaNames
+            : [])
+        ];
 
         return addHistoryEntry(historyMap, planIndex, entry);
       });

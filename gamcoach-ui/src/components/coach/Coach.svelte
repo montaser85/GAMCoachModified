@@ -34,7 +34,8 @@
     isRestoringEntryStore,
     propagatedFeaturesStore,
     featureValueOverrideStore,
-    planRationaleStore
+    planRationaleStore,
+    restoreIdeasStore
   } from '../../store';
 
   // import modelDataLC from '../../config/data/lc-classifier.json';
@@ -241,6 +242,21 @@
           feature.hypotheticalValue = restoredValue;
         }
       }
+    }
+
+    // Restore the ideas as they were at this entry. The dismissed set is what the
+    // rebuilt ideas derive from (so later edits behave correctly), and restoreIdeasStore
+    // hands FeaturePanel the exact captured ideas to display on its restore-remount —
+    // a plain recompute can't reproduce the entry's view. Old entries (pre-snapshot)
+    // have no ideas/dismissed fields; then we skip this and fall back to the recompute.
+    if (Array.isArray(entry.dismissedIdeaNames)) {
+      plan.dismissedIdeaNames = new Set(entry.dismissedIdeaNames);
+    }
+    if (Array.isArray(entry.ideas)) {
+      restoreIdeasStore.set({
+        planIndex,
+        ideas: entry.ideas.map((i) => ({ ...i }))
+      });
     }
 
     // Clear propagated features since we're in a clean restored state

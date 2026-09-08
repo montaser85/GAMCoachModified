@@ -129,6 +129,23 @@ export const changeEffectsStore = writable([]);
 // publishes it here; IdeasToTry.svelte renders the amber lever chips.
 export const ideasStore = writable([]);
 
+// SINGLE SOURCE OF TRUTH for each plan's "Ideas to try": Map<planIndex, ideas[]>.
+// FeaturePanel writes the ACTIVE plan's visibleIdeas here (alongside ideasStore) on
+// every (re)build; Compare Plans reads this per plan so the two surfaces can never
+// diverge for a given plan (they render the exact same array). History entries
+// snapshot the value for their plan, and a restore writes the snapshot back — so
+// restoring an entry brings back the ideas it had. Each ideas[] element has the same
+// shape FeaturePanel/IdeasToTry use: { name, displayName, verb, direction, mode,
+// gain?, targetDisplay?, applyValue? }.
+export const planIdeasStore = writable(new Map());
+
+// Restore hand-off: when a history entry is restored, Coach sets this to
+// { planIndex, ideas } BEFORE remounting the FeaturePanel. FeaturePanel's idea init
+// consumes a matching entry and displays exactly those ideas (rather than
+// recomputing, which cannot reproduce the entry's first-view-vs-steady-state count),
+// then clears it. Null when no restore is pending.
+export const restoreIdeasStore = writable(null);
+
 // Dismiss-request channel for "Ideas to try". IdeasToTry.svelte writes the
 // feature `name` of the idea the user dismissed; FeaturePanel (which owns the
 // idea state + the speculative "what helps next" logic) reacts by removing that

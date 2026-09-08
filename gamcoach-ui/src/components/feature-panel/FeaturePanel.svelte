@@ -13,8 +13,9 @@
   import { Plan, Constraints } from '../coach/Coach';
 
   import { onMount, onDestroy, tick } from 'svelte';
+  import { get } from 'svelte/store';
   import { fade } from 'svelte/transition';
-  import { tooltipConfigStore, featureValueOverrideStore, cardToggleStore, propagatedFeaturesStore, historySidebarOpenStore, changeEffectsStore, ideasStore, ideaDismissStore, ideaApplyStore, derogFloorHintStore } from '../../store';
+  import { tooltipConfigStore, featureValueOverrideStore, cardToggleStore, propagatedFeaturesStore, historySidebarOpenStore, changeEffectsStore, ideasStore, planIdeasStore, restoreIdeasStore, ideaDismissStore, ideaApplyStore, derogFloorHintStore } from '../../store';
   import { sigmoid } from '../../ebm/ebm';
   import { isApproved } from '../../utils/score';
   import {
@@ -2725,6 +2726,28 @@
    * with propagation (fires post-settle), so it never lags editing and never
    * triggers the MILP solver.
    */
+  /**
+   * Publish the current visibleIdeas to BOTH the active-plan channel (ideasStore, read
+   * by the right-panel IdeasToTry) AND the per-plan single source (planIdeasStore, read
+   * by Compare Plans for THIS plan). Both surfaces therefore render the exact same
+   * array — they can't diverge. Also persists the plan's dismissed set on the plan
+   * object.
+   */
+  const publishVisibleIdeas = () => {
+    ideasStore.set(visibleIdeas);
+    if (plan && plan.planIndex !== undefined) {
+      planIdeasStore.update((m) => {
+        const n = new Map(m);
+        n.set(plan.planIndex, visibleIdeas);
+        return n;
+      });
+    }
+    // Persist THIS plan's dismissed/applied set on the plan object, so switching away
+    // and back restores its Ideas-to-try state (the panel remounts per plan), and so
+    // Compare Plans can filter each column by its OWN plan's set — never another's.
+    if (plan) plan.dismissedIdeaNames = dismissedNames;
+  };
+
   const rebuildIdeas = () => {
     const remainingAmount = amountIdeas.filter((i) => !dismissedNames.has(i.name));
     const shownAmount = remainingAmount.slice(0, TARGET_IDEA_COUNT);
@@ -2735,11 +2758,7 @@
     ]);
     const directional = buildDirectionalIdeas(needed, exclude);
     visibleIdeas = [...shownAmount, ...directional].slice(0, TARGET_IDEA_COUNT);
-    ideasStore.set(visibleIdeas);
-    // Persist THIS plan's dismissed/applied set on the plan object, so switching away
-    // and back restores its Ideas-to-try state (the panel remounts per plan), and so
-    // Compare Plans can filter each column by its OWN plan's set — never another's.
-    if (plan) plan.dismissedIdeaNames = dismissedNames;
+    publishVisibleIdeas();
   };
 
   /**
@@ -2754,11 +2773,26 @@
     // plan after a regenerate, which makes new plan objects — starts empty.
     dismissedNames = plan?.dismissedIdeaNames instanceof Set ? plan.dismissedIdeaNames : new Set();
     if (plan) plan.dismissedIdeaNames = dismissedNames;
+
+    // RESTORE hand-off: if a history entry for THIS plan was just restored, display
+    // exactly the ideas it captured (Coach set restoreIdeasStore before remounting us).
+    // A pure recompute cannot reproduce the entry's view — the "first-time shows ALL
+    // amounts" vs "steady-state 3" choice is history, not derivable from state alone —
+    // so we replay the snapshot. amountIdeas/dismissedNames above are still seeded, so
+    // later edits/dismissals rebuild normally.
+    const pendingRestore = plan ? get(restoreIdeasStore) : null;
+    if (pendingRestore && pendingRestore.planIndex === plan.planIndex) {
+      visibleIdeas = Array.isArray(pendingRestore.ideas) ? pendingRestore.ideas : [];
+      restoreIdeasStore.set(null);
+      publishVisibleIdeas();
+      return;
+    }
+
     if (dismissedNames.size === 0 && amountIdeas.length > 0) {
       // First time on this plan AND it has exact-amount suggested changes: show ALL
       // of them (however many).
       visibleIdeas = [...amountIdeas];
-      ideasStore.set(visibleIdeas);
+      publishVisibleIdeas();
     } else {
       // Either (a) first time on a plan with NO exact-amount suggestions — the
       // coach reached this plan by changing only non-suggestable features — or

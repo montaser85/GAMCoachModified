@@ -1,6 +1,6 @@
 <script>
   import { onDestroy } from 'svelte';
-  import { compareOpenStore, constraintsStore, ideaApplyStore } from '../../store';
+  import { compareOpenStore, constraintsStore, ideaApplyStore, planIdeasStore } from '../../store';
   import { planSuggestedIdeas, computeIdeasForPlan } from '../ideas/planIdeas';
   import { appliedLoanDtiContribution } from '../../engine/index.mjs';
   import { approvalPoints, isApproved } from '../../utils/score';
@@ -38,6 +38,14 @@
   const _constraintsUnsub = constraintsStore.subscribe((v) => (constraints = v));
   onDestroy(() => _constraintsUnsub());
 
+  // Single source of truth for the ACTIVE plan's ideas — the exact array FeaturePanel
+  // shows in the right panel. Reading it here guarantees Compare Plans and the main
+  // panel render identical ideas for that plan (Bug 1), and reflects a history restore
+  // (Bug 2, since a restored entry's ideas land here via FeaturePanel).
+  let planIdeasMap = new Map();
+  const _planIdeasUnsub = planIdeasStore.subscribe((v) => (planIdeasMap = v));
+  onDestroy(() => _planIdeasUnsub());
+
   // Whether the modal is open — the directional-filler ideas run a small
   // speculative propagation per plan, so they're only computed while open.
   let modalOpen = false;
@@ -51,6 +59,15 @@
    * (a speculative what-if per feature) are computed only while the modal is open.
    */
   function buildPlanIdeas(plan) {
+    // SINGLE SOURCE OF TRUTH for the active plan: use the exact ideas the main panel
+    // (FeaturePanel) is currently showing, so the two views can never diverge for the
+    // plan they both display. Only the active plan has a live FeaturePanel keeping its
+    // planIdeasStore entry fresh; other plans (no live panel) are computed below as
+    // before — they have no main-panel counterpart to match.
+    const activeIdx = plans ? plans.activePlanIndex : undefined;
+    if (plan.planIndex === activeIdx && planIdeasMap.has(plan.planIndex)) {
+      return planIdeasMap.get(plan.planIndex);
+    }
     const dismissed = plan.dismissedIdeaNames instanceof Set ? plan.dismissedIdeaNames : new Set();
     const amounts = planSuggestedIdeas(plan, constraints)
       .filter((i) => !dismissed.has(i.name))
@@ -309,6 +326,11 @@
 
   // Rebuild whenever a plan store emits (slider changes, plan load).
   $: localPlansVersion && rebuildComparison();
+
+  // Rebuild the summarized ideas whenever the active plan's stored ideas change (a
+  // right-panel edit/dismiss, or a history restore) so Compare Plans stays in lock-step
+  // with the main panel while it is open.
+  $: if (modalOpen && localPlans && planIdeasMap) buildSummary();
 </script>
 
 {#if $compareOpenStore}
