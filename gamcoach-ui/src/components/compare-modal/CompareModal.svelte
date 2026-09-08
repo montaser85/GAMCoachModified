@@ -68,10 +68,20 @@
     if (plan.planIndex === activeIdx && planIdeasMap.has(plan.planIndex)) {
       return planIdeasMap.get(plan.planIndex);
     }
+    // Fallback for a plan with no live FeaturePanel — must MATCH what FeaturePanel's
+    // initIdeas would show on (re)mount, so the counts agree with the main panel when
+    // the user activates this plan.
     const dismissed = plan.dismissedIdeaNames instanceof Set ? plan.dismissedIdeaNames : new Set();
-    const amounts = planSuggestedIdeas(plan, constraints)
-      .filter((i) => !dismissed.has(i.name))
-      .slice(0, 3);
+    const allAmounts = planSuggestedIdeas(plan, constraints);
+    // FIRST-TIME view (FeaturePanel.initIdeas: `dismissedNames.size === 0 &&
+    // amountIdeas.length > 0`): a plan the user hasn't acted on shows ALL of its
+    // exact-amount suggestions and NO directional fillers — do NOT top up to three.
+    if (dismissed.size === 0 && allAmounts.length > 0) {
+      return allAmounts;
+    }
+    // STEADY-STATE view (FeaturePanel.rebuildIdeas): remaining amounts topped up with
+    // directional fillers to three.
+    const amounts = allAmounts.filter((i) => !dismissed.has(i.name)).slice(0, 3);
     const needed = Math.max(0, 3 - amounts.length);
     if (needed === 0 || !modalOpen) return amounts;
     const exclude = new Set([...amounts.map((i) => i.name), ...dismissed]);
