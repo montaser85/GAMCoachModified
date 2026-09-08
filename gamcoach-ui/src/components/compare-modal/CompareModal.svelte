@@ -65,13 +65,18 @@
     return [...amounts, ...directional];
   }
 
-  /** Apply a clickable (amount) idea: same channel as the panel's chips, then
-   *  return to the main view. FeaturePanel enacts it on the active plan and marks
-   *  the feature dismissed, so it drops out of both surfaces. */
-  function applyIdeaFromCompare(idea) {
+  /** Apply a clickable (amount) idea from a SPECIFIC plan's column. The chip belongs
+   *  to `planIndex`, which is not necessarily the active plan — so the request is
+   *  TAGGED with that plan index and only that plan's FeaturePanel consumes it (see
+   *  FeaturePanel's ideaApplyStore subscription). We also activate that plan, which
+   *  both remounts its FeaturePanel (so it picks up the tagged request) and returns to
+   *  the main view. Without the tag, the apply would land on whatever plan was active
+   *  (e.g. Plan 1) instead of the clicked one. */
+  function applyIdeaFromCompare(idea, planIndex) {
     if (!idea || idea.mode !== 'amount' || idea.applyValue === undefined) return;
-    ideaApplyStore.set({ name: idea.name, value: idea.applyValue });
-    compareOpenStore.set(false);
+    ideaApplyStore.set({ name: idea.name, value: idea.applyValue, planIndex });
+    if (onSelectPlan) onSelectPlan(planIndex);
+    else compareOpenStore.set(false);
   }
 
   // A change whose per-feature score contribution is within ±this (log-odds) is
@@ -494,11 +499,11 @@
                     title={idea.mode === 'amount'
                       ? `Click to apply: ${idea.verb} ${idea.displayName} to ${idea.targetDisplay}`
                       : ''}
-                    on:click={() => applyIdeaFromCompare(idea)}
+                    on:click={() => applyIdeaFromCompare(idea, p.planIndex)}
                     on:keydown={(e) => {
                       if (idea.mode === 'amount' && (e.key === 'Enter' || e.key === ' ')) {
                         e.preventDefault();
-                        applyIdeaFromCompare(idea);
+                        applyIdeaFromCompare(idea, p.planIndex);
                       }
                     }}
                     ><span class="sg-chip-text"><span class="sg-chip-verb">{idea.verb}</span> {idea.displayName}{#if idea.mode === 'amount' && idea.targetDisplay}{' to '}{idea.targetDisplay}{/if}</span></span

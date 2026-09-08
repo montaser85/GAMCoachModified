@@ -509,9 +509,19 @@
     );
 
     // Apply channel: clicking an initial (amount) idea applies its suggested value.
+    // A request may be TAGGED with a `planIndex` (from Compare Plans, where a chip
+    // belongs to a specific plan's column). Only the FeaturePanel whose plan matches
+    // consumes such a request — so the change lands on the clicked plan (after it is
+    // activated), not on whatever plan happened to be active. A request WITHOUT a
+    // planIndex (the right-panel "Ideas to try") targets the active plan as before.
+    // Leaving a non-matching tagged request in place lets the matching panel pick it
+    // up when it mounts.
     unsubscribes.push(
       ideaApplyStore.subscribe((req) => {
         if (req && req.name !== undefined) {
+          if (req.planIndex !== undefined && plan && req.planIndex !== plan.planIndex) {
+            return;
+          }
           applyIdea(req.name, req.value);
           ideaApplyStore.set(null);
         }
