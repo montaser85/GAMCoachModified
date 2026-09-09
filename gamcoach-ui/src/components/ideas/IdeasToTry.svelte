@@ -86,14 +86,9 @@
 
 {#if ideas.length > 0}
   <div class="ideas-to-try">
-    <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
-    <div class="it-title" on:click={() => (collapsed = !collapsed)}>
+    <div class="it-title">
       Ideas to try
       <HeaderInfo text="Things you could try to change the current approval score." />
-      <svg class="it-chev" class:collapsed viewBox="0 0 24 24" width="24" height="24"
-           fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M6 9l6 6l6 -6"/>
-      </svg>
     </div>
 
     {#if !collapsed}
@@ -189,16 +184,6 @@
     font-weight: 700;
     color: $gray-900;
     margin-bottom: 8px;
-    cursor: pointer;
-    user-select: none;
-
-    .it-chev {
-      margin-left: auto;
-      color: $gray-500;
-      flex: 0 0 auto;
-      transition: transform 150ms ease;
-      &.collapsed { transform: rotate(-90deg); }
-    }
   }
 
   .it-status {

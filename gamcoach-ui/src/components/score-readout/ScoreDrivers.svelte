@@ -72,16 +72,11 @@
 </script>
 
 <div class="score-drivers" style="--sd-name-col: {nameColPx}px">
-  <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
-  <div class="sd-header" on:click={() => (collapsed = !collapsed)}>
+  <div class="sd-header">
     <span class="sd-title-text">Your score changed by <span
         class="sd-title-net" class:pos={panelTotal >= 0} class:neg={panelTotal < 0}
       >{signed(panelTotal)} points</span> from the original</span>
     <HeaderInfo text="How much each change moved your score up or down from your original score. The bars break down the net change above." />
-    <svg class="sd-chev" class:collapsed viewBox="0 0 24 24" width="24" height="24"
-         fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
-      <path d="M6 9l6 6l6 -6"/>
-    </svg>
   </div>
 
   {#if !collapsed}
@@ -163,16 +158,6 @@
     font-weight: 700;
     color: $gray-900;
     margin-bottom: 8px;
-    cursor: pointer;
-    user-select: none;
-
-    .sd-chev {
-      margin-left: auto;
-      color: $gray-500;
-      flex: 0 0 auto;
-      transition: transform 150ms ease;
-      &.collapsed { transform: rotate(-90deg); }
-    }
   }
 
   // Dynamic net-change title. The signed net is tinted blue (up) / red (down) to
