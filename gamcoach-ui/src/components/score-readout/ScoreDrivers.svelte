@@ -73,9 +73,9 @@
 
 <div class="score-drivers" style="--sd-name-col: {nameColPx}px">
   <div class="sd-header">
-    <span class="sd-title-text">Your score changed by <span
+    <span class="sd-title-text">The score changed by <span
         class="sd-title-net" class:pos={panelTotal >= 0} class:neg={panelTotal < 0}
-      >{signed(panelTotal)} points</span> from the original</span>
+      >{signed(panelTotal)} points</span> from your original score</span>
     <HeaderInfo text="How much each change moved your score up or down from your original score. Each bar shows one change's effect." />
   </div>
 
