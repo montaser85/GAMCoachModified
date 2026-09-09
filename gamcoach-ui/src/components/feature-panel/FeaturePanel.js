@@ -123,6 +123,20 @@ export class FeatureGrid {
       delinq_2yrs: 'other'
     };
 
+    // Explicit display order for the Actionable Features (the `changed` group).
+    // The panel stacks the three columns into ONE vertical list, so to guarantee this
+    // exact top-to-bottom sequence the actionable cards all go into the left column in
+    // this order (mid/right stay empty). Any actionable feature not listed here
+    // (defensive) falls to the end in its importance order.
+    const ACTIONABLE_ORDER = [
+      'loan_amnt',        // Loan Amount ($)
+      'purpose',          // Loan Purpose
+      'term',             // Payment Period
+      'application_type', // Application Type
+      'annual_inc',       // Annual Income ($)
+      'revol_bal'         // Unpaid Credit Card Balance ($)
+    ];
+
     const nextKey = {
       changed: 0,
       configured: 0,
@@ -131,13 +145,24 @@ export class FeatureGrid {
 
     const keys = ['left', 'mid', 'right'];
 
-    // Place each feature into its fixed type group, filling the three columns
-    // round-robin in the features' current (importance-ranked) order.
+    // Computed & Profile groups: fill the three columns round-robin in the features'
+    // current (importance-ranked) order (Actionable is placed separately, below).
     features.forEach((f) => {
       const box = GROUP_BY_NAME[f.data.name] || 'other';
+      if (box === 'changed') return;
       this[box][keys[nextKey[box]]].push(f);
       nextKey[box] = (nextKey[box] + 1) % 3;
     });
+
+    // Actionable Features: one column, in the explicit ACTIONABLE_ORDER sequence.
+    const orderIndex = (name) => {
+      const i = ACTIONABLE_ORDER.indexOf(name);
+      return i === -1 ? ACTIONABLE_ORDER.length : i;
+    };
+    features
+      .filter((f) => GROUP_BY_NAME[f.data.name] === 'changed')
+      .sort((a, b) => orderIndex(a.data.name) - orderIndex(b.data.name))
+      .forEach((f) => this.changed.left.push(f));
   };
 }
 
