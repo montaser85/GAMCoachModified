@@ -3169,6 +3169,10 @@
     </div>
   {/if}
 
+  <!-- Only the feature cards scroll. The "Total you'll repay" box above stays put and
+       the scrollbar starts HERE (at the actionable features), not at the repay box —
+       so the repay box reads as a fixed header, cleanly separated from the list. -->
+  <div class='feature-scroll'>
   <div class='card-block'>
     <!-- svelte-ignore a11y-click-events-have-key-events a11y-no-static-element-interactions -->
     <div class='row-header' on:click={() => toggleGroup('changed')}>
@@ -3683,6 +3687,7 @@
       </div>
 
     </div>
+  </div>
   </div>
 
 </div>
