@@ -38,11 +38,19 @@
 // horizontally to line up with the feature cards below it.
 .loan-cost-box {
   box-sizing: border-box;
-  margin: 10px 8px 12px 8px;
+  // Pinned to the top of the scrolling feature list (.feature-panel is the scroll
+  // container) so "Total you'll repay" stays visible no matter how far the user
+  // scrolls through the feature cards. Opaque background + z-index keep the cards
+  // sliding cleanly beneath it; the shadow separates it from the scrolling content.
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  margin: 0 8px 12px 8px;
   padding: 8px 10px;
   border: 1px solid hsl(210, 40%, 82%);
   border-radius: 8px;
   background: hsl(210, 45%, 97%);
+  box-shadow: 0 3px 8px hsla(210, 40%, 40%, 0.14);
   font-size: 0.95rem;
   line-height: 1.35;
   color: $gray-800;
