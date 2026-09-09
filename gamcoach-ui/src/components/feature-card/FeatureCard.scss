@@ -1170,12 +1170,13 @@ $card-h-padding: 16px;
   display: none;
 }
 
-// The Loan Amount card has a longer clarifying title ("Loan Amount ($) you're
-// applying for"). Let ITS title wrap to two lines at full size instead of being
-// truncated with an ellipsis; the header grows to fit (auto height), so the
-// height-based auto-shrink never kicks in. Scoped to this card only — every other
-// card keeps the single-line, fixed-height header.
-.feature-card[data-feature-name='loan_amnt'] {
+// Cards with a longer clarifying title (Loan Amount → "…you're applying for",
+// Number of Accounts → "…(Open or Closed)"). Let THEIR titles wrap to two lines at
+// full size instead of being truncated with an ellipsis; the header grows to fit
+// (auto height), so the height-based auto-shrink never kicks in. Scoped to these
+// cards only — every other card keeps the single-line, fixed-height header.
+.feature-card[data-feature-name='loan_amnt'],
+.feature-card[data-feature-name='total_acc'] {
   .feature-info {
     height: auto;
     align-items: flex-start;

@@ -369,6 +369,8 @@
           ? 'FICO Score (Credit score)'
           : featureInfo.name === 'loan_amnt'
           ? "Loan Amount ($) you're applying for"
+          : featureInfo.name === 'total_acc'
+          ? 'Number of Accounts (Open or Closed)'
           : featureInfo.description.displayName +
             (CARD_NAME_UNIT[featureInfo.name] || ''),
       featureName: featureInfo.name,
