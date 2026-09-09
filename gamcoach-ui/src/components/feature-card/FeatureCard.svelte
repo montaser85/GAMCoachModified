@@ -360,12 +360,15 @@
     // Initialize the feature data from the prop
     state.feature = {
       // Left-panel card title only. FICO Score is clarified with "(Credit
-      // score)"; six features get a unit suffix (CARD_NAME_UNIT). Scoped to this
-      // card — every other place (right-panel sections, Compare Plans, dependency
-      // hovers) keeps the plain name. Feature VALUES are untouched.
+      // score)"; Loan Amount is clarified as the amount being applied for; six
+      // features get a unit suffix (CARD_NAME_UNIT). Scoped to this card — every
+      // other place (right-panel sections, Compare Plans, dependency hovers) keeps
+      // the plain name. Feature VALUES are untouched.
       name:
         featureInfo.name === 'fico_score'
           ? 'FICO Score (Credit score)'
+          : featureInfo.name === 'loan_amnt'
+          ? "Loan Amount ($) you're applying for"
           : featureInfo.description.displayName +
             (CARD_NAME_UNIT[featureInfo.name] || ''),
       featureName: featureInfo.name,

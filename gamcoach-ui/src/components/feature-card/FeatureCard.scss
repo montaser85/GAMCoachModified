@@ -1169,3 +1169,21 @@ $card-h-padding: 16px;
 .no-display {
   display: none;
 }
+
+// The Loan Amount card has a longer clarifying title ("Loan Amount ($) you're
+// applying for"). Let ITS title wrap to two lines at full size instead of being
+// truncated with an ellipsis; the header grows to fit (auto height), so the
+// height-based auto-shrink never kicks in. Scoped to this card only — every other
+// card keeps the single-line, fixed-height header.
+.feature-card[data-feature-name='loan_amnt'] {
+  .feature-info {
+    height: auto;
+    align-items: flex-start;
+  }
+  .feature-name {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+    line-height: 1.15;
+  }
+}
