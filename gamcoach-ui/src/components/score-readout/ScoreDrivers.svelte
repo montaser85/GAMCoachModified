@@ -76,7 +76,7 @@
     <span class="sd-title-text">Your score changed by <span
         class="sd-title-net" class:pos={panelTotal >= 0} class:neg={panelTotal < 0}
       >{signed(panelTotal)} points</span> from the original</span>
-    <HeaderInfo text="How much each change moved your score up or down from your original score. The bars break down the net change above." />
+    <HeaderInfo text="How much each change moved your score up or down from your original score. Each bar shows one change's effect." />
   </div>
 
   {#if !collapsed}

@@ -2411,8 +2411,10 @@
     const effect = buildEffectEntry('loan_amnt', 'dti', rawDti, foldedDti);
     // Custom sentence PREFIX for the applied-loan baseline fold: the loan itself
     // didn't change, it ADDED new debt, so phrase it that way rather than
-    // "Changing …". The approval-score clause is suppressed for this fold row
-    // (showApprovalChange = false) — it describes the baseline, not a user edit.
+    // "Changing …". The approval-score clause IS shown here (showApprovalChange =
+    // true) so the tooltip states how the applied loan moved the score — "…which
+    // changed your approval score from X% to Y%" (from the pre-fold original to the
+    // current score the readout shows).
     const foldPrefix =
       `The loan amount added new debt and raised the debt to income ratio ` +
       `from ${effect.beforeDisplay} to ${effect.afterDisplay}`;
@@ -2421,7 +2423,7 @@
       applicantBaselineState.loan_amnt,
       [effect],
       foldPrefix,
-      false
+      true
     );
   };
 
