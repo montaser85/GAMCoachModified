@@ -158,10 +158,13 @@
   padding: 10px 8px 6px 8px;
   gap: 4px;
 
-  // Not sticky — the group headers scroll away with their own cards so the scroll
-  // stays smooth (a sticky header stacking/swapping at the top read as "jumpy").
-  // `relative` keeps it as the positioning anchor for the right-aligned info popup.
-  position: relative;
+  // Sticky group headers (the original style). Kept fully OPAQUE (no 0.95 opacity)
+  // so a header never lets the cards scrolling behind it bleed through — that
+  // see-through flicker during the header swap was the "jumpy" effect. Solid white +
+  // z-index means one header cleanly covers/replaces the next as they reach the top.
+  position: sticky;
+  top: 0;
+  z-index: 2;
 
   cursor: pointer;
   user-select: none;
@@ -187,8 +190,8 @@
 
   // Info "i" icon to the right of the group title. Same badge + hover-popup style
   // as the feature-card info icons (FeatureCard.scss .link-icon), scoped here. The
-  // popup positions against the .row-header (right-aligned so it never overflows the
-  // narrow panel) and shows the one-line group definition on hover.
+  // popup positions against the sticky .row-header (right-aligned so it never
+  // overflows the narrow panel) and shows the one-line group definition on hover.
   .header-info {
     display: inline-flex;
     align-items: center;
