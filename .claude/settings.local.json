@@ -183,7 +183,8 @@
       "Bash(grep -oE \"TOTAL_GEN_BUDGET_MS[^;]{0,30}|4\\\\.5 ?\\\\* ?60 ?\\\\* ?1000|4\\\\.5\\\\*60\\\\*1e3\" public/build/bundle.js)",
       "Bash(git --no-pager diff -- gamcoach-ui/src/components/coach/Coach.js)",
       "Bash(echo \"restarted $!\")",
-      "Bash(git --no-pager log -1 --oneline)"
+      "Bash(git --no-pager log -1 --oneline)",
+      "Bash(grep -oE \"position:sticky[^}]{0,40}\" public/build/bundle.css)"
     ]
   }
 }
