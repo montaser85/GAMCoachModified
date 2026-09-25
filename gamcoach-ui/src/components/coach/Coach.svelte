@@ -781,13 +781,17 @@
           <div class="plan-loading-sub">This can take a few moments.</div>
         </div>
       {:else if plans !== null}
+        <!-- Approval score bar is a FIXED header — always visible; only the
+             visualizations below it scroll (the scrollbar starts under the bar). -->
         <ScoreReadout planStore={activePlanStore} />
-        <div class="rc-drivers">
-          <ScoreDrivers planStore={activePlanStore} />
-        </div>
-        <IdeasToTry planStore={activePlanStore} onRestoreInitial={handleRestoreInitial} />
-        <div class="rc-effects">
-          <ChangeEffects planStore={activePlanStore} />
+        <div class="rc-scroll">
+          <div class="rc-drivers">
+            <ScoreDrivers planStore={activePlanStore} />
+          </div>
+          <IdeasToTry planStore={activePlanStore} onRestoreInitial={handleRestoreInitial} />
+          <div class="rc-effects">
+            <ChangeEffects planStore={activePlanStore} />
+          </div>
         </div>
       {/if}
     </div>
@@ -952,17 +956,26 @@
     flex: 1 1 auto;
     min-width: 0;
     padding-top: 2px;
-    // Matches the left column's (viewport-scaled) height and scrolls its own
-    // content, so the lower bands (ideas / effects) stay reachable when they grow
-    // instead of being clipped by the wrapper's overflow:hidden. Raised (was
-    // `- 325px`) so the panel extends into the space it used to leave empty at the
-    // bottom of the screen, in step with the taller `.top` region.
+    // Matches the left column's (viewport-scaled) height. It no longer scrolls
+    // itself — the approval score bar (ScoreReadout, first child) stays fixed at the
+    // top and only the inner .rc-scroll below it scrolls, so the bar is always
+    // visible. Raised (was `- 325px`) so the panel extends into the space it used to
+    // leave empty at the bottom of the screen, in step with the taller `.top` region.
     max-height: max(400px, calc(100vh - 245px));
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  // The scrolling region below the pinned approval bar (drivers / ideas / effects).
+  .rc-scroll {
+    flex: 1 1 auto;
+    min-height: 0;
     overflow-y: auto;
     overflow-x: hidden;
     padding-right: 6px;
-    // Always reserve the scrollbar's space so the column width (and the score
-    // bar inside it) never jumps when the scrollbar appears/disappears.
+    // Always reserve the scrollbar's space so the column width never jumps when the
+    // scrollbar appears/disappears.
     scrollbar-gutter: stable;
   }
 
