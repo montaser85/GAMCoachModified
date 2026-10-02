@@ -553,8 +553,6 @@
 
   const hasPlanNote = (note) =>
     !!note && Object.values(note).some((v) => v && String(v).trim());
-  const planAnsweredCount = (note) =>
-    note ? Object.values(note).filter((v) => v && String(v).trim()).length : 0;
 
   const togglePlanNoteOpen = (idx) => {
     if (planNoteOpen.has(idx)) planNoteOpen.delete(idx);
@@ -686,9 +684,6 @@
             <span class="gt-arrow">{planNoteOpen.has(plans.activePlanIndex) ? '▾' : '▸'}</span>
             <span class="note-pencil">✎</span>
             <span class="note-label">{hasPlanNote(activeNote) ? 'Edit your note' : 'Add your note'}</span>
-            {#if planAnsweredCount(activeNote) > 0}
-              <span class="answered-badge">{planAnsweredCount(activeNote)} answered</span>
-            {/if}
           </button>
         </div>
 
@@ -1030,17 +1025,6 @@
       font-size: 1.0rem;
       font-weight: 600;
       white-space: nowrap;
-    }
-    .answered-badge {
-      flex: 0 0 auto;
-      font-size: 0.7rem;
-      font-weight: 600;
-      color: $gray-500;
-      background: $gray-100;
-      border: 1px solid $gray-200;
-      border-radius: 9px;
-      padding: 1px 7px;
-      line-height: 1.5;
     }
   }
 
