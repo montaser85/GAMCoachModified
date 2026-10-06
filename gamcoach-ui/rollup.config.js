@@ -12,6 +12,14 @@ import replace from '@rollup/plugin-replace';
 
 const production = !process.env.ROLLUP_WATCH;
 
+// Base URL the app is served from. Empty = served at the site root (local dev with
+// `npm start`, or a root domain). For a GitHub Pages PROJECT site the app lives under
+// a sub-path (e.g. "/GAMCoachModified"), so set BASE_PATH to that at build time:
+//   BASE_PATH=/GAMCoachModified npm run build
+// It replaces the `PUBLIC_URL` token used for runtime fetches (model JSON, logo,
+// videos). index.html itself uses relative paths, so it needs no base.
+const basePath = process.env.BASE_PATH || '';
+
 function serve() {
   let server;
 
@@ -59,8 +67,8 @@ export default {
       },
       preprocess: preprocess()
     }),
-    // Resolve the public domain path
-    replace({ PUBLIC_URL: production ? '/gam-coach' : '' }),
+    // Resolve the public base path (see basePath above).
+    replace({ preventAssignment: true, PUBLIC_URL: basePath }),
     // we'll extract any component CSS out into
     // a separate file - better for performance
     css({ output: 'bundle.css' }),

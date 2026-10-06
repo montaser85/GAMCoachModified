@@ -1,0 +1,59 @@
+name: Deploy to GitHub Pages
+
+# Builds the Svelte UI and publishes gamcoach-ui/public to GitHub Pages.
+# One-time setup in the repo: Settings -> Pages -> "Build and deployment" ->
+# Source: "GitHub Actions". After that, every push to master redeploys.
+
+on:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Let a running deploy finish; queue (don't cancel) newer ones.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        working-directory: ./gamcoach-ui
+        run: npm install
+
+      - name: Build
+        working-directory: ./gamcoach-ui
+        # A GitHub Pages PROJECT site is served from /<repo-name>/, so the app's
+        # runtime asset paths must be prefixed with that. Using the repo name keeps
+        # this correct even if the repo is renamed or forked.
+        env:
+          BASE_PATH: /${{ github.event.repository.name }}
+        run: npm run build
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./gamcoach-ui/public
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
