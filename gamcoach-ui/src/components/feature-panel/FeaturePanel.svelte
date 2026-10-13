@@ -15,7 +15,7 @@
   import { onMount, onDestroy, tick } from 'svelte';
   import { get } from 'svelte/store';
   import { fade } from 'svelte/transition';
-  import { tooltipConfigStore, featureValueOverrideStore, cardToggleStore, propagatedFeaturesStore, historySidebarOpenStore, changeEffectsStore, ideasStore, planIdeasStore, restoreIdeasStore, ideaDismissStore, ideaApplyStore, derogFloorHintStore } from '../../store';
+  import { tooltipConfigStore, featureValueOverrideStore, cardToggleStore, propagatedFeaturesStore, historySidebarOpenStore, changeEffectsStore, ideasStore, planIdeasStore, restoreIdeasStore, ideaDismissStore, ideaApplyStore, derogFloorHintStore, sliderDraggingStore } from '../../store';
   import { sigmoid } from '../../ebm/ebm';
   import { isApproved } from '../../utils/score';
   import {
@@ -3144,6 +3144,18 @@
         })()
       : null;
 
+  // While a slider is being dragged, HOLD the repayment box at whatever it was when
+  // the drag began (snapshot), so a value change that flips approval mid-drag doesn't
+  // pop the box in/out and shift the dragged card out from under the cursor. When the
+  // drag ends, the box reflects the final value again.
+  let frozenLoanCost = null;
+  let prevDragging = false;
+  $: {
+    if ($sliderDraggingStore && !prevDragging) frozenLoanCost = loanCost; // drag start
+    prevDragging = $sliderDraggingStore;
+  }
+  $: displayLoanCost = $sliderDraggingStore ? frozenLoanCost : loanCost;
+
 </script>
 
 <style lang='scss'>
@@ -3154,19 +3166,19 @@
 
   <!-- Repayment breakdown — shown between the plan name and the actionable features
        for any plan that has reached approval (score ≥ 50), saved or not. -->
-  {#if loanCost}
+  {#if displayLoanCost}
     <div class="loan-cost-box">
       <div class="lc-total">
         <span class="lc-total-label">Total you'll repay</span>
-        <span class="lc-total-amt">~${moneyApprox(loanCost.total)}</span>
+        <span class="lc-total-amt">~${moneyApprox(displayLoanCost.total)}</span>
       </div>
       <div class="lc-split">
-        Your ${money(loanCost.loanAmount)} loan
-        + ~${moneyApprox(loanCost.interest)} interest
+        Your ${money(displayLoanCost.loanAmount)} loan
+        + ~${moneyApprox(displayLoanCost.interest)} interest
       </div>
       <div class="lc-monthly">
-        ${money(loanCost.monthly)}/month for {loanCost.termMonths} months
-        ({(loanCost.apr * 100).toFixed(2)}% APR)
+        ${money(displayLoanCost.monthly)}/month for {displayLoanCost.termMonths} months
+        ({(displayLoanCost.apr * 100).toFixed(2)}% APR)
       </div>
     </div>
   {/if}

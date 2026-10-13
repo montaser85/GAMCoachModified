@@ -14,6 +14,12 @@ export const tooltipConfigStore = writable({
 
 export const constraintsStore = writable(null);
 
+// True while a feature-card slider thumb is actively being dragged. The panel uses
+// it to FREEZE layout-affecting UI (the "Total you'll repay" box) for the duration
+// of the drag, so a value change that flips approval mid-drag doesn't pop that box
+// in/out and shift the card out from under the cursor.
+export const sliderDraggingStore = writable(false);
+
 export const diffPickerConfigStore = writable({
   feature: null,
   focusOutTime: 0,

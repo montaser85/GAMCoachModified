@@ -2,6 +2,7 @@ import d3 from '../../utils/d3-import';
 import { Logger } from '../../utils/logger';
 import { round } from '../../utils/utils';
 import { config } from '../../config/config';
+import { sliderDraggingStore } from '../../store';
 
 const colors = config.colors;
 const formatter = d3.format(',.2~f');
@@ -58,8 +59,11 @@ const mouseDownHandler = (e, component, state) => {
   }
 
   const track = thumb.parentNode;
-  const trackWidth = track.getBoundingClientRect().width;
   thumb.focus();
+
+  // Freeze layout-affecting UI (the "Total you'll repay" box) while dragging, so the
+  // panel doesn't reflow and shift this card out from under the cursor mid-drag.
+  sliderDraggingStore.set(true);
 
   // Logging the value change
   let eventName = `[${state.feature.featureName}] range changed`;
@@ -85,7 +89,12 @@ const mouseDownHandler = (e, component, state) => {
     e.preventDefault();
     e.stopPropagation();
 
-    const deltaX = e.pageX - track.getBoundingClientRect().x;
+    // Read the track geometry LIVE on every move (don't cache it at mousedown): if
+    // the panel reflows mid-drag the track can move/resize, and a stale width would
+    // skew the value mapping.
+    const trackRect = track.getBoundingClientRect();
+    const trackWidth = trackRect.width;
+    const deltaX = e.clientX - trackRect.x;
     let newValue;
 
     // Handle integer value if it is required
@@ -113,6 +122,10 @@ const mouseDownHandler = (e, component, state) => {
     document.body.style.cursor = 'default';
     thumb.blur();
     localHideAnnotation();
+
+    // Drag finished — let the panel reflect the final value (incl. the "Total
+    // you'll repay" box) again.
+    sliderDraggingStore.set(false);
 
     // Log the interaction
     let newValueValue = state.featurePtr.acceptableRange;
