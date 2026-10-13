@@ -717,8 +717,9 @@
         </svg>
         <span class="icon-label">Compare Plans</span>
       </div>
-      <!-- Watch example — persistent, subtle entry point -->
-      <button class="watch-example-btn" on:click={openExample} title="Watch a short worked example">
+      <!-- Watch example — persistent, subtle entry point.
+           Hidden for now (kept in the DOM, just not displayed). -->
+      <button class="watch-example-btn" style="display: none;" on:click={openExample} title="Watch a short worked example">
         <svg viewBox="0 0 20 20" width="13" height="13" aria-hidden="true">
           <polygon points="5,3 17,10 5,17" fill="currentColor"/>
         </svg>

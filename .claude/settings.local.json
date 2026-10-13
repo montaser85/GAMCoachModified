@@ -200,7 +200,15 @@
       "Bash(pdftoppm -jpeg -r 100 GAM_Coach_Redesign_Features.pdf page)",
       "Bash(rm -rf chk)",
       "Bash(unzip -q GAM_Coach_Redesign_Features.docx -d chk)",
-      "Bash(git --no-pager diff --cached --stat)"
+      "Bash(git --no-pager diff --cached --stat)",
+      "Bash(BASE_PATH=/GAMCoachModified npx rollup -c)",
+      "Bash(MSYS_NO_PATHCONV=1 BASE_PATH=/GAMCoachModified npx rollup -c)",
+      "Bash(rm -rf C:/Users/monta/AppData/Local/Temp/claude/D--OSU-Dr-B-research-group-GAM-Coach-gam-coach-modified/8c4c60b6-96b7-43c4-ae72-14fbe576e739/scratchpad/site)",
+      "Bash(mkdir -p C:/Users/monta/AppData/Local/Temp/claude/D--OSU-Dr-B-research-group-GAM-Coach-gam-coach-modified/8c4c60b6-96b7-43c4-ae72-14fbe576e739/scratchpad/site/GAMCoachModified)",
+      "Bash(cp -r 'D:/OSU/Dr B research group/GAM_Coach/gam-coach_modified/gamcoach-ui/public/.' C:/Users/monta/AppData/Local/Temp/claude/D--OSU-Dr-B-research-group-GAM-Coach-gam-coach-modified/8c4c60b6-96b7-43c4-ae72-14fbe576e739/scratchpad/site/GAMCoachModified/)",
+      "Bash(npx sirv *)",
+      "Bash(curl -s -o /dev/null -w \"root->%{http_code} \" \"http://localhost:5007/GAMCoachModified/\")",
+      "Bash(git push *)"
     ]
   }
 }
