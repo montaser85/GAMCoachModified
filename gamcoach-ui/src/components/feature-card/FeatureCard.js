@@ -512,11 +512,17 @@ export const initHist = (component, state) => {
     .attr('class', 'tick-group')
     .attr('transform', `translate(${thumbWidth}, ${histHeight + vGap})`);
 
-  // The top layer to show vertical marks
+  // The top layer to show vertical marks.
+  // Draw the value marks in the clear gap BELOW the slider track (not across it):
+  // the slider (.feature-slider, z-index:1) paints its opaque orange track on top
+  // of this SVG, so a mark drawn at track level is hidden by the "value bar". Start
+  // the marks just under the track band and extend them down to meet the ticks, so
+  // the full marker stays visible (and its hover target sits clear of the thumb).
+  const markTopY = histHeight - 6;
   const markGroup = state.histSVG
     .append('g')
     .attr('class', 'mark-group')
-    .attr('transform', `translate(${thumbWidth}, ${padding.top})`);
+    .attr('transform', `translate(${thumbWidth}, ${markTopY})`);
 
   // Create the axis scale (feature value → x position). Kept even though the
   // value-distribution density curve has been removed, because the slider
@@ -531,10 +537,10 @@ export const initHist = (component, state) => {
   // syncRangeTrack's clip update is skipped via this null guard.
   state.densityClip = null;
 
-  // Add vertical marks on the plot
-  // const lineHeight = histHeight - padding.top + vGap +
-  //   state.tickHeights.original;
-  const lineHeight = histHeight - padding.top;
+  // Add vertical marks on the plot. Height runs from just below the track
+  // (markTopY) down to the ticks (histHeight + vGap), keeping the whole marker in
+  // the clear band under the value bar.
+  const lineHeight = histHeight + vGap - markTopY;
 
   // --- User ---
   state.densityUserMark = markGroup
@@ -551,8 +557,8 @@ export const initHist = (component, state) => {
   state.densityUserMark
     .append('rect')
     .attr('class', '.hover-place')
-    .attr('x', -2)
-    .attr('width', 4)
+    .attr('x', -8)
+    .attr('width', 16)
     .attr('height', lineHeight)
     .style('fill', 'hsla(0, 100%, 100%, 0)')
     .lower();
@@ -582,8 +588,8 @@ export const initHist = (component, state) => {
   state.densityCoachMark
     .append('rect')
     .attr('class', '.hover-place')
-    .attr('x', -2)
-    .attr('width', 4)
+    .attr('x', -8)
+    .attr('width', 16)
     .attr('height', lineHeight)
     .style('fill', 'hsla(0, 100%, 100%, 0)')
     .lower();
@@ -622,8 +628,8 @@ export const initHist = (component, state) => {
   state.densityOriginalMark
     .append('rect')
     .attr('class', '.hover-place')
-    .attr('x', -2)
-    .attr('width', 4)
+    .attr('x', -8)
+    .attr('width', 16)
     .attr('height', lineHeight)
     .style('fill', 'hsla(0, 100%, 100%, 0)')
     .lower();

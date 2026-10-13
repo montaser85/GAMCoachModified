@@ -602,6 +602,12 @@ $card-h-padding: 16px;
   top: 0px;
   width: 100%;
   font-size: 14px;
+  // Paint the value-marker hover labels (incl. "Your Hypothetical Value") ABOVE
+  // the slider track/thumbs (.feature-slider is z-index:1); otherwise the opaque
+  // orange value bar hides them. pointer-events:none so these labels never
+  // intercept clicks meant for the slider thumb underneath.
+  z-index: 5;
+  pointer-events: none;
 
   .annotation {
     position: absolute;
@@ -1186,5 +1192,26 @@ $card-h-padding: 16px;
     overflow: visible;
     text-overflow: clip;
     line-height: 1.15;
+  }
+}
+
+// When a card is EXPANDED, reserve a consistent two-line title height on every card
+// (not just the two above). The slider is absolutely positioned (top:96px) while the
+// histogram/value-marks flow after the header, so a shorter (single-line) header lets
+// the value marks drift up under the slider track and be hidden by it. Reserving two
+// title lines makes the header the same height on all cards, so the track and the
+// marks line up identically everywhere — matching the Loan Amount card. Collapsed
+// cards are untouched, so the compact list/grid keeps its single-line titles.
+.feature-card:not(.collapsed) {
+  .feature-info {
+    height: auto;
+    align-items: flex-start;
+  }
+  .feature-name {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+    line-height: 1.15;
+    min-height: 2.3em; // two lines at the line-height above
   }
 }
